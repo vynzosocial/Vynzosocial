@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <link rel="icon" type="image/png" href="../assets/favicon-32.png">
+    <title>Vynzo — Blogs</title>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/reset.css">
+    <link rel="stylesheet" href="../css/layout.css?v=20261031-prof">
+    <link rel="stylesheet" href="../css/responsive.css">
+    <link rel="stylesheet" href="../css/mobile.css?v=1">
+    <link rel="stylesheet" href="../css/sidebar-glow.css?v=3">
+    <link rel="stylesheet" href="../css/blogs.css?v=2">
+    <link rel="stylesheet" href="../css/blogs-glow.css?v=4">
+</head>
+<body class="dark-theme">
+    <div id="app-container">
+        <aside class="sidebar desktop-nav">
+            <div class="logo">
+                <img class="brand-logo" src="../assets/icon-192.png" alt="Vynzo"><h2>Vynzo</h2>
+            </div>
+            <nav>
+                <a href="../index.html" class="nav-item">Home</a>
+                <a href="users.html" class="nav-item">Find people</a>
+                <a href="messages.html" class="nav-item">Messages</a>
+                <a href="live.html" class="nav-item">Live</a>
+                <a href="blogs.html" class="nav-item active">Blogs</a>
+                <a href="settings.html" class="nav-item">Settings</a>
+            </nav>
+        </aside>
+
+        <main class="main-content blogs-page" id="blogs-root">
+            <header class="blogs-header">
+                <div>
+                    <h1 data-i18n="title">Vynzo Blogs</h1>
+                    <p data-i18n="subtitle">Long-form stories from the community</p>
+                </div>
+                <button id="lang-btn" class="bl-btn bl-ghost" type="button">Ø§Ù„Ø¹Ø±Ø¨ÙŠØ©</button>
+            </header>
+            <nav class="blogs-tabs" id="blogs-tabs">
+                <a href="#/" data-tab="feed" data-i18n="feed">Explore</a>
+                <a href="#/mine" data-tab="mine" data-i18n="mine">My articles</a>
+                <a href="#/saved" data-tab="saved" data-i18n="bookmarks">Saved</a>
+                <a href="#/write" data-tab="write" class="bl-primary-tab" data-i18n="write">Write</a>
+                <a href="blogs-admin.html" id="admin-link" hidden data-i18n="admin">Moderation</a>
+            </nav>
+            <div id="blogs-view"></div>
+        </main>
+
+        <nav class="mobile-nav">
+            <a href="../index.html" class="mob-item"><span class="mob-icon">&#127968;</span>Home</a>
+            <a href="users.html" class="mob-item"><span class="mob-icon">&#128269;</span>Find</a>
+            <a href="messages.html" class="mob-item"><span class="mob-icon">&#128172;</span>Inbox</a>
+            <a href="live.html" class="mob-item"><span class="mob-icon">&#128308;</span>Live</a>
+            <a href="blogs.html" class="mob-item active"><span class="mob-icon">&#128221;</span>Blogs</a>
+            <a href="settings.html" class="mob-item"><span class="mob-icon">&#9881;&#65039;</span>Settings</a>
+        </nav>
+    </div>
+
+    <script type="module" src="../js/blogs.js?v=7"></script>
+</body>
+</html>

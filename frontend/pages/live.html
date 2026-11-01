@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <link rel="icon" type="image/png" href="../assets/favicon-32.png">
+    <title>Vynzo — Live Studio</title>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/reset.css">
+    <link rel="stylesheet" href="../css/layout.css?v=20261031-prof">
+    <link rel="stylesheet" href="../css/components.css">
+    <link rel="stylesheet" href="../css/live.css">
+    <link rel="stylesheet" href="../css/live-layout.css?v=11">
+    <link rel="stylesheet" href="../css/responsive.css">
+    <link rel="stylesheet" href="../css/mobile.css?v=1">
+    <link rel="stylesheet" href="../css/sidebar-glow.css?v=3">
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body class="dark-theme">
+    <div id="app-container">
+        <aside class="sidebar desktop-nav">
+            <div class="logo">
+                <img class="brand-logo" src="../assets/icon-192.png" alt="Vynzo"><h2>Vynzo</h2>
+            </div>
+            <nav>
+                <a href="../index.html" class="nav-item">Home</a>
+                <a href="users.html" class="nav-item">Find people</a>
+                <a href="messages.html" class="nav-item">Messages</a>
+                <a href="live.html" class="nav-item active">Live</a>
+                <a href="blogs.html" class="nav-item">Blogs</a>
+                <a href="settings.html" class="nav-item">Settings</a>
+            </nav>
+        </aside>
+
+        <main class="live-container">
+            <div class="live-sidebar">
+                <div style="padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 700;">Live Streams</span>
+                    <button id="start-broadcast-btn" class="btn-live" style="font-size: 12px; padding: 6px 12px;">Go Live</button>
+                </div>
+                <div style="padding: 10px 16px; border-bottom: 1px solid var(--border-color);">
+                    <div style="font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px;">Your live title</div>
+                    <div id="live-title-editor"></div>
+                </div>
+                <div id="live-streams-list" style="flex: 1; overflow-y: auto;">
+                    <p style="padding: 16px; color: var(--text-muted);">Loading livestreams...</p>
+                </div>
+            </div>
+            <div class="live-main-view" id="live-main-view">
+                <div style="display: flex; justify-content: center; align-items: center; height: 100%; color: var(--text-muted);">
+                    Select an active livestream or click "Go Live" to broadcast.
+                </div>
+            </div>
+        </main>
+
+        <nav class="mobile-nav">
+            <a href="../index.html" class="mob-item"><span class="mob-icon">&#127968;</span>Home</a>
+            <a href="users.html" class="mob-item"><span class="mob-icon">&#128269;</span>Find</a>
+            <a href="messages.html" class="mob-item"><span class="mob-icon">&#128172;</span>Inbox</a>
+            <a href="live.html" class="mob-item active"><span class="mob-icon">&#128308;</span>Live</a>
+            <a href="blogs.html" class="mob-item"><span class="mob-icon">&#128221;</span>Blogs</a>
+            <a href="settings.html" class="mob-item"><span class="mob-icon">&#9881;&#65039;</span>Settings</a>
+        </nav>
+    </div>
+
+    <script type="module">
+        import { initLiveStudio, startBroadcasting, exitBroadcasting, createTitleEditor, getSavedLiveTitle } from '../js/live.js?v=stage19';
+        document.addEventListener('DOMContentLoaded', () => {
+            initLiveStudio();
+
+            const { element, input } = createTitleEditor({ value: getSavedLiveTitle(), autoSave: true });
+            document.getElementById('live-title-editor').appendChild(element);
+
+            document.getElementById('start-broadcast-btn').addEventListener('click', () => {
+                const title = input.value.trim();
+                if (!title) {
+                    input.focus();
+                    input.style.borderColor = '#e5334b';
+                    return;
+                }
+                startBroadcasting(title, 'General');
+            });
+        });
+    </script>
+</body>
+</html>

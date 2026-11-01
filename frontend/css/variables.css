@@ -1,0 +1,27 @@
+:root {
+  --primary: #ff3366;
+  --secondary: #00f2fe;
+  --bg-dark: #0f1015;
+  --card-dark: #1a1b22;
+  --text-dark: #ffffff;
+  --text-muted: #8a8b91;
+  --border-color: #2f303c;
+  
+  --bg-light: #ffffff;
+  --card-light: #f4f5f7;
+  --text-light: #121212;
+  --border-light: #e0e0e0;
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --transition-speed: 0.3s ease;
+}
+
+body.dark-theme {
+  background-color: var(--bg-dark);
+  color: var(--text-dark);
+}
+
+body.light-theme {
+  background-color: var(--bg-light);
+  color: var(--text-light);
+}

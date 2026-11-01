@@ -1,0 +1,226 @@
+/* Find people page: glow, moving colours, golden lines */
+@property --pg-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes pg-spin { to { --pg-angle: 360deg; } }
+@keyframes pg-aurora {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@keyframes pg-sweep {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes pg-pulse {
+  0%, 100% { box-shadow: 0 0 14px rgba(255, 60, 170, 0.4), 0 0 30px rgba(91, 56, 255, 0.25); }
+  50% { box-shadow: 0 0 24px rgba(255, 200, 80, 0.55), 0 0 44px rgba(0, 195, 255, 0.3); }
+}
+@keyframes pg-orb {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-40px, 30px) scale(1.2); }
+}
+
+.people-page {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 12% 10%, rgba(250, 33, 142, 0.3), transparent 42%),
+    radial-gradient(ellipse at 80% 24%, rgba(91, 56, 255, 0.34), transparent 46%),
+    radial-gradient(ellipse at 50% 92%, rgba(0, 195, 255, 0.22), transparent 50%),
+    linear-gradient(125deg, #14082b, #2a0c3f, #0b1a3d, #2b0f33);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 400% 400%;
+  animation: pg-aurora 16s ease-in-out infinite;
+}
+
+.people-page::after {
+  position: absolute;
+  z-index: 0;
+  top: 35%;
+  right: 6%;
+  width: 320px;
+  height: 320px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 200, 80, 0.24), transparent 68%);
+  content: "";
+  filter: blur(18px);
+  animation: pg-orb 12s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.people-page > * { position: relative; z-index: 1; }
+
+.people-page-header {
+  border-bottom: 2px solid transparent;
+  border-image: linear-gradient(90deg, transparent, #f5c451, #fff2b0, #f5c451, transparent) 1;
+}
+
+.people-page-header h1,
+.people-page .account-search-identity strong {
+  background: linear-gradient(90deg, #ff4fa3, #f5c451, #00d4ff, #ff4fa3);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: pg-sweep 6s linear infinite;
+  text-shadow: none;
+}
+
+.people-page-header p { color: rgba(255, 255, 255, 0.78); }
+
+.people-page .account-search input {
+  border: 1px solid rgba(245, 196, 81, 0.7);
+  background: rgba(10, 8, 30, 0.7);
+  color: #fff;
+  box-shadow: 0 0 14px rgba(245, 196, 81, 0.25), inset 0 0 10px rgba(255, 79, 163, 0.15);
+  transition: box-shadow 0.25s;
+}
+
+.people-page .account-search input:focus {
+  outline: none;
+  box-shadow: 0 0 22px rgba(245, 196, 81, 0.6), 0 0 36px rgba(0, 212, 255, 0.35);
+}
+
+.people-page button,
+.account-profile-dialog button:not(.account-profile-close):not(.account-profile-post) {
+  border: 1px solid #f5c451;
+  background: linear-gradient(120deg, #ff4fa3, #7a5cff, #00b8ff, #ff4fa3);
+  background-size: 300% 100%;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  animation: pg-aurora 7s ease-in-out infinite, pg-pulse 3.5s ease-in-out infinite;
+  transition: transform 0.2s, filter 0.2s;
+}
+
+.people-page button:hover,
+.account-profile-dialog button:not(.account-profile-close):not(.account-profile-post):hover {
+  transform: translateY(-2px) scale(1.04);
+  filter: brightness(1.2);
+}
+
+.people-page .account-search-result {
+  position: relative;
+  border: 2px solid transparent;
+  border-radius: 16px;
+  background:
+    linear-gradient(rgba(20, 12, 46, 0.92), rgba(14, 14, 44, 0.92)) padding-box,
+    conic-gradient(from var(--pg-angle), #ff4fa3, #f5c451, #00d4ff, #7a5cff, #f5c451, #ff4fa3) border-box;
+  box-shadow: 0 0 20px rgba(122, 92, 255, 0.3);
+  animation: pg-spin 7s linear infinite;
+  transition: transform 0.25s, box-shadow 0.25s;
+}
+
+.people-page .account-search-result:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 0 30px rgba(245, 196, 81, 0.5), 0 0 50px rgba(255, 79, 163, 0.3);
+}
+
+.people-page .account-search-result::after {
+  position: absolute;
+  right: 14px;
+  bottom: 0;
+  left: 14px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #f5c451, #fff2b0, #f5c451, transparent);
+  background-size: 200% 100%;
+  content: "";
+  animation: pg-sweep 4s linear infinite;
+  pointer-events: none;
+}
+
+.people-page .account-search-avatar,
+.account-profile-avatar {
+  border: 2px solid #f5c451;
+  box-shadow: 0 0 16px rgba(245, 196, 81, 0.6), 0 0 28px rgba(255, 79, 163, 0.35);
+}
+
+.people-page .account-search-message {
+  color: #ffe9a8;
+  text-shadow: 0 0 10px rgba(245, 196, 81, 0.5);
+}
+
+.account-profile-dialog {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(160deg, rgba(28, 12, 56, 0.97), rgba(10, 16, 44, 0.97)) padding-box,
+    conic-gradient(from var(--pg-angle), #ff4fa3, #f5c451, #00d4ff, #7a5cff, #f5c451, #ff4fa3) border-box;
+  box-shadow: 0 0 40px rgba(122, 92, 255, 0.5), 0 0 70px rgba(245, 196, 81, 0.2);
+  animation: pg-spin 8s linear infinite;
+}
+
+.account-profile-stats {
+  border-top: 1px solid #f5c451;
+  border-bottom: 1px solid #f5c451;
+  box-shadow: 0 0 12px rgba(245, 196, 81, 0.25);
+}
+
+.account-profile-stats strong { color: #ffd76a; text-shadow: 0 0 8px rgba(245, 196, 81, 0.7); }
+
+.account-profile-posts-heading {
+  background: linear-gradient(90deg, #ff4fa3, #f5c451, #00d4ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.account-profile-post {
+  border: 1px solid rgba(245, 196, 81, 0.6);
+  box-shadow: 0 0 12px rgba(122, 92, 255, 0.4);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.account-profile-post:hover {
+  transform: scale(1.04);
+  box-shadow: 0 0 22px rgba(245, 196, 81, 0.7);
+}
+
+.people-page ~ .mobile-nav,
+body:has(.people-page) .sidebar {
+  background: linear-gradient(180deg, rgba(40, 14, 62, 0.98), rgba(10, 16, 40, 0.98));
+  border-right: 2px solid transparent;
+  border-image: linear-gradient(180deg, transparent, #f5c451, #ff4fa3, #f5c451, transparent) 1;
+}
+
+body:has(.people-page) .nav-item.active {
+  border: 1px solid rgba(245, 196, 81, 0.7);
+  background: linear-gradient(120deg, rgba(255, 79, 163, 0.35), rgba(91, 56, 255, 0.35));
+  box-shadow: 0 0 16px rgba(245, 196, 81, 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .people-page, .people-page::after, .people-page button, .people-page .account-search-result,
+  .people-page .account-search-result::after, .account-profile-dialog, .people-page-header h1 {
+    animation: none;
+  }
+}
+
+.people-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.people-tab {
+  padding: 8px 18px;
+  color: #d9ccff;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(180, 107, 255, 0.35);
+  border-radius: 999px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.people-tab.active {
+  color: #fff;
+  background: linear-gradient(90deg, #ff2bd6, #7b5cff, #00e5ff);
+  border-color: transparent;
+  box-shadow: 0 0 16px rgba(123, 92, 255, 0.55);
+}
+
+.account-search-counts {
+  display: block;
+  color: #ffe58a;
+}

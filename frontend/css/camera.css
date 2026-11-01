@@ -1,0 +1,128 @@
+.camera-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  background: rgba(8, 4, 20, 0.88);
+}
+
+.camera-dialog {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(190, 120, 255, 0.5);
+  border-radius: 18px;
+  background: linear-gradient(160deg, #24103f, #130b2b);
+  box-shadow: 0 0 36px rgba(168, 72, 255, 0.45);
+  color: #fff;
+}
+
+.camera-close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  z-index: 2;
+  border: 0;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.camera-stage {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  max-height: calc(100vh - 250px);
+  min-height: 140px;
+  margin: 0 auto;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #000;
+}
+
+.camera-live,
+.camera-result,
+.camera-result img,
+.camera-result video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.camera-timer {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 40, 100, 0.85);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.camera-message {
+  min-height: 18px;
+  margin: 0;
+  font-size: 13px;
+  color: #ff9ac0;
+}
+
+.camera-modes,
+.camera-durations,
+.camera-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.camera-modes button,
+.camera-durations button,
+.camera-flip,
+.camera-retake,
+.camera-use {
+  padding: 8px 16px;
+  border: 1px solid rgba(190, 120, 255, 0.5);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.camera-modes button.active,
+.camera-durations button.active,
+.camera-use {
+  background: linear-gradient(120deg, #ff3caa, #885cff);
+  box-shadow: 0 0 14px rgba(197, 79, 255, 0.6);
+}
+
+.camera-shutter {
+  width: 60px;
+  height: 60px;
+  border: 4px solid #fff;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+}
+
+.camera-shutter.video-mode {
+  background: #ff2d6f;
+}
+
+.camera-shutter.recording {
+  border-radius: 14px;
+  background: #ff2d6f;
+}

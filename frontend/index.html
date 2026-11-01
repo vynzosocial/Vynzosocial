@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <link rel="icon" type="image/png" href="./assets/favicon-32.png">
+    <title>Vynzo — Social Media Platform</title>
+    <link rel="stylesheet" href="./css/variables.css">
+    <link rel="stylesheet" href="./css/reset.css">
+    <link rel="stylesheet" href="./css/layout.css?v=20261031-prof">
+    <link rel="stylesheet" href="./css/feed.css?v=7">
+    <link rel="stylesheet" href="./css/stories.css?v=5">
+    <link rel="stylesheet" href="./css/camera.css?v=cam2">
+    <link rel="stylesheet" href="./css/responsive.css">
+    <link rel="stylesheet" href="./css/landing.css">
+    <link rel="stylesheet" href="./css/home-glow.css?v=2">
+    <link rel="stylesheet" href="./css/mobile.css?v=5">
+    <link rel="stylesheet" href="./css/sidebar-glow.css?v=3">
+    <link rel="stylesheet" href="./css/create-buttons.css?v=3">
+    <link rel="stylesheet" href="./css/post-author.css?v=1">
+</head>
+<body class="dark-theme home-page">
+    <main id="welcome-page" class="welcome-page">
+        <div class="welcome-glow welcome-glow-pink" aria-hidden="true"></div>
+        <div class="welcome-glow welcome-glow-blue" aria-hidden="true"></div>
+        <div class="welcome-glow welcome-glow-orange" aria-hidden="true"></div>
+
+        <header class="welcome-header">
+            <a class="welcome-logo" href="./index.html" aria-label="Vynzo home" style="display:flex;align-items:center;gap:8px"><img src="./assets/icon-192.png" alt="" style="width:36px;height:36px;border-radius:9px">vynzo<span>.</span></a>
+            <nav class="welcome-nav" aria-label="Account">
+                <a class="welcome-login" href="./pages/login.html">Log in</a>
+                <a class="welcome-button welcome-button-small" href="./pages/register.html">Create account</a>
+            </nav>
+        </header>
+
+        <section class="welcome-hero">
+            <div class="welcome-copy">
+                <p class="welcome-eyebrow"><span></span> YOUR PEOPLE. YOUR MOMENTS.</p>
+                <h1>Make a little <span>more noise.</span></h1>
+                <p class="welcome-description">A place for your favorite people, spontaneous moments, and stories worth sharing. Come as you are and make it yours.</p>
+                <div class="welcome-actions">
+                    <a class="welcome-button" href="./pages/register.html">Join Vynzo <span aria-hidden="true">&rarr;</span></a>
+                    <a class="welcome-secondary" href="./pages/login.html">Already have an account? <span>Log in</span></a>
+                </div>
+                <div class="welcome-note"><span class="welcome-sparkle" aria-hidden="true">✦</span> Your next favorite corner of the internet.</div>
+            </div>
+
+            <div class="welcome-art" aria-hidden="true">
+                <div class="welcome-orbit welcome-orbit-one"></div>
+                <div class="welcome-orbit welcome-orbit-two"></div>
+                <div class="welcome-center">
+                    <div class="welcome-center-ring"></div>
+                    <span>v</span>
+                </div>
+                <div class="welcome-float welcome-float-top"><span>✦</span> your moment</div>
+                <div class="welcome-float welcome-float-bottom"><span>♥</span> good energy only</div>
+                <div class="welcome-dot welcome-dot-one"></div>
+                <div class="welcome-dot welcome-dot-two"></div>
+                <div class="welcome-dot welcome-dot-three"></div>
+            </div>
+        </section>
+    </main>
+
+    <div id="feed-app" hidden>
+    <div id="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar desktop-nav">
+            <div class="logo">
+                <img class="brand-logo" src="./assets/icon-192.png" alt="Vynzo"><h2>Vynzo</h2>
+            </div>
+            <nav>
+                <a href="index.html" class="nav-item active">Home</a>
+                <a href="./pages/users.html" class="nav-item">Find people</a>
+                <a href="./pages/messages.html" class="nav-item">Messages</a>
+                <a href="./pages/live.html" class="nav-item">Live</a>
+                <a href="./pages/blogs.html" class="nav-item">Blogs</a>
+                <a href="./pages/settings.html" class="nav-item">Settings</a>
+            </nav>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="top-bar">
+                <a class="home-user-chip" id="home-user-chip" href="./pages/settings.html" aria-label="Your profile">
+                    <span class="home-user-avatar" id="home-user-avatar" aria-hidden="true"></span>
+                    <span class="home-user-name" id="home-user-name"></span>
+                </a>
+                <div class="feed-tabs">
+                    <button class="tab-btn active" data-scope="me">Me</button>
+                    <button class="tab-btn" data-scope="following">Following</button>
+                    <button class="tab-btn" data-scope="all">For You</button>
+                </div>
+                <a class="account-search-link" href="./pages/users.html">Find people</a>
+                <button id="theme-toggle" class="icon-btn" aria-label="Toggle theme"><span class="theme-emoji">🌓</span><img class="home-app-logo" src="./assets/icon-192.png" alt="Vynzo"></button>
+            </header>
+
+            <div class="home-content-layout">
+                <div class="home-main-column">
+                    <section class="home-stories-section" aria-labelledby="stories-heading">
+                        <header class="home-section-heading">
+                            <div>
+                                <h1 id="stories-heading">Stories</h1>
+                                <p>Photos and videos disappear after 24 hours.</p>
+                            </div>
+                            <div class="story-upload-control">
+                                <button id="add-story-btn" class="home-create-button story-create-button" type="button"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" stroke-dasharray="3 2.4"/><path d="M12 8.5v7M8.5 12h7"/></svg><span>Add story</span></button>
+                                <button id="camera-story-btn" class="home-create-button story-create-button" type="button"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span>Story camera</span></button>
+                                <input id="story-upload-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" hidden>
+                                <label class="protect-option"><input type="checkbox" id="story-protect"> Protect (no download / screenshot)</label>
+                                <span id="story-upload-status" class="home-upload-status" aria-live="polite"></span>
+                            </div>
+                        </header>
+                        <div id="stories-container" class="stories-carousel-container">
+                            <div style="font-size: 12px; color: var(--text-muted); padding: 10px;">Loading stories...</div>
+                        </div>
+                    </section>
+
+                    <section class="home-feed-section" aria-labelledby="home-feed-heading">
+                        <header class="home-section-heading home-feed-heading">
+                            <div>
+                                <h2 id="home-feed-heading">Photos &amp; videos</h2>
+                                <p>Share a photo or video with everyone.</p>
+                            </div>
+                        </header>
+                        <div class="home-post-composer">
+                            <label class="sr-only" for="post-caption">Post caption (optional)</label>
+                            <input id="post-caption" type="text" maxlength="500" placeholder="Write a caption (optional)">
+                            <div class="home-post-actions">
+                                <button id="add-photo-post-btn" class="home-create-button photo-create-button" type="button"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><circle cx="9" cy="10" r="1.7"/><path d="M4 17l5-4.5 4 3.5 3-2.5 4 3.5"/></svg><span>Add photo</span></button>
+                                <button id="add-video-post-btn" class="home-create-button video-create-button" type="button"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="M16 11l5-3v8l-5-3z"/></svg><span>Add video</span></button>
+                                <button id="camera-post-btn" class="home-create-button photo-create-button" type="button"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span>Camera</span></button>
+                            </div>
+                            <label class="protect-option"><input type="checkbox" id="post-protect"> Protect (no download / screenshot)</label>
+                            <input id="photo-post-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+                            <input id="video-post-input" type="file" accept="video/mp4,video/webm,video/quicktime" hidden>
+                            <span id="post-upload-status" class="home-upload-status" aria-live="polite"></span>
+                        </div>
+                        <div id="feed-container" class="feed-container">
+                            <div class="post-placeholder">
+                                <p>Loading Vynzo Feed...</p>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+                <aside class="home-friends-sidebar" aria-label="Friends">
+                    <section class="home-friends-section" id="home-requests-section" aria-labelledby="home-requests-heading" hidden>
+                        <header class="home-section-heading">
+                            <div>
+                                <h2 id="home-requests-heading">Friend requests</h2>
+                                <p>People who added you. Add them back to become friends.</p>
+                            </div>
+                        </header>
+                        <div id="home-requests-list" class="home-friends-list" aria-live="polite"></div>
+                    </section>
+                    <section class="home-friends-section" aria-labelledby="home-sidebar-friends-heading">
+                        <header class="home-section-heading">
+                            <div>
+                                <h2 id="home-sidebar-friends-heading">Friends</h2>
+                                <p>Your friends and their live status.</p>
+                            </div>
+                        </header>
+                        <div id="home-friends-list" class="home-friends-list" aria-live="polite">
+                            <p class="home-friends-message">Loading friends...</p>
+                        </div>
+                    </section>
+                </aside>
+            </div>
+        </main>
+
+        <!-- Mobile Bottom Navigation -->
+        <nav class="mobile-nav">
+            <a href="index.html" class="mob-item active"><span class="mob-icon">🏠</span>Home</a>
+            <a href="./pages/users.html" class="mob-item"><span class="mob-icon">🔍</span>Find</a>
+            <a href="./pages/messages.html" class="mob-item"><span class="mob-icon">💬</span>Inbox</a>
+            <a href="./pages/live.html" class="mob-item"><span class="mob-icon">🔴</span>Live</a>
+            <a href="./pages/blogs.html" class="mob-item"><span class="mob-icon">&#128221;</span>Blogs</a>
+            <a href="./pages/settings.html" class="mob-item"><span class="mob-icon">⚙️</span>Settings</a>
+        </nav>
+    </div>
+    </div>
+
+    <script type="module" src="./js/app.js?v=prot2"></script>
+
+    <script type="module">import { initCalls } from './js/calls.js?v=1'; initCalls();</script>
+</body>
+</html>

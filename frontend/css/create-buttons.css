@@ -1,0 +1,108 @@
+/* Home create/upload buttons: aligned icon + label, distinct colours, no text wrapping. */
+html body .home-create-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 18px 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  text-shadow: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28), 0 0 18px var(--btn-glow, rgba(255, 60, 170, 0.4));
+  transition: transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease;
+}
+
+.home-create-button .btn-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+html body .home-create-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  filter: brightness(1.12);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35), 0 0 26px var(--btn-glow, rgba(255, 60, 170, 0.6));
+}
+
+html body .home-create-button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+html body .home-create-button:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+}
+
+html body .home-create-button.story-create-button {
+  --btn-glow: rgba(255, 60, 170, 0.5);
+  background: linear-gradient(110deg, #ff3caa, #8b5cff);
+  animation: none;
+}
+
+html body .home-create-button.story-create-button#camera-story-btn {
+  --btn-glow: rgba(139, 92, 255, 0.5);
+  background: linear-gradient(110deg, #8b5cff, #3d8bff);
+}
+
+html body .home-create-button.photo-create-button {
+  --btn-glow: rgba(0, 190, 255, 0.45);
+  background: linear-gradient(110deg, #00b4ff, #3d6bff);
+  animation: none;
+}
+
+html body .home-create-button.photo-create-button#camera-post-btn {
+  --btn-glow: rgba(255, 140, 60, 0.5);
+  background: linear-gradient(110deg, #ff8a3c, #ff3c7a);
+}
+
+html body .home-create-button.video-create-button {
+  --btn-glow: rgba(255, 70, 90, 0.5);
+  background: linear-gradient(110deg, #ff4b5c, #c23bff);
+  animation: none;
+}
+
+.story-upload-control,
+.home-post-actions {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+@media (max-width: 600px) {
+  html body .home-create-button {
+    flex: 1 1 calc(50% - 10px);
+    min-height: 42px;
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+}
+
+/* Keep the header username away from the chip's right edge. */
+html body .home-user-chip .home-user-name {
+  padding-right: 14px;
+}
+
+/* Upload controls (add story / photo / video / camera) belong to the "Me" tab only. */
+body:not([data-feed-scope="me"]) .story-upload-control,
+body:not([data-feed-scope="me"]) .home-post-composer,
+body:not([data-feed-scope="me"]) .home-feed-heading p {
+  display: none !important;
+}
+/* Protected media + delete */
+.protect-option{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted,#9aa);cursor:pointer;margin:4px 8px 4px 0}
+.protect-option input{accent-color:#8b5cf6}
+.is-protected-media img,.is-protected-media video{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.protected-badge{position:absolute;top:8px;left:8px;padding:2px 8px;border-radius:999px;font-size:11px;background:rgba(0,0,0,.6);color:#fff;pointer-events:none}
+.post-thumbnail-button{position:relative}
+.post-delete-btn{margin-left:auto;background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.4);border-radius:999px;padding:4px 12px;cursor:pointer}
+body:not([data-feed-scope="me"]) .protect-option{display:none}

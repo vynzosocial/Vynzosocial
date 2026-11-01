@@ -1,0 +1,283 @@
+/* Home page glow, moving colours and golden accents */
+@property --glow-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes glow-spin { to { --glow-angle: 360deg; } }
+@keyframes aurora-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes gold-sweep {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 14px rgba(255, 60, 170, 0.35), 0 0 30px rgba(91, 56, 255, 0.2); }
+  50% { box-shadow: 0 0 24px rgba(255, 200, 80, 0.5), 0 0 46px rgba(0, 195, 255, 0.3); }
+}
+@keyframes float-orb {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(40px, -30px) scale(1.15); }
+  66% { transform: translate(-30px, 25px) scale(0.9); }
+}
+
+.home-page .main-content {
+  background:
+    radial-gradient(ellipse at 10% 12%, rgba(250, 33, 142, 0.26), transparent 40%),
+    radial-gradient(ellipse at 74% 26%, rgba(91, 56, 255, 0.3), transparent 44%),
+    radial-gradient(ellipse at 48% 88%, rgba(0, 195, 255, 0.2), transparent 48%),
+    linear-gradient(125deg, #14082b, #2a0c3f, #0b1a3d, #2b0f33);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 400% 400%;
+  animation: aurora-shift 18s ease-in-out infinite;
+}
+
+.home-page .main-content::after {
+  position: absolute;
+  z-index: -1;
+  width: 340px;
+  height: 340px;
+  top: 30%;
+  right: 8%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 200, 80, 0.22), transparent 68%);
+  content: "";
+  filter: blur(18px);
+  animation: float-orb 14s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.home-page .sidebar {
+  position: relative;
+  border-right: 1px solid transparent;
+  background:
+    linear-gradient(180deg, rgba(40, 14, 62, 0.98), rgba(10, 16, 40, 0.98));
+}
+
+.home-page .sidebar::after,
+.home-page .top-bar::after {
+  position: absolute;
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, #ffd76a, #fff1b8, #ffd76a, transparent);
+  background-size: 200% 100%;
+  animation: gold-sweep 5s linear infinite;
+  box-shadow: 0 0 10px rgba(255, 215, 106, 0.8);
+}
+
+.home-page .sidebar::after {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(180deg, transparent, #ffd76a, #fff1b8, #ffd76a, transparent);
+  background-size: 100% 200%;
+  animation: gold-sweep-y 6s linear infinite;
+}
+
+@keyframes gold-sweep-y {
+  0% { background-position: 0 -200%; }
+  100% { background-position: 0 200%; }
+}
+
+.home-page .top-bar {
+  position: relative;
+}
+
+.home-page .top-bar::after {
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+}
+
+.home-page .logo h2 {
+  background: linear-gradient(95deg, #ff6bc9, #ffd76a, #67e9ff, #ff6bc9);
+  background-size: 300% 100%;
+  background-clip: text;
+  animation: aurora-shift 6s linear infinite;
+  filter: drop-shadow(0 0 14px rgba(255, 215, 106, 0.55));
+}
+
+.home-page .nav-item:hover,
+.home-page .nav-item.active {
+  box-shadow: inset 2px 0 #ffd76a, 0 0 22px rgba(255, 107, 201, 0.35);
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.6);
+}
+
+.home-page .tab-btn.active,
+.home-page .account-search-link,
+.home-page .icon-btn {
+  border-color: rgba(255, 215, 106, 0.6);
+  animation: pulse-glow 4s ease-in-out infinite;
+}
+
+/* Cards: rotating rainbow-and-gold border with a soft glow */
+.home-main-column .home-stories-section,
+.home-main-column .home-feed-section,
+.home-friends-section,
+.home-page .post-card {
+  position: relative;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(24, 12, 44, 0.9), rgba(16, 14, 38, 0.92)) padding-box,
+    conic-gradient(from var(--glow-angle), #ff3caa, #ffd76a, #00c3ff, #885cff, #ffd76a, #ff3caa) border-box;
+  animation: glow-spin 8s linear infinite;
+  box-shadow:
+    0 0 22px rgba(255, 60, 170, 0.22),
+    0 0 44px rgba(91, 56, 255, 0.16),
+    inset 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.home-page .post-card:hover {
+  box-shadow:
+    0 0 28px rgba(255, 215, 106, 0.45),
+    0 0 56px rgba(255, 60, 170, 0.3);
+  transform: translateY(-2px);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Golden line under section headings */
+.home-main-column .home-section-heading,
+.home-friends-section .home-section-heading {
+  position: relative;
+}
+
+.home-main-column .home-section-heading::after,
+.home-friends-section .home-section-heading::after {
+  position: absolute;
+  right: 24px;
+  bottom: -2px;
+  left: 24px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, #ffd76a, #fff1b8, #ffd76a, transparent);
+  background-size: 200% 100%;
+  box-shadow: 0 0 10px rgba(255, 215, 106, 0.7);
+  content: "";
+  animation: gold-sweep 4s linear infinite;
+}
+
+.home-main-column .home-section-heading h1,
+.home-main-column .home-section-heading h2,
+.home-friends-section .home-section-heading h2 {
+  background: linear-gradient(95deg, #ff91d2, #ffd76a, #76eaff, #ff91d2);
+  background-size: 300% 100%;
+  background-clip: text;
+  animation: aurora-shift 7s linear infinite;
+  filter: drop-shadow(0 0 10px rgba(255, 215, 106, 0.35));
+}
+
+/* Buttons */
+.home-page .home-create-button {
+  border: 1px solid rgba(255, 215, 106, 0.7);
+  background: linear-gradient(120deg, #ff3caa, #885cff, #00a8ff, #ff3caa);
+  background-size: 300% 100%;
+  color: #fff;
+  font-weight: 700;
+  text-shadow: 0 0 8px rgba(0, 0, 0, 0.4);
+  animation: aurora-shift 6s linear infinite, pulse-glow 4s ease-in-out infinite;
+}
+
+.home-page .home-create-button:hover {
+  filter: brightness(1.2);
+}
+
+/* Story rings and friend cards */
+.home-page .story-preview-ring {
+  box-shadow: 0 0 16px rgba(255, 215, 106, 0.7), 0 0 30px rgba(255, 60, 170, 0.45);
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+.home-page .home-friend-card {
+  border-color: rgba(255, 215, 106, 0.28);
+}
+
+.home-page .home-friend-card:hover,
+.home-page .home-friend-card:focus-visible {
+  border-color: #ffd76a;
+  box-shadow: 0 0 20px rgba(255, 215, 106, 0.5);
+}
+
+.home-page .home-friend-card.is-live {
+  box-shadow: 0 0 20px rgba(255, 60, 100, 0.55);
+}
+
+.home-page .like-btn.liked {
+  color: #ff5fa8;
+  text-shadow: 0 0 12px rgba(255, 95, 168, 0.9);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-page *,
+  .home-page *::before,
+  .home-page *::after {
+    animation: none !important;
+  }
+}
+
+/* Vivid neon header */
+@keyframes header-neon {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 300% 50%; }
+}
+
+.home-page .top-bar {
+  background:
+    linear-gradient(115deg, rgba(255, 45, 170, 0.34), rgba(138, 80, 255, 0.34) 35%, rgba(0, 195, 255, 0.32) 70%, rgba(255, 215, 106, 0.3)),
+    rgba(14, 8, 34, 0.92);
+  box-shadow:
+    0 6px 30px rgba(255, 60, 170, 0.35),
+    0 0 40px rgba(0, 195, 255, 0.22),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.home-page .top-bar::after {
+  height: 3px;
+  background: linear-gradient(90deg, #ff2daa, #ffd76a, #00e5ff, #8a50ff, #ff2daa);
+  background-size: 300% 100%;
+  animation: header-neon 4s linear infinite;
+  box-shadow: 0 0 14px rgba(255, 45, 170, 0.9), 0 0 24px rgba(0, 229, 255, 0.7);
+}
+
+.home-page .home-user-chip {
+  border: 1px solid rgba(255, 215, 106, 0.7);
+  background: linear-gradient(120deg, rgba(255, 45, 170, 0.35), rgba(0, 195, 255, 0.3));
+  box-shadow: 0 0 16px rgba(255, 45, 170, 0.55), 0 0 26px rgba(0, 195, 255, 0.3);
+}
+
+.home-page .home-user-name {
+  color: #fff;
+  text-shadow: 0 0 8px #ff6bc9, 0 0 16px #00e5ff;
+}
+
+.home-page .home-user-avatar {
+  box-shadow: 0 0 0 2px #ffd76a, 0 0 14px #ff2daa, 0 0 22px #00e5ff;
+}
+
+.home-page .tab-btn {
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+}
+
+.home-page .tab-btn.active {
+  background: linear-gradient(120deg, #ff2daa, #8a50ff 55%, #00c3ff);
+  border-color: #ffe08a;
+  box-shadow: 0 0 18px rgba(255, 45, 170, 0.85), 0 0 30px rgba(0, 195, 255, 0.5);
+}
+
+.home-page .icon-btn {
+  background: linear-gradient(135deg, rgba(255, 45, 170, 0.45), rgba(0, 195, 255, 0.4));
+  border-color: #ffe08a;
+  box-shadow: 0 0 18px rgba(255, 215, 106, 0.7), 0 0 28px rgba(255, 45, 170, 0.45);
+}
+
+.home-page .account-search-link {
+  color: #fff;
+  background: linear-gradient(120deg, #ff2daa, #8a50ff, #00c3ff);
+  box-shadow: 0 0 18px rgba(138, 80, 255, 0.8);
+}

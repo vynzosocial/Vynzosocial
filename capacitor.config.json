@@ -1,0 +1,9 @@
+{
+  "appId": "com.vynzo.app",
+  "appName": "Vynzo",
+  "webDir": "frontend",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  }
+}

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <link rel="icon" type="image/png" href="../assets/favicon-32.png">
+    <title>Vynzo — Find People</title>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/reset.css">
+    <link rel="stylesheet" href="../css/layout.css?v=20261031-prof">
+    <link rel="stylesheet" href="../css/stories.css?v=5">
+    <link rel="stylesheet" href="../css/camera.css?v=cam2">
+    <link rel="stylesheet" href="../css/responsive.css">
+    <link rel="stylesheet" href="../css/people-glow.css?v=2">
+    <link rel="stylesheet" href="../css/mobile.css?v=1">
+    <link rel="stylesheet" href="../css/sidebar-glow.css?v=3">
+    <link rel="stylesheet" href="../css/post-author.css?v=1">
+</head>
+<body class="dark-theme">
+    <div id="app-container">
+        <aside class="sidebar desktop-nav">
+            <div class="logo">
+                <img class="brand-logo" src="../assets/icon-192.png" alt="Vynzo"><h2>Vynzo</h2>
+            </div>
+            <nav>
+                <a href="../index.html" class="nav-item">Home</a>
+                <a href="users.html" class="nav-item active">Find people</a>
+                <a href="messages.html" class="nav-item">Messages</a>
+                <a href="live.html" class="nav-item">Live</a>
+                <a href="blogs.html" class="nav-item">Blogs</a>
+                <a href="settings.html" class="nav-item">Settings</a>
+            </nav>
+        </aside>
+
+        <main class="main-content people-page">
+            <header class="top-bar people-page-header">
+                <div>
+                    <h1>Find people</h1>
+                    <p>Search for accounts and explore their profiles.</p>
+                </div>
+                <button id="my-profile-button" class="account-profile-button" type="button">My profile</button>
+                <form id="account-search-form" class="account-search" role="search">
+                    <input id="account-search-input" type="search" minlength="2" maxlength="50" placeholder="Search by name or username" aria-label="Search accounts" autocomplete="off" required>
+                    <button type="submit">Search</button>
+                </form>
+            </header>
+            <div class="people-tabs" role="tablist" aria-label="Your connections">
+                <button id="tab-friends" class="people-tab active" type="button" role="tab" aria-selected="true" data-type="friends">Friends</button>
+                <button id="tab-followers" class="people-tab" type="button" role="tab" aria-selected="false" data-type="followers">Followers</button>
+            </div>
+            <section id="connections-list" class="account-search-results people-search-results" aria-live="polite"></section>
+            <section id="account-search-results" class="account-search-results people-search-results" aria-live="polite">
+                <p class="account-search-message">Enter at least 2 characters to find accounts.</p>
+            </section>
+        </main>
+
+        <nav class="mobile-nav">
+            <a href="../index.html" class="mob-item"><span class="mob-icon">🏠</span>Home</a>
+            <a href="users.html" class="mob-item active"><span class="mob-icon">🔍</span>Find</a>
+            <a href="messages.html" class="mob-item"><span class="mob-icon">💬</span>Inbox</a>
+            <a href="live.html" class="mob-item"><span class="mob-icon">🔴</span>Live</a>
+            <a href="blogs.html" class="mob-item"><span class="mob-icon">&#128221;</span>Blogs</a>
+            <a href="settings.html" class="mob-item"><span class="mob-icon">⚙️</span>Settings</a>
+        </nav>
+    </div>
+    <script type="module">
+        import { initAccountSearch, openUserProfile } from '../js/users.js?v=live1';
+        document.addEventListener('DOMContentLoaded', initAccountSearch);
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('my-profile-button').addEventListener('click', () => {
+                const user = JSON.parse(localStorage.getItem('vynzo_user') || '{}');
+                if (!user.id) {
+                    const results = document.getElementById('account-search-results');
+                    results.replaceChildren();
+                    const message = document.createElement('p');
+                    message.className = 'account-search-message';
+                    message.textContent = 'Log in to view your profile.';
+                    results.appendChild(message);
+                    return;
+                }
+                openUserProfile(user.id);
+            });
+        });
+    </script>
+    <script type="module">import { initCalls } from '../js/calls.js?v=1'; initCalls();</script>
+</body>
+</html>

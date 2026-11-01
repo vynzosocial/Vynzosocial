@@ -1,0 +1,141 @@
+@media (max-width: 900px) {
+  .home-content-layout {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .home-friends-sidebar {
+    position: static;
+    width: 100%;
+    max-height: none;
+    overflow: visible;
+    padding: 0 14px 18px;
+  }
+
+  .home-friends-list {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+
+  .home-friend-card {
+    width: auto;
+    min-width: 205px;
+  }
+}
+
+@media (max-width: 768px) {
+  .top-bar {
+    flex-wrap: wrap;
+    padding: 12px 14px;
+  }
+
+  .account-search {
+    order: 3;
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .account-search-link {
+    margin-left: auto;
+    margin-right: 0;
+  }
+
+  .people-page-header {
+    align-items: flex-start;
+  }
+
+  .people-page-header .account-search {
+    order: 0;
+  }
+
+  .people-search-results {
+    grid-template-columns: 1fr;
+    width: calc(100% - 28px);
+    margin-top: 14px;
+  }
+
+  .account-search-results {
+    top: 116px;
+  }
+
+  .account-search-result {
+    flex-wrap: wrap;
+  }
+
+  .account-profile-button,
+  .account-follow-button {
+    padding: 7px 9px;
+  }
+
+  .account-profile-dialog {
+    padding: 22px 16px;
+  }
+
+  .account-profile-post-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .home-stories-section,
+  .home-feed-section {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .home-friends-section {
+    padding: 18px 14px;
+  }
+
+  .home-main-column {
+    padding: 14px;
+  }
+
+  .home-section-heading {
+    align-items: flex-start;
+  }
+
+  .story-upload-control {
+    flex-direction: column;
+    align-items: flex-end;
+  }
+
+  .home-create-button {
+    padding: 8px 11px;
+    font-size: 12px;
+  }
+
+  .stories-carousel-container {
+    min-height: 112px;
+  }
+
+  .desktop-nav {
+    display: none;
+  }
+
+  .mobile-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 60px;
+    background-color: var(--card-dark);
+    border-top: 1px solid var(--border-color);
+    justify-content: space-around;
+    align-items: center;
+    z-index: 100;
+  }
+
+  .mob-item {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+
+  .mob-item.active {
+    color: var(--primary);
+  }
+
+  .main-content {
+    padding-bottom: 60px;
+  }
+}

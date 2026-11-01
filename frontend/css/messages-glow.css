@@ -1,0 +1,118 @@
+/* Messages: colourful glowing conversations box with golden decoration */
+@property --mg-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes mg-spin { to { --mg-angle: 360deg; } }
+@keyframes mg-aurora {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@keyframes mg-gold {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes mg-glow {
+  0%, 100% { box-shadow: 0 0 14px rgba(255, 60, 170, 0.45), 0 0 30px rgba(91, 56, 255, 0.3); }
+  50% { box-shadow: 0 0 24px rgba(255, 205, 80, 0.6), 0 0 44px rgba(0, 195, 255, 0.35); }
+}
+
+.messages-page .conversations-sidebar {
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(ellipse at 10% 0%, rgba(250, 33, 142, 0.35), transparent 45%),
+    radial-gradient(ellipse at 100% 40%, rgba(91, 56, 255, 0.38), transparent 50%),
+    radial-gradient(ellipse at 20% 100%, rgba(0, 195, 255, 0.26), transparent 50%),
+    linear-gradient(135deg, #1a0833, #2f0e45, #0c1c44, #31103a);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 400% 400%;
+  animation: mg-aurora 14s ease-in-out infinite;
+  border: 2px solid transparent;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+/* Rotating golden border */
+.messages-page .conversations-sidebar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  padding: 2px;
+  border-radius: inherit;
+  background: conic-gradient(from var(--mg-angle), #ffd700, #ff3cac, #5b38ff, #00c3ff, #ffd700, #fff3b0, #ffd700);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  animation: mg-spin 6s linear infinite;
+  pointer-events: none;
+}
+
+.messages-page .conversations-sidebar .sidebar-header {
+  position: relative;
+  background: linear-gradient(90deg, rgba(255, 60, 170, 0.25), rgba(255, 215, 0, 0.18), rgba(0, 195, 255, 0.25));
+  border-bottom: 1px solid rgba(255, 215, 0, 0.5);
+}
+
+.messages-page .conversations-sidebar .sidebar-header h2,
+.messages-page .conversations-sidebar .sidebar-header h3 {
+  background: linear-gradient(90deg, #ffd700, #fff6b8, #ff8ad8, #8ad8ff, #ffd700);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: mg-gold 6s linear infinite;
+  text-shadow: 0 0 18px rgba(255, 215, 0, 0.35);
+}
+
+.messages-page .messages-header-sparkle {
+  color: #ffd700;
+  filter: drop-shadow(0 0 8px #ffd700);
+}
+
+.messages-page .conversation-item {
+  position: relative;
+  margin: 8px;
+  border-radius: 14px;
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0.07), rgba(255, 60, 170, 0.12), rgba(91, 56, 255, 0.14));
+  border: 1px solid rgba(255, 215, 0, 0.28);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.messages-page .conversation-item:hover {
+  transform: translateX(4px);
+  border-color: rgba(255, 215, 0, 0.85);
+  box-shadow: 0 0 16px rgba(255, 60, 170, 0.5), 0 0 26px rgba(255, 215, 0, 0.3);
+}
+
+.messages-page .conversation-item.active {
+  border-color: #ffd700;
+  background: linear-gradient(120deg, rgba(255, 60, 170, 0.35), rgba(91, 56, 255, 0.4), rgba(0, 195, 255, 0.3));
+  animation: mg-glow 3.2s ease-in-out infinite;
+}
+
+.messages-page .conversation-item .author-avatar {
+  box-shadow: 0 0 0 2px #ffd700, 0 0 14px rgba(255, 60, 170, 0.8);
+}
+
+.messages-page .conversation-item strong,
+.messages-page .conversation-item .conversation-name {
+  color: #fff;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.45);
+}
+
+.messages-page .conversation-item div[style*="text-muted"] {
+  color: #d8c8ff !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .messages-page .conversations-sidebar,
+  .messages-page .conversations-sidebar::before,
+  .messages-page .conversations-sidebar .sidebar-header h2,
+  .messages-page .conversations-sidebar .sidebar-header h3,
+  .messages-page .conversation-item.active {
+    animation: none;
+  }
+}

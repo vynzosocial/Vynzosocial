@@ -1,0 +1,513 @@
+import { apiRequest } from './api.js';
+import { timeAgo } from './time-ago.js';
+import { API_ORIGIN } from './config.js';
+import { uploadMedia } from './uploads.js';
+import { openCamera } from './camera-capture.js';
+import { attachEmojiPicker } from './emoji-picker.js';
+import { protectMedia } from './media-protect.js';
+
+export async function initFeed() {
+  const container = document.getElementById('feed-container');
+  if (!container) return;
+
+  initPostComposer();
+  if (!container.dataset.scopeBound) {
+    container.dataset.scopeBound = 'true';
+    document.addEventListener('vynzo:scope', () => loadFeed(container));
+  }
+  await loadFeed(container);
+}
+
+async function loadFeed(container) {
+  try {
+    const scope = ['all', 'me'].includes(window.vynzoFeedScope) ? `?scope=${window.vynzoFeedScope}` : '';
+    const data = await apiRequest(`/posts/feed${scope}`);
+    if (!data.posts || data.posts.length === 0) {
+      container.innerHTML = '<div class="post-placeholder"><p>No posts yet. Add a photo or video to start the home feed.</p></div>';
+      return;
+    }
+
+    const reel = window.vynzoFeedScope !== 'me';
+    reelObserver?.disconnect();
+    container.classList.toggle('reel-feed', reel);
+    container.innerHTML = '';
+    container.scrollTop = 0;
+    data.posts.forEach(post => {
+      const card = createPostCard(post, reel);
+      container.appendChild(card);
+    });
+    if (reel) observeReels(container);
+
+  } catch (err) {
+    console.error('Failed to load feed:', err);
+    container.innerHTML = '<div class="post-placeholder"><p>Error loading feed. Please check backend connection.</p></div>';
+  }
+}
+
+function initPostComposer() {
+  const photoButton = document.getElementById('add-photo-post-btn');
+  const videoButton = document.getElementById('add-video-post-btn');
+  const photoInput = document.getElementById('photo-post-input');
+  const videoInput = document.getElementById('video-post-input');
+  if (!photoButton || !videoButton || !photoInput || !videoInput || photoButton.dataset.initialized) return;
+
+  photoButton.dataset.initialized = 'true';
+  videoButton.dataset.initialized = 'true';
+  photoButton.addEventListener('click', () => openPostPicker(photoInput));
+  videoButton.addEventListener('click', () => openPostPicker(videoInput));
+  document.getElementById('camera-post-btn')?.addEventListener('click', () => {
+    if (!localStorage.getItem('vynzo_token')) {
+      window.location.href = './pages/login.html';
+      return;
+    }
+    openCamera(createPost);
+  });
+  [photoInput, videoInput].forEach(input => input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    input.value = '';
+    if (file) await createPost(file);
+  }));
+}
+
+function openPostPicker(input) {
+  if (!localStorage.getItem('vynzo_token')) {
+    window.location.href = './pages/login.html';
+    return;
+  }
+  input.click();
+}
+
+async function createPost(file) {
+  const status = document.getElementById('post-upload-status');
+  const buttons = [
+    document.getElementById('add-photo-post-btn'),
+    document.getElementById('add-video-post-btn'),
+    document.getElementById('camera-post-btn')
+  ].filter(Boolean);
+
+  if (file.size > 50 * 1024 * 1024) {
+    status.textContent = 'Media must be 50 MB or smaller.';
+    return;
+  }
+  if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+    status.textContent = 'Choose a supported photo or video file.';
+    return;
+  }
+
+  buttons.forEach(button => { button.disabled = true; });
+  status.textContent = 'Uploading post...';
+  try {
+    const caption = document.getElementById('post-caption').value.trim();
+    await uploadMedia(file, caption);
+    document.getElementById('post-caption').value = '';
+    status.textContent = 'Post added to the home feed.';
+    await initFeed();
+  } catch (err) {
+    console.error('Post upload failed:', err);
+    status.textContent = err.message || 'Could not upload post. Please try again.';
+  } finally {
+    buttons.forEach(button => { button.disabled = false; });
+  }
+}
+
+function createPrivacySelect(post, bind = true) {
+  const select = document.createElement('select');
+  select.className = 'post-privacy-select';
+  select.setAttribute('aria-label', 'Who can see this post');
+  select.innerHTML = '<option value="everyone">🌍 Everyone</option><option value="friends">👥 Friends</option><option value="only_me">🔒 Only me</option>';
+  select.value = post.privacy || 'everyone';
+  select.addEventListener('click', event => event.stopPropagation());
+  if (bind) select.addEventListener('change', async () => {
+    const previous = post.privacy || 'everyone';
+    try {
+      await apiRequest(`/posts/${post.id}/privacy`, { method: 'PATCH', body: JSON.stringify({ privacy: select.value }) });
+      post.privacy = select.value;
+      document.querySelectorAll(`.post-privacy-select[data-post-id="${post.id}"]`).forEach(s => { s.value = post.privacy; });
+    } catch (err) {
+      select.value = previous;
+      alert(err.message || 'Could not change who can see this post.');
+    }
+  });
+  select.dataset.postId = post.id;
+  return select;
+}
+
+let reelObserver = null;
+let reelMuted = true;
+
+function observeReels(container) {
+  reelObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      const video = entry.target.querySelector('video');
+      if (!video) return;
+      if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+        video.muted = reelMuted;
+        video.play().catch(() => {
+          video.muted = true;
+          video.play().catch(() => {});
+        });
+      } else {
+        video.pause();
+      }
+    });
+  }, { root: container, threshold: [0, 0.6, 1] });
+  container.querySelectorAll('.post-card').forEach(card => reelObserver.observe(card));
+}
+
+function createPostCard(post, reel = false) {
+  const card = document.createElement('article');
+  card.className = 'post-card';
+  card.dataset.postId = post.id;
+
+  const isVideo = post.media_type === 'video';
+  const authorUsername = post.author_username || 'user';
+  const mediaButton = document.createElement('button');
+  mediaButton.type = 'button';
+  mediaButton.className = 'post-thumbnail-button';
+  mediaButton.setAttribute('aria-label', `Open ${isVideo ? 'video' : 'image'} post by @${authorUsername}`);
+
+  const media = document.createElement(isVideo ? 'video' : 'img');
+  media.className = 'post-media';
+  media.src = `${API_ORIGIN}${post.media_url}`;
+  if (isVideo && reel) {
+    media.muted = reelMuted;
+    media.playsInline = true;
+    media.loop = true;
+    media.preload = 'auto';
+  } else if (isVideo) {
+    media.muted = true;
+    media.playsInline = true;
+    media.preload = 'metadata';
+    media.addEventListener('loadedmetadata', () => {
+      if (Number.isFinite(media.duration) && media.duration > 0) media.currentTime = Math.min(0.1, media.duration / 2);
+    }, { once: true });
+    mediaButton.addEventListener('pointerenter', () => media.play().catch(() => {}));
+    mediaButton.addEventListener('pointerleave', () => {
+      media.pause();
+      media.currentTime = 0;
+    });
+  } else {
+    media.alt = `Post by @${authorUsername}`;
+  }
+  mediaButton.appendChild(media);
+
+  if (isVideo && reel) {
+    const sound = document.createElement('span');
+    sound.className = 'reel-sound';
+    sound.setAttribute('aria-hidden', 'true');
+    const paintSound = () => { sound.textContent = reelMuted ? '🔇' : '🔊'; };
+    paintSound();
+    sound.addEventListener('click', event => {
+      event.stopPropagation();
+      reelMuted = !reelMuted;
+      document.querySelectorAll('.reel-feed video').forEach(v => { v.muted = reelMuted; });
+      document.querySelectorAll('.reel-sound').forEach(s => { s.textContent = reelMuted ? '🔇' : '🔊'; });
+    });
+    mediaButton.appendChild(sound);
+  } else if (isVideo) {
+    const playIndicator = document.createElement('span');
+    playIndicator.className = 'post-video-indicator';
+    playIndicator.setAttribute('aria-hidden', 'true');
+    playIndicator.textContent = '▶';
+    mediaButton.appendChild(playIndicator);
+  }
+
+  if (reel && isVideo) {
+    mediaButton.addEventListener('click', () => { if (media.paused) media.play().catch(() => {}); else media.pause(); });
+  } else if (!reel) {
+    mediaButton.addEventListener('click', () => openPostViewer(post));
+  }
+
+  const details = document.createElement('div');
+  details.className = 'post-details';
+  details.innerHTML = `
+    <div class="post-author-row"><span class="post-author">@${escapeHtml(authorUsername)}</span><span class="post-time">${timeAgo(post.created_at)}</span></div>
+    ${post.caption ? `<p class="post-caption">${escapeHtml(post.caption)}</p>` : ''}
+  `;
+  details.querySelector('.post-author-row').prepend(createAuthorAvatar(post));
+
+  const actions = document.createElement('div');
+  actions.className = 'post-actions';
+  actions.innerHTML = `
+    <button class="post-action like-btn ${post.is_liked ? 'liked' : ''}" type="button" aria-label="Like post">
+      ♥ <span class="action-count">${post.likes_count}</span>
+    </button>
+    <button class="post-action comment-count" type="button" aria-label="View comments">💬 <span class="action-count">${post.comments_count}</span></button>
+  `;
+
+  card.append(mediaButton, details, actions);
+
+  if (post.is_protected) {
+    protectMedia(mediaButton);
+    const badge = document.createElement('span');
+    badge.className = 'protected-badge';
+    badge.textContent = '🔒 Protected';
+    mediaButton.appendChild(badge);
+  }
+  if (post.is_owner) {
+    actions.appendChild(createPrivacySelect(post));
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'post-action post-delete-btn';
+    del.textContent = '🗑 Delete';
+    del.addEventListener('click', () => deleteOwnPost(post));
+    actions.appendChild(del);
+  }
+  // Like Button Event Listener
+  card.querySelector('.comment-count').addEventListener('click', () => openPostViewer(post));
+  const likeBtn = card.querySelector('.like-btn');
+  likeBtn.addEventListener('click', async () => {
+    try {
+      const res = await apiRequest(`/posts/${post.id}/like`, { method: 'POST' });
+      post.is_liked = res.liked;
+      post.likes_count = Math.max(0, (Number(post.likes_count) || 0) + (res.liked ? 1 : -1));
+      syncFeedCard(post);
+    } catch (err) {
+      alert('Please login to like posts.');
+    }
+  });
+
+  return card;
+}
+
+export function openPostViewer(post) {
+  let modal = document.getElementById('post-viewer-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'post-viewer-modal';
+    modal.className = 'post-viewer-modal';
+    modal.innerHTML = `
+      <section class="post-viewer-content" role="dialog" aria-modal="true" aria-label="Post media">
+        <button class="post-viewer-close" type="button" aria-label="Close media viewer">&times;</button>
+        <div class="post-viewer-media" id="post-viewer-media"></div>
+        <div class="post-viewer-details">
+          <div class="post-author-row"><span id="post-viewer-avatar-slot"></span><strong id="post-viewer-author"></strong></div>
+          <p id="post-viewer-caption"></p>
+        </div>
+        <div class="post-viewer-social">
+          <button class="post-viewer-like" id="post-viewer-like" type="button"></button>
+          <div class="post-viewer-comments" id="post-viewer-comments" aria-live="polite"></div>
+          <form class="post-viewer-comment-form" id="post-viewer-comment-form">
+            <input id="post-viewer-comment-input" type="text" maxlength="500" placeholder="Add a comment..." aria-label="Add a comment" required>
+            <button type="submit">Send</button>
+          </form>
+        </div>
+      </section>
+    `;
+    document.body.appendChild(modal);
+    modal.querySelector('#post-viewer-like').addEventListener('click', togglePostViewerLike);
+    modal.querySelector('#post-viewer-comment-form').addEventListener('submit', submitPostViewerComment);
+    attachEmojiPicker(modal.querySelector('#post-viewer-comment-form'), modal.querySelector('#post-viewer-comment-input'));
+    modal.querySelector('.post-viewer-close').addEventListener('click', closePostViewer);
+    modal.addEventListener('click', event => {
+      if (event.target === modal) closePostViewer();
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') closePostViewer();
+    });
+  }
+
+  const mediaContainer = modal.querySelector('#post-viewer-media');
+  mediaContainer.replaceChildren();
+  const media = document.createElement(post.media_type === 'video' ? 'video' : 'img');
+  media.src = `${API_ORIGIN}${post.media_url}`;
+  if (post.media_type === 'video') {
+    media.controls = true;
+    media.autoplay = true;
+    media.playsInline = true;
+  } else {
+    media.alt = `Post by @${post.author_username || 'user'}`;
+  }
+  mediaContainer.appendChild(media);
+  if (post.is_protected) protectMedia(mediaContainer);
+  else delete mediaContainer.dataset.protected;
+  let viewerDelete = modal.querySelector('#post-viewer-delete');
+  if (!viewerDelete) {
+    viewerDelete = document.createElement('button');
+    viewerDelete.id = 'post-viewer-delete';
+    viewerDelete.type = 'button';
+    viewerDelete.className = 'post-delete-btn';
+    viewerDelete.textContent = '🗑 Delete';
+    viewerDelete.addEventListener('click', () => viewerPost && deleteOwnPost(viewerPost));
+    modal.querySelector('.post-viewer-details').appendChild(viewerDelete);
+  }
+  let viewerPrivacy = modal.querySelector('#post-viewer-privacy');
+  if (!viewerPrivacy) {
+    viewerPrivacy = createPrivacySelect(post, false);
+    viewerPrivacy.id = 'post-viewer-privacy';
+    modal.querySelector('.post-viewer-details').appendChild(viewerPrivacy);
+  }
+  viewerPrivacy.dataset.postId = post.id;
+  viewerPrivacy.value = post.privacy || 'everyone';
+  viewerPrivacy.hidden = !post.is_owner;
+  viewerPrivacy.onchange = async () => {
+    const target = viewerPost;
+    if (!target) return;
+    try {
+      await apiRequest(`/posts/${target.id}/privacy`, { method: 'PATCH', body: JSON.stringify({ privacy: viewerPrivacy.value }) });
+      target.privacy = viewerPrivacy.value;
+      document.querySelectorAll(`.post-privacy-select[data-post-id="${target.id}"]`).forEach(s => { s.value = target.privacy; });
+    } catch (err) {
+      viewerPrivacy.value = target.privacy || 'everyone';
+      alert(err.message || 'Could not change who can see this post.');
+    }
+  };
+  viewerDelete.hidden = !post.is_owner;
+  modal.querySelector('#post-viewer-author').textContent = `@${post.author_username || 'user'}`;
+  modal.querySelector('#post-viewer-author').textContent = `@${post.author_username || 'user'} · ${timeAgo(post.created_at)}`;
+  modal.querySelector('#post-viewer-avatar-slot').replaceChildren(createAuthorAvatar(post));
+  modal.querySelector('#post-viewer-caption').textContent = post.caption || '';
+  viewerPost = post;
+  renderPostViewerLike();
+  loadPostViewerComments(post);
+  modal.classList.add('active');
+}
+
+let viewerPost = null;
+
+async function deleteOwnPost(post) {
+  if (!confirm('Delete this post permanently?')) return;
+  try {
+    await apiRequest(`/posts/${post.id}`, { method: 'DELETE' });
+    closePostViewer();
+    document.querySelectorAll(`[data-post-id="${post.id}"]`).forEach(el => el.remove());
+    document.dispatchEvent(new CustomEvent('vynzo:post-deleted', { detail: { id: post.id } }));
+  } catch (err) {
+    alert(err.message || 'Could not delete the post.');
+  }
+}
+function renderPostViewerLike() {
+  const button = document.getElementById('post-viewer-like');
+  if (!button || !viewerPost) return;
+  button.textContent = `${viewerPost.is_liked ? '♥' : '♡'} ${Number(viewerPost.likes_count) || 0}`;
+  button.classList.toggle('liked', Boolean(viewerPost.is_liked));
+}
+
+function syncFeedCard(post) {
+  const card = document.querySelector(`.post-card[data-post-id="${post.id}"]`);
+  if (!card) return;
+  card.querySelector('.like-btn')?.classList.toggle('liked', Boolean(post.is_liked));
+  const likeCount = card.querySelector('.like-btn .action-count');
+  if (likeCount) likeCount.textContent = Number(post.likes_count) || 0;
+  const commentCount = card.querySelector('.comment-count .action-count');
+  if (commentCount) commentCount.textContent = Number(post.comments_count) || 0;
+}
+
+function setPostCommentFormState(hasCommented) {
+  const input = document.getElementById('post-viewer-comment-input');
+  const button = document.querySelector('#post-viewer-comment-form button[type="submit"]');
+  if (!input || !button) return;
+  input.disabled = hasCommented;
+  button.disabled = hasCommented;
+  input.placeholder = hasCommented ? 'You already commented on this post' : 'Add a comment...';
+  if (hasCommented) input.value = '';
+}
+
+function appendPostComment(list, comment) {
+  const item = document.createElement('p');
+  const author = document.createElement('strong');
+  author.textContent = `@${comment.username || 'user'} `;
+  const content = document.createElement('span');
+  content.textContent = comment.content;
+  item.append(author, content);
+  list.appendChild(item);
+}
+
+function currentUserId() {
+  try {
+    return JSON.parse(localStorage.getItem('vynzo_user') || '{}').id;
+  } catch (err) {
+    return undefined;
+  }
+}
+
+async function loadPostViewerComments(post) {
+  const list = document.getElementById('post-viewer-comments');
+  list.replaceChildren();
+  setPostCommentFormState(false);
+  try {
+    const data = await apiRequest(`/posts/${post.id}/comments`);
+    if (viewerPost?.id !== post.id) return;
+    if (!data.comments.length) list.textContent = 'No comments yet. Be the first!';
+    data.comments.forEach(comment => appendPostComment(list, comment));
+    setPostCommentFormState(false);
+  } catch (err) {
+    if (viewerPost?.id === post.id) list.textContent = 'Could not load comments.';
+  }
+}
+
+async function togglePostViewerLike() {
+  const post = viewerPost;
+  if (!post) return;
+  const button = document.getElementById('post-viewer-like');
+  button.disabled = true;
+  try {
+    const result = await apiRequest(`/posts/${post.id}/like`, { method: 'POST' });
+    post.likes_count = Math.max(0, (Number(post.likes_count) || 0) + (result.liked ? 1 : -1));
+    post.is_liked = result.liked;
+    renderPostViewerLike();
+    syncFeedCard(post);
+  } catch (err) {
+    alert(err.message || 'Please log in to like posts.');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function submitPostViewerComment(event) {
+  event.preventDefault();
+  const post = viewerPost;
+  const input = document.getElementById('post-viewer-comment-input');
+  const content = input.value.trim();
+  if (!post || !content) return;
+  const submitButton = event.currentTarget.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  try {
+    const result = await apiRequest(`/posts/${post.id}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ content })
+    });
+    const list = document.getElementById('post-viewer-comments');
+    if (!list.querySelector('p')) list.replaceChildren();
+    appendPostComment(list, result.comment);
+    post.comments_count = (Number(post.comments_count) || 0) + 1;
+    syncFeedCard(post);
+    input.value = '';
+  } catch (err) {
+    alert(err.message || 'Could not add comment. Please try again.');
+  } finally {
+    submitButton.disabled = input.disabled;
+  }
+}
+
+function closePostViewer() {
+  const modal = document.getElementById('post-viewer-modal');
+  if (!modal) return;
+  modal.querySelector('video')?.pause();
+  modal.querySelector('#post-viewer-media').replaceChildren();
+  modal.classList.remove('active');
+}
+
+function createAuthorAvatar(post) {
+  const name = post.author_username || 'user';
+  const avatar = document.createElement('span');
+  avatar.className = 'post-author-avatar';
+  avatar.setAttribute('aria-hidden', 'true');
+  const fallback = () => { avatar.replaceChildren(); avatar.textContent = name.charAt(0).toUpperCase(); };
+  if (post.author_avatar_url) {
+    const image = document.createElement('img');
+    image.alt = '';
+    image.src = /^https?:/i.test(post.author_avatar_url) ? post.author_avatar_url : `${API_ORIGIN}${post.author_avatar_url}`;
+    image.addEventListener('error', fallback, { once: true });
+    avatar.appendChild(image);
+  } else {
+    fallback();
+  }
+  return avatar;
+}
+
+function escapeHtml(str) {
+  return str.replace(/[&<>'"]/g, 
+    tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+  );
+}

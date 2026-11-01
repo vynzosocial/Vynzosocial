@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment and local secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Local uploads and generated user content
+backend/uploads/
+backend/private_uploads/
+uploads/
+private_uploads/
+
+# Build output and logs
+dist/
+coverage/
+*.log
+npm-debug.log*
+
+# Local editor and agent state
+.vscode/
+.agents/
+.idea/
