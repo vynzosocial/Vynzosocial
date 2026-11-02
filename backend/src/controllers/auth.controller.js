@@ -37,15 +37,15 @@ function normalizePhone(value) {
 async function register(req, res) {
   try {
     const { username, password, age_confirmed, terms_accepted } = req.body;
-    const email = String(req.body.email || '').trim().toLowerCase() || null;
-    const phoneResult = normalizePhone(req.body.phone);
-    if (phoneResult.error) return res.status(400).json({ error: phoneResult.error });
-    const phone = phoneResult.phone;
+    const email = String(req.body.email || '').trim().toLowerCase();
     const first_name = String(req.body.first_name || '').trim();
     const last_name = String(req.body.last_name || '').trim();
     const nationality = String(req.body.nationality || '').trim();
-    if (!username || (!email && !phone) || !password || !first_name || !last_name || !nationality) {
-      return res.status(400).json({ error: 'All fields are required. Provide an email or a phone number.' });
+    if (!username || !email || !password || !first_name || !last_name || !nationality) {
+      return res.status(400).json({ error: 'All fields are required, including an email address.' });
+    }
+    if (email.length > 255 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'Enter a valid email address.' });
     }
     if (first_name.length > 60 || last_name.length > 60 || nationality.length > 80) {
       return res.status(400).json({ error: 'Name or nationality is too long.' });
@@ -84,7 +84,7 @@ async function register(req, res) {
       FROM new_user
       JOIN new_identifier ON new_identifier.user_id = new_user.id
     `;
-    const values = [username, email, password_hash, display_name, TERMS_VERSION, first_name, last_name, birthDate.iso, nationality, phone];
+    const values = [username, email, password_hash, display_name, TERMS_VERSION, first_name, last_name, birthDate.iso, nationality, null];
     const result = await db.query(query, values);
 
     const user = result.rows[0];
@@ -94,7 +94,7 @@ async function register(req, res) {
     res.status(201).json({ message: 'User registered successfully', token, user });
   } catch (err) {
     if (err.code === '23505') {
-      return res.status(409).json({ error: 'Username, email or phone number already exists' });
+      return res.status(409).json({ error: 'Username or email already exists' });
     }
     console.error('Register error:', err);
     res.status(500).json({ error: 'Internal server error' });

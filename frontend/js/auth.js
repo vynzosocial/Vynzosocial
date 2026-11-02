@@ -45,9 +45,8 @@ document.addEventListener('DOMContentLoaded', () => {
     populateRegisterOptions();
     registerForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const username = document.getElementById('username').value;
+      const username = document.getElementById('username').value.trim();
       const email = document.getElementById('email').value.trim();
-      const phone = document.getElementById('phone').value.trim();
       const password = document.getElementById('password').value;
       const errorEl = document.getElementById('error-message');
       const age_confirmed = document.getElementById('age_confirmed').checked;
@@ -70,8 +69,8 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      if (!email && !phone) {
-        if (errorEl) errorEl.textContent = 'Enter an email or a phone number.';
+      if (!email) {
+        if (errorEl) errorEl.textContent = 'Enter your email address.';
         return;
       }
 
@@ -88,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const res = await apiRequest('/auth/register', {
           method: 'POST',
           body: JSON.stringify({
-            username, email, phone, password, first_name, last_name,
+            username, email, password, first_name, last_name,
             birth_day, birth_month, birth_year, nationality,
             age_confirmed, terms_accepted
           })
