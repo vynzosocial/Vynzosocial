@@ -1,12 +1,11 @@
 // Backend address. Inside the Android app, "localhost" would be the phone itself,
 // so the app talks to the PC running the backend instead.
 const APP_BACKEND_ORIGIN = 'http://192.168.1.38:5000';
-// In a browser, use the same host the page was opened from, so a phone opening the PC's address
-// reaches the PC's backend instead of its own "localhost".
-const isGitHubPages = /(^|\.)github\.io$/i.test(window.location.hostname);
-const BROWSER_BACKEND_ORIGIN = isGitHubPages
-  ? ''
-  : `http://${window.location.hostname || 'localhost'}:5000`;
+const isLocalDevelopmentHost = /^(localhost|127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2})$/i
+  .test(window.location.hostname);
+const BROWSER_BACKEND_ORIGIN = isLocalDevelopmentHost
+  ? `http://${window.location.hostname}:5000`
+  : '';
 
 const isNativeApp = Boolean(window.Capacitor?.isNativePlatform?.());
 const configuredBackendOrigin = localStorage.getItem('vynzo_backend_url')?.trim().replace(/\/+$/, '');
