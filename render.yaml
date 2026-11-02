@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: vynzosocial-api
+    runtime: node
+    plan: free
+    branch: main
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DB_TARGET
+        value: supabase
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SUPABASE_DATABASE_URL
+        sync: false
+      - key: SUPABASE_DB_PASSWORD
+        sync: false
+      - key: SUPABASE_URL
+        value: https://qyfphwrmwvnwsklfsbbo.supabase.co
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
