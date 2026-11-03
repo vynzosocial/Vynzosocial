@@ -1,7 +1,7 @@
 // Backend address. Inside the Android app, "localhost" would be the phone itself,
 // so the app talks to the PC running the backend instead.
 const APP_BACKEND_ORIGIN = 'http://192.168.1.38:5000';
-const PRODUCTION_BACKEND_ORIGIN = 'https://vynzosocial-api.onrender.com';
+const PRODUCTION_BACKEND_ORIGIN = 'https://vynzosocial.onrender.com';
 const isLocalDevelopmentHost = /^(localhost|127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2})$/i
   .test(window.location.hostname);
 const BROWSER_BACKEND_ORIGIN = isLocalDevelopmentHost
