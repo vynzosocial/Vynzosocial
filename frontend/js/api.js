@@ -1,7 +1,22 @@
+import './supabase-client.js';
 import { API_BASE_URL, API_ORIGIN } from './config.js';
+import { supabase } from './supabase-client.js';
+import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabase-config.js';
 
 export async function apiRequest(endpoint, options = {}) {
-  if (!API_ORIGIN) {
+  const apiPath = endpoint.split('?')[0];
+  const useSupabaseUserApi = apiPath === '/users/me/profile'
+    || apiPath === '/users/me/privacy'
+    || apiPath === '/users/me/avatar'
+    || /^\/users\/[^/]+\/follow$/.test(apiPath);
+  const useSupabaseApi = Boolean(supabase)
+    && (apiPath.startsWith('/posts/')
+      || apiPath === '/stories'
+      || apiPath.startsWith('/stories/')
+      || useSupabaseUserApi
+      || apiPath.startsWith('/moderation/'))
+    && !apiPath.endsWith('/moderate');
+  if (!API_ORIGIN && !useSupabaseApi) {
     throw new Error('Login is unavailable because this site has no public API configured. The site owner must deploy the Vynzo backend and configure its HTTPS URL.');
   }
 
@@ -9,18 +24,23 @@ export async function apiRequest(endpoint, options = {}) {
   const headers = {
     ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...(useSupabaseApi ? { 'apikey': SUPABASE_PUBLISHABLE_KEY } : {}),
     ...options.headers
   };
 
   let response;
   try {
-    response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const requestUrl = useSupabaseApi
+      ? `${SUPABASE_URL}/functions/v1/vynzo-api/api${endpoint}`
+      : `${API_BASE_URL}${endpoint}`;
+    response = await fetch(requestUrl, {
       ...options,
       headers
     });
   } catch (err) {
     if (err instanceof TypeError) {
-      throw new Error(`Cannot reach the Vynzo API at ${API_ORIGIN}. Check that the backend is deployed and running, then try again.`);
+      const serviceUrl = useSupabaseApi ? `${SUPABASE_URL}/functions/v1/vynzo-api` : API_ORIGIN;
+      throw new Error(`Cannot reach the Vynzo API at ${serviceUrl}. Check that the service is deployed and running, then try again.`);
     }
     throw err;
   }

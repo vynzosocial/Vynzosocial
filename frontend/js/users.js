@@ -101,7 +101,7 @@ function createAccountResult(user) {
   avatar.className = 'account-search-avatar';
   if (user.avatar_url) {
     const image = document.createElement('img');
-    image.src = `${MEDIA_BASE_URL}${user.avatar_url}`;
+    image.src = /^https?:/i.test(user.avatar_url) ? user.avatar_url : `${MEDIA_BASE_URL}${user.avatar_url}`;
     image.alt = '';
     avatar.appendChild(image);
   } else {
@@ -227,7 +227,7 @@ function renderUserProfile(container, profile, posts) {
   avatar.className = 'account-profile-avatar';
   if (profile.avatar_url) {
     const image = document.createElement('img');
-    image.src = `${MEDIA_BASE_URL}${profile.avatar_url}`;
+    image.src = /^https?:/i.test(profile.avatar_url) ? profile.avatar_url : `${MEDIA_BASE_URL}${profile.avatar_url}`;
     image.alt = '';
     avatar.appendChild(image);
   } else {
@@ -369,7 +369,7 @@ function renderUserProfile(container, profile, posts) {
     button.className = 'account-profile-post';
     button.setAttribute('aria-label', `Open ${post.media_type} post by @${profile.username}`);
     const media = document.createElement(post.media_type === 'video' ? 'video' : 'img');
-    media.src = `${MEDIA_BASE_URL}${post.media_url}`;
+    media.src = /^https?:/i.test(post.media_url) ? post.media_url : `${MEDIA_BASE_URL}${post.media_url}`;
     media.className = 'account-profile-post-media';
     if (post.media_type === 'video') {
       media.muted = true;

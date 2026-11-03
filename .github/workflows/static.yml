@@ -32,7 +32,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Build static site
-        run: npm run build
+        env:
+          VYNZO_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VYNZO_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          if [ -z "$VYNZO_SUPABASE_PUBLISHABLE_KEY" ]; then
+            echo "::error::Set the VYNZO_SUPABASE_PUBLISHABLE_KEY GitHub Actions secret before deploying."
+            exit 1
+          fi
+          npm run build
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact

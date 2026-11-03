@@ -15,6 +15,7 @@ const usersRoutes = require('./routes/users.routes');
 const blogsRoutes = require('./routes/blogs.routes');
 
 const { JWT_SECRET } = require('./middleware/auth.middleware');
+const { SupabaseAuthError, getUserWithAccessToken } = require('./services/supabase-auth');
 const { rateLimiter, securityHeaders } = require('./security/security.middleware');
 const { registerChatHandlers } = require('./realtime/chat.socket');
 const { registerLiveHandlers, restoreLivePresence } = require('./realtime/live.socket');
@@ -32,15 +33,29 @@ const io = new Server(server, {
 });
 app.set('io', io);
 
-io.use((socket, next) => {
+io.use(async (socket, next) => {
   const token = socket.handshake.auth && socket.handshake.auth.token;
   if (!token) return next();
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return next(new Error('Invalid or expired token'));
-    socket.user = user;
+  try {
+    socket.user = jwt.verify(token, JWT_SECRET);
     next();
-  });
+    return;
+  } catch {
+    // Supabase access tokens are validated by Auth; legacy app JWTs remain accepted during rollout.
+  }
+
+  try {
+    const user = await getUserWithAccessToken(token);
+    if (!user.id) return next(new Error('Invalid or expired token'));
+    socket.user = { id: user.id };
+    return next();
+  } catch (err) {
+    if (!(err instanceof SupabaseAuthError && [401, 403].includes(err.status))) {
+      console.error('Socket Supabase session verification error:', err);
+    }
+    return next(new Error('Invalid or expired token'));
+  }
 });
 
 // Production Security Hardening

@@ -4,12 +4,14 @@ import { protectMedia } from './media-protect.js';
 import { openCamera } from './camera-capture.js';
 import { attachEmojiPicker } from './emoji-picker.js';
 
-import { API_BASE_URL, API_ORIGIN as MEDIA_BASE_URL } from './config.js';
+import { API_ORIGIN as MEDIA_BASE_URL } from './config.js';
 let viewerTimer = null;
 let currentStoryGroup = [];
 let currentStoryIndex = 0;
 let currentStoryUsername = 'user';
 let viewerIsAdmin = false;
+
+const mediaUrl = url => /^https?:/i.test(url) ? url : `${MEDIA_BASE_URL}${url}`;
 
 export async function initStoriesCarousel() {
   const addButton = document.getElementById('add-story-btn');
@@ -83,7 +85,7 @@ function renderStories(container, usersWithStories) {
     if (latestStory.media_type === 'video') {
       const video = document.createElement('video');
       video.className = 'story-preview-media';
-      video.src = `${MEDIA_BASE_URL}${latestStory.media_url}`;
+      video.src = mediaUrl(latestStory.media_url);
       video.muted = true;
       video.playsInline = true;
       video.preload = 'metadata';
@@ -95,7 +97,7 @@ function renderStories(container, usersWithStories) {
     } else {
       const preview = document.createElement('img');
       preview.className = 'story-preview-media';
-      preview.src = `${MEDIA_BASE_URL}${latestStory.media_url}`;
+      preview.src = mediaUrl(latestStory.media_url);
       preview.alt = 'Open story';
       ring.appendChild(preview);
     }
@@ -104,7 +106,7 @@ function renderStories(container, usersWithStories) {
     avatar.className = 'story-preview-avatar';
     if (userGroup.avatar_url) {
       const avatarImage = document.createElement('img');
-      avatarImage.src = `${MEDIA_BASE_URL}${userGroup.avatar_url}`;
+      avatarImage.src = mediaUrl(userGroup.avatar_url);
       avatarImage.alt = '';
       avatar.appendChild(avatarImage);
     } else {
@@ -143,13 +145,10 @@ async function uploadStory(file, button) {
     const formData = new FormData();
     formData.append('media', file);
     formData.append('protected', document.getElementById('story-protect')?.checked ? 'true' : 'false');
-    const response = await fetch(`${API_BASE_URL}/stories/upload`, {
+    const data = await apiRequest('/stories/upload', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${localStorage.getItem('vynzo_token')}` },
       body: formData
     });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Story upload failed');
 
     const groups = await refreshStoriesCarousel();
     const ownerStories = groups.find(group => group.user_id === data.story.user_id);
@@ -286,8 +285,8 @@ function showStory(index) {
   modal.querySelector('#story-comments-count').textContent =
     `Comments · ${Number(story.comments_count) || 0}`;
   modal.querySelector('#story-media-wrapper').innerHTML = story.media_type === 'video'
-    ? `<video class="story-media" src="${MEDIA_BASE_URL}${story.media_url}" autoplay controls playsinline></video>`
-    : `<img class="story-media" src="${MEDIA_BASE_URL}${story.media_url}" alt="Story shared by ${escapeHtml(currentStoryGroup.username || 'user')}">`;
+    ? `<video class="story-media" src="${escapeHtml(mediaUrl(story.media_url))}" autoplay controls playsinline></video>`
+    : `<img class="story-media" src="${escapeHtml(mediaUrl(story.media_url))}" alt="Story shared by ${escapeHtml(currentStoryGroup.username || 'user')}">`;
   const storyWrapper = modal.querySelector('#story-media-wrapper');
   if (story.is_protected) protectMedia(storyWrapper);
   else delete storyWrapper.dataset.protected;

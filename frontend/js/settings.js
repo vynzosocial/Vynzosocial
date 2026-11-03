@@ -1,4 +1,5 @@
 import { apiRequest } from './api.js';
+import { signOutSupabase } from './supabase-client.js';
 
 import { API_ORIGIN as MEDIA_BASE_URL } from './config.js';
 
@@ -104,10 +105,14 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   if (logoutBtn) {
-    logoutBtn.addEventListener('click', () => {
-      localStorage.removeItem('vynzo_token');
-      localStorage.removeItem('vynzo_user');
-      window.location.href = '../index.html';
+    logoutBtn.addEventListener('click', async () => {
+      try {
+        await signOutSupabase();
+        window.location.href = '../index.html';
+      } catch (err) {
+        console.error('Could not sign out:', err);
+        setStatus(status, err.message || 'Could not sign out. Please try again.', 'error');
+      }
     });
   }
 });
@@ -371,7 +376,7 @@ function setupPrivacyToggle(isPrivate) {
 
 function renderPhoto(preview, fallback, avatarUrl) {
   if (avatarUrl) {
-    preview.src = `${MEDIA_BASE_URL}${avatarUrl}`;
+    preview.src = /^https?:/i.test(avatarUrl) ? avatarUrl : `${MEDIA_BASE_URL}${avatarUrl}`;
     preview.hidden = false;
     fallback.hidden = true;
     return;

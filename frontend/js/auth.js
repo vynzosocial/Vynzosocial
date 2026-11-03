@@ -1,4 +1,4 @@
-import { apiRequest } from './api.js';
+import { requireSupabase, syncLegacySession } from './supabase-client.js';
 
 const NATIONALITIES = ['Afghan','Albanian','Algerian','American','Andorran','Angolan','Argentine','Armenian','Australian','Austrian','Azerbaijani','Bahamian','Bahraini','Bangladeshi','Barbadian','Belarusian','Belgian','Belizean','Beninese','Bhutanese','Bolivian','Bosnian','Botswanan','Brazilian','British','Bruneian','Bulgarian','Burkinabe','Burundian','Cambodian','Cameroonian','Canadian','Cape Verdean','Central African','Chadian','Chilean','Chinese','Colombian','Comorian','Congolese','Costa Rican','Croatian','Cuban','Cypriot','Czech','Danish','Djiboutian','Dominican','Dutch','Ecuadorian','Egyptian','Emirati','Equatorial Guinean','Eritrean','Estonian','Eswatini','Ethiopian','Fijian','Filipino','Finnish','French','Gabonese','Gambian','Georgian','German','Ghanaian','Greek','Grenadian','Guatemalan','Guinean','Guyanese','Haitian','Honduran','Hungarian','Icelandic','Indian','Indonesian','Iranian','Iraqi','Irish','Israeli','Italian','Ivorian','Jamaican','Japanese','Jordanian','Kazakh','Kenyan','Kuwaiti','Kyrgyz','Lao','Latvian','Lebanese','Liberian','Libyan','Liechtensteiner','Lithuanian','Luxembourger','Malagasy','Malawian','Malaysian','Maldivian','Malian','Maltese','Mauritanian','Mauritian','Mexican','Moldovan','Monegasque','Mongolian','Montenegrin','Moroccan','Mozambican','Myanmar','Namibian','Nepalese','New Zealander','Nicaraguan','Nigerian','Nigerien','North Korean','North Macedonian','Norwegian','Omani','Pakistani','Palestinian','Panamanian','Papua New Guinean','Paraguayan','Peruvian','Polish','Portuguese','Qatari','Romanian','Russian','Rwandan','Saudi','Senegalese','Serbian','Seychellois','Sierra Leonean','Singaporean','Slovak','Slovenian','Somali','South African','South Korean','South Sudanese','Spanish','Sri Lankan','Sudanese','Surinamese','Swedish','Swiss','Syrian','Taiwanese','Tajik','Tanzanian','Thai','Togolese','Trinidadian','Tunisian','Turkish','Turkmen','Ugandan','Ukrainian','Uruguayan','Uzbek','Venezuelan','Vietnamese','Yemeni','Zambian','Zimbabwean','Other'];
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -23,20 +23,20 @@ document.addEventListener('DOMContentLoaded', () => {
   if (loginForm) {
     loginForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const email = document.getElementById('email').value;
+      const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
       const errorEl = document.getElementById('error-message');
 
       try {
-        const res = await apiRequest('/auth/login', {
-          method: 'POST',
-          body: JSON.stringify({ identifier: email.trim(), password })
-        });
-        localStorage.setItem('vynzo_token', res.token);
-        localStorage.setItem('vynzo_user', JSON.stringify(res.user));
+        const { data, error } = await requireSupabase().auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        if (!data.session || !data.user) {
+          throw new Error('Supabase did not return a signed-in session.');
+        }
+        syncLegacySession(data.session);
         window.location.href = '../index.html';
       } catch (err) {
-        if (errorEl) errorEl.textContent = err.message;
+        if (errorEl) errorEl.textContent = err.message || 'Unable to sign in.';
       }
     });
   }
@@ -89,22 +89,41 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       try {
-        const res = await apiRequest('/auth/register', {
-          method: 'POST',
-          body: JSON.stringify({
-            username, email, password, first_name, last_name,
-            birth_day, birth_month, birth_year, nationality,
-            age_confirmed, terms_accepted
-          })
+        const normalizedUsername = username.trim().toLowerCase();
+        if (!/^[a-zA-Z0-9](?:[a-zA-Z0-9._]{1,28}[a-zA-Z0-9])$/.test(normalizedUsername)) {
+          throw new Error('Username must be 3–30 characters and use only letters, numbers, periods, and underscores.');
+        }
+        const birthDate = `${birthYear}-${String(birthMonth).padStart(2, '0')}-${String(birthDay).padStart(2, '0')}`;
+        const { data, error } = await requireSupabase().auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: new URL('../index.html', window.location.href).href,
+            data: {
+              vynzo_profile_version: '1',
+              username: normalizedUsername,
+              first_name,
+              last_name,
+              birth_date: birthDate,
+              nationality,
+              age_confirmed,
+              terms_accepted
+            }
+          }
         });
+        if (error) throw error;
         const successEl = document.getElementById('success-message');
         if (successEl) {
-          successEl.textContent = res.message;
+          if (data.session) {
+            await requireSupabase().auth.signOut();
+            throw new Error('Email confirmation is disabled for this Supabase project. Enable it before creating accounts.');
+          }
+          successEl.textContent = `We sent a verification link to ${email}. Please verify your email before logging in.`;
           successEl.hidden = false;
         }
         registerForm.hidden = true;
       } catch (err) {
-        if (errorEl) errorEl.textContent = err.message;
+        if (errorEl) errorEl.textContent = err.message || 'Unable to create your account.';
       }
     });
   }

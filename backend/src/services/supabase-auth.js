@@ -73,4 +73,47 @@ function deleteAuthUser(userId) {
   return authRequest(`admin/users/${encodeURIComponent(userId)}`, { method: 'DELETE', admin: true });
 }
 
-module.exports = { SupabaseAuthError, signUpWithEmail, signInWithEmail, deleteAuthUser, validateAuthConfig };
+async function getUserWithAccessToken(accessToken) {
+  const { baseUrl, key } = getAuthConfig();
+  const authorization = ['Bearer', accessToken].join(' ');
+  let response;
+  try {
+    response = await fetch(`${baseUrl}/auth/v1/user`, {
+      headers: {
+        apikey: key,
+        Authorization: authorization
+      }
+    });
+  } catch (err) {
+    const networkError = new Error('Unable to verify the Supabase session.');
+    networkError.cause = err;
+    throw networkError;
+  }
+
+  const text = await response.text();
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(`Supabase Auth returned invalid JSON (HTTP ${response.status}).`);
+    }
+  }
+  if (!response.ok) {
+    throw new SupabaseAuthError(
+      data.msg || data.message || data.error_description || data.error || 'Supabase session is invalid.',
+      response.status,
+      data.code || data.error_code
+    );
+  }
+  return data;
+}
+
+module.exports = {
+  SupabaseAuthError,
+  signUpWithEmail,
+  signInWithEmail,
+  deleteAuthUser,
+  getUserWithAccessToken,
+  validateAuthConfig
+};

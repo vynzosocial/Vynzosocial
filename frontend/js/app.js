@@ -1,3 +1,4 @@
+import { restoreSupabaseSession } from './supabase-client.js';
 import { initFeed } from './feed.js?v=prot4';
 import { initStoriesCarousel } from './stories.js?v=prot4';
 import { initHomeFriends } from './home-friends.js';
@@ -21,7 +22,13 @@ function renderHomeUser() {
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    await restoreSupabaseSession();
+  } catch (err) {
+    console.error('Unable to restore the Supabase session:', err);
+  }
+
   const welcomePage = document.getElementById('welcome-page');
   const feedApp = document.getElementById('feed-app');
 

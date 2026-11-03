@@ -168,7 +168,7 @@ function createPostCard(post, reel = false) {
 
   const media = document.createElement(isVideo ? 'video' : 'img');
   media.className = 'post-media';
-  media.src = `${API_ORIGIN}${post.media_url}`;
+  media.src = /^https?:/i.test(post.media_url) ? post.media_url : `${API_ORIGIN}${post.media_url}`;
   if (isVideo && reel) {
     media.muted = reelMuted;
     media.playsInline = true;
@@ -310,7 +310,7 @@ export function openPostViewer(post) {
   const mediaContainer = modal.querySelector('#post-viewer-media');
   mediaContainer.replaceChildren();
   const media = document.createElement(post.media_type === 'video' ? 'video' : 'img');
-  media.src = `${API_ORIGIN}${post.media_url}`;
+  media.src = /^https?:/i.test(post.media_url) ? post.media_url : `${API_ORIGIN}${post.media_url}`;
   if (post.media_type === 'video') {
     media.controls = true;
     media.autoplay = true;

@@ -97,7 +97,7 @@ function createFriendCard(friend) {
   avatar.textContent = (friend.display_name || friend.username || 'u')[0].toUpperCase();
   if (friend.avatar_url) {
     const image = document.createElement('img');
-    image.src = `${MEDIA_BASE_URL}${friend.avatar_url}`;
+    image.src = /^https?:/i.test(friend.avatar_url) ? friend.avatar_url : `${MEDIA_BASE_URL}${friend.avatar_url}`;
     image.alt = '';
     image.addEventListener('error', () => image.remove(), { once: true });
     avatar.appendChild(image);
