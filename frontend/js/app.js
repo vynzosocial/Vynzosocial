@@ -45,19 +45,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const themeToggleBtn = document.getElementById('theme-toggle');
   const body = document.body;
 
-  const savedTheme = localStorage.getItem('vynzo_theme') || 'dark-theme';
-  body.className = `${savedTheme} home-page`;
-
   if (themeToggleBtn) {
-    themeToggleBtn.addEventListener('click', () => {
-      if (body.classList.contains('dark-theme')) {
-        body.className = 'light-theme home-page';
-        localStorage.setItem('vynzo_theme', 'light-theme');
-      } else {
-        body.className = 'dark-theme home-page';
-        localStorage.setItem('vynzo_theme', 'dark-theme');
-      }
-    });
+    themeToggleBtn.addEventListener('click', () => window.VynzoTheme?.toggle());
   }
 
   // Initialize Feed and Stories Carousel

@@ -12,6 +12,8 @@
     <link rel="stylesheet" href="../css/responsive.css">
     <link rel="stylesheet" href="../css/mobile.css?v=1">
     <link rel="stylesheet" href="../css/sidebar-glow.css?v=3">
+    <link rel="stylesheet" href="../css/theme.css?v=1">
+    <script src="../js/theme.js?v=1"></script>
 </head>
 <body class="dark-theme">
     <div id="app-container">
@@ -85,6 +87,19 @@
                         <button id="save-profile-button" class="settings-button" type="submit">Save profile</button>
                     </div>
                 </form>
+            </section>
+
+            <section class="settings-card appearance-settings-card" aria-labelledby="appearance-settings-heading">
+                <div class="settings-section-heading">
+                    <div>
+                        <h2 id="appearance-settings-heading">Appearance</h2>
+                        <p>Choose how Vynzo looks on every page.</p>
+                    </div>
+                </div>
+                <div class="theme-options" id="theme-options">
+                    <button type="button" class="theme-option" data-mode="dark" aria-pressed="false"><span class="theme-swatch"></span>Dark</button>
+                    <button type="button" class="theme-option" data-mode="daylight" aria-pressed="false"><span class="theme-swatch"></span>Daylight</button>
+                </div>
             </section>
 
             <section class="settings-card privacy-settings-card" aria-labelledby="privacy-settings-heading">
@@ -179,6 +194,18 @@
         </nav>
     </div>
 
+    <script>
+        (function () {
+            var buttons = document.querySelectorAll('#theme-options .theme-option');
+            function sync() {
+                var mode = window.VynzoTheme.get();
+                buttons.forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.mode === mode)); });
+            }
+            buttons.forEach(function (b) { b.addEventListener('click', function () { window.VynzoTheme.set(b.dataset.mode); }); });
+            window.addEventListener('vynzo-theme', sync);
+            sync();
+        })();
+    </script>
     <script type="module" src="../js/settings.js?v=logout1"></script>
     <script type="module">import { initCalls } from '../js/calls.js?v=1'; initCalls();</script>
 </body>
