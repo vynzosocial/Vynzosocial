@@ -32,7 +32,6 @@ async function updateMyProfile(req, res) {
       return res.status(404).json({ error: 'Account not found' });
     }
     const user = result.rows[0];
-    const user = result.rows[0];
     const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ user, token });
   } catch (err) {
