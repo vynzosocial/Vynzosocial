@@ -112,12 +112,12 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         });
         if (error) throw error;
+        if (data.session) {
+          window.location.href = '../index.html';
+          return;
+        }
         const successEl = document.getElementById('success-message');
         if (successEl) {
-          if (data.session) {
-            await requireSupabase().auth.signOut();
-            throw new Error('Email confirmation is disabled for this Supabase project. Enable it before creating accounts.');
-          }
           successEl.textContent = `We sent a verification link to ${email}. Please verify your email before logging in.`;
           successEl.hidden = false;
         }
