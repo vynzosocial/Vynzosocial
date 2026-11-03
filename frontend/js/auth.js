@@ -91,14 +91,13 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const normalizedUsername = username.trim().toLowerCase();
         if (!/^[a-zA-Z0-9](?:[a-zA-Z0-9._]{1,28}[a-zA-Z0-9])$/.test(normalizedUsername)) {
-          throw new Error('Username must be 3–30 characters and use only letters, numbers, periods, and underscores.');
+          throw new Error('Username must be 3â€“30 characters and use only letters, numbers, periods, and underscores.');
         }
         const birthDate = `${birthYear}-${String(birthMonth).padStart(2, '0')}-${String(birthDay).padStart(2, '0')}`;
         const { data, error } = await requireSupabase().auth.signUp({
           email,
           password,
           options: {
-            emailRedirectTo: new URL('../index.html', window.location.href).href,
             data: {
               vynzo_profile_version: '1',
               username: normalizedUsername,
@@ -118,7 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const successEl = document.getElementById('success-message');
         if (successEl) {
-          successEl.textContent = `We sent a verification link to ${email}. Please verify your email before logging in.`;
+          successEl.textContent = `This email may already be registered. Please log in or reset your password.`;
           successEl.hidden = false;
         }
         registerForm.hidden = true;

@@ -84,20 +84,9 @@ async function register(req, res) {
     }
     if (Array.isArray(authUser.identities) && authUser.identities.length === 0) {
       return res.status(202).json({
-        message: 'If this email can be registered, Supabase will send a verification link. Existing users can log in.'
+        message: 'This email may already be registered. Please log in or reset your password.'
       });
     }
-    if (authResult.session || authResult.access_token || authUser.email_confirmed_at) {
-      try {
-        await deleteAuthUser(authUser.id);
-      } catch (cleanupError) {
-        console.error('Unable to remove a user created without email confirmation:', cleanupError.message);
-      }
-      return res.status(503).json({
-        error: 'Email verification is not enabled for this Supabase project. Please contact support.'
-      });
-    }
-
     const query = `
       WITH new_user AS (
         INSERT INTO users (id, username, email, display_name, age_confirmed_at, terms_accepted_at, terms_version,
@@ -127,7 +116,7 @@ async function register(req, res) {
     }
 
     res.status(202).json({
-      message: `We sent a verification link to ${email}. Please verify your email before logging in.`
+      message: 'Account created. You can log in now.'
     });
   } catch (err) {
     if (err.code === '23505') {
@@ -138,7 +127,7 @@ async function register(req, res) {
         return res.status(400).json({ error: err.message });
       }
       if (err.status === 429) {
-        return res.status(429).json({ error: 'Too many verification emails were requested. Please try again later.' });
+        return res.status(429).json({ error: 'Too many sign-up attempts. Please try again later.' });
       }
     }
     console.error('Register error:', err);
@@ -172,17 +161,10 @@ async function login(req, res) {
     try {
       authResult = await signInWithEmail(account.email, password);
     } catch (err) {
-      if (err instanceof SupabaseAuthError && /email not confirmed/i.test(err.message)) {
-        return res.status(403).json({ error: 'Please verify your email before logging in. Check your inbox for the confirmation link.' });
-      }
       if (err instanceof SupabaseAuthError && [400, 401].includes(err.status)) {
         return res.status(401).json({ error: 'Invalid username, email, phone number or password' });
       }
       throw err;
-    }
-
-    if (!authResult.user?.email_confirmed_at) {
-      return res.status(403).json({ error: 'Please verify your email before logging in. Check your inbox for the confirmation link.' });
     }
 
     const result = await db.query(
