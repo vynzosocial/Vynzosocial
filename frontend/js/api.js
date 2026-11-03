@@ -8,11 +8,23 @@ export async function apiRequest(endpoint, options = {}) {
   const useSupabaseUserApi = apiPath === '/users/me/profile'
     || apiPath === '/users/me/privacy'
     || apiPath === '/users/me/avatar'
+    || apiPath === '/users/friends'
+    || apiPath === '/users/follow-requests'
+    || apiPath.startsWith('/users/connections')
+    || apiPath.startsWith('/users/search')
+    || /^\/users\/[^/]+\/profile$/.test(apiPath)
     || /^\/users\/[^/]+\/follow$/.test(apiPath);
+  const useSupabaseMessageApi = apiPath === '/messages'
+    || (apiPath.startsWith('/messages/') && !apiPath.includes('/view-once'));
+  const useSupabaseLiveApi = apiPath === '/live'
+    || apiPath === '/live/start'
+    || /^\/live\/[^/]+\/(title|end)$/.test(apiPath);
   const useSupabaseApi = Boolean(supabase)
     && (apiPath.startsWith('/posts/')
       || apiPath === '/stories'
       || apiPath.startsWith('/stories/')
+      || useSupabaseMessageApi
+      || useSupabaseLiveApi
       || useSupabaseUserApi
       || apiPath.startsWith('/moderation/'))
     && !apiPath.endsWith('/moderate');
@@ -40,7 +52,8 @@ export async function apiRequest(endpoint, options = {}) {
   } catch (err) {
     if (err instanceof TypeError) {
       const serviceUrl = useSupabaseApi ? `${SUPABASE_URL}/functions/v1/vynzo-api` : API_ORIGIN;
-      throw new Error(`Cannot reach the Vynzo API at ${serviceUrl}. Check that the service is deployed and running, then try again.`);
+      const serviceName = useSupabaseApi ? 'Supabase Edge Function' : 'Vynzo API';
+      throw new Error(`Cannot reach the ${serviceName} at ${serviceUrl}. Check the service deployment and network connection, then try again.`);
     }
     throw err;
   }
@@ -49,7 +62,8 @@ export async function apiRequest(endpoint, options = {}) {
   try {
     data = await response.json();
   } catch {
-    throw new Error(`The Vynzo API returned an invalid response (HTTP ${response.status}). Please try again later.`);
+    const serviceName = useSupabaseApi ? 'Supabase' : 'Vynzo API';
+    throw new Error(`${serviceName} returned an invalid response (HTTP ${response.status}). Check the service logs and try again.`);
   }
 
   if (!response.ok) {

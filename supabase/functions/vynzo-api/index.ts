@@ -53,7 +53,20 @@ function jsonResponse(
 }
 
 function throwOnError(error: { message: string } | null): void {
-  if (error) throw new Error(error.message)
+  if (error) throw error
+}
+
+function getErrorMetadata(error: unknown): { code?: string; name?: string; status?: number } {
+  if (!error || typeof error !== 'object') return {}
+  const metadata: { code?: string; name?: string; status?: number } = {}
+  if ('code' in error && typeof error.code === 'string') metadata.code = error.code
+  if ('name' in error && typeof error.name === 'string') metadata.name = error.name
+  if ('status' in error && typeof error.status === 'number') metadata.status = error.status
+  if ('statusCode' in error) {
+    const statusCode = Number(error.statusCode)
+    if (Number.isInteger(statusCode) && statusCode >= 100 && statusCode <= 599) metadata.status = statusCode
+  }
+  return metadata
 }
 
 async function getViewer(request: Request): Promise<{ id: string } | null> {
@@ -124,6 +137,16 @@ async function getUserSummaries(userIds: string[], withCounts = true) {
     .select('id,username,display_name,avatar_url,is_private')
     .in('id', userIds)
   throwOnError(error)
+  const { data: liveSessions, error: liveError } = await admin.from('live_sessions')
+    .select('id,host_id,title,viewer_count')
+    .in('host_id', userIds)
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+  throwOnError(liveError)
+  const liveByHost = new Map<string, NonNullable<typeof liveSessions>[number]>()
+  for (const session of liveSessions || []) {
+    if (!liveByHost.has(session.host_id)) liveByHost.set(session.host_id, session)
+  }
   let followerCounts = new Map<string, number>()
   let friendCounts = new Map<string, number>()
   if (withCounts) {
@@ -146,7 +169,11 @@ async function getUserSummaries(userIds: string[], withCounts = true) {
   return new Map((users || []).map(user => [user.id, {
     ...user,
     followers_count: followerCounts.get(user.id) || 0,
-    friends_count: friendCounts.get(user.id) || 0
+    friends_count: friendCounts.get(user.id) || 0,
+    live_session_id: liveByHost.get(user.id)?.id || null,
+    live_title: liveByHost.get(user.id)?.title || null,
+    viewer_count: liveByHost.get(user.id)?.viewer_count || 0,
+    is_live: liveByHost.has(user.id)
   }]))
 }
 
@@ -327,13 +354,8 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
     ])
     throwOnError(incomingError)
     const friendIds = new Set((incoming || []).map(row => row.follower_id))
-    const friends = outgoingIds.filter(id => friendIds.has(id)).map(id => ({
-      ...summaries.get(id),
-      live_session_id: null,
-      live_title: null,
-      viewer_count: null,
-      is_live: false
-    })).sort((a, b) => String(a.display_name || a.username).localeCompare(String(b.display_name || b.username)))
+    const friends = outgoingIds.filter(id => friendIds.has(id)).map(id => summaries.get(id))
+      .sort((a, b) => String(a.display_name || a.username).localeCompare(String(b.display_name || b.username)))
     return jsonResponse(200, { friends }, headers)
   }
 
@@ -354,10 +376,7 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
         follows_me: true,
         is_friend: Boolean(status.get(id)?.following),
         is_following: Boolean(status.get(id)?.following),
-        follow_requested: false,
-        is_live: false,
-        live_session_id: null,
-        live_title: null
+        follow_requested: false
       }))
       .sort((a, b) => String(a.display_name || a.username).localeCompare(String(b.display_name || b.username)))
     return jsonResponse(200, { users }, headers)
@@ -415,10 +434,7 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
         is_following: Boolean(relation?.following),
         follow_requested: false,
         follows_me: Boolean(relation?.followsMe),
-        is_friend: isFriend,
-        is_live: false,
-        live_session_id: null,
-        live_title: null
+        is_friend: isFriend
       }
     }).sort((a, b) => {
       const aMatch = String(a.username).toLowerCase().startsWith(query.toLowerCase()) ? 0 : 1
@@ -463,15 +479,15 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
       .maybeSingle()
     throwOnError(error)
     if (!user) return jsonResponse(404, { error: 'Account not found' }, headers)
+    const isOwner = viewerId === targetId
     const [identifierResult, relation] = await Promise.all([
-      admin.schema('vynzo_private').from('user_identifiers')
-        .select('vynzo_id')
-        .eq('user_id', targetId)
-        .maybeSingle(),
+      isOwner
+        ? admin.rpc('get_vynzo_id', { target_user_id: targetId })
+        : Promise.resolve({ data: null, error: null }),
       getFollowStatus(viewerId, [targetId])
     ])
     throwOnError(identifierResult.error)
-    const identifier = identifierResult.data
+    const vynzoId = identifierResult.data
     const followerCount = admin.from('follows').select('follower_id', { count: 'exact', head: true }).eq('following_id', targetId).eq('status', 'accepted')
     const followingCount = admin.from('follows').select('following_id', { count: 'exact', head: true }).eq('follower_id', targetId).eq('status', 'accepted')
     const postCount = admin.from('posts').select('id', { count: 'exact', head: true }).eq('user_id', targetId)
@@ -479,7 +495,6 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
     throwOnError(followers.error)
     throwOnError(following.error)
     throwOnError(postsResult.error)
-    const isOwner = viewerId === targetId
     const follow = relation.get(targetId)!
     const isFriend = follow.following && follow.followsMe
     const postsPrivacy = user.posts_privacy || 'everyone'
@@ -564,7 +579,7 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
         live_session_id: live?.id || null,
         live_title: live?.title || null,
         username: user.username,
-        ...(isOwner ? { vynzo_id: identifier?.vynzo_id } : {}),
+        ...(isOwner ? { vynzo_id: vynzoId } : {}),
         display_name: user.display_name,
         bio: user.bio,
         avatar_url: user.avatar_url,
@@ -1119,20 +1134,535 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
   return jsonResponse(404, { error: 'Endpoint not found' }, headers)
 }
 
+async function getMessageBlockReason(senderId: string, recipientId: string): Promise<string | null> {
+  const { data: recipient, error } = await admin.from('users')
+    .select('id,message_privacy')
+    .eq('id', recipientId)
+    .maybeSingle()
+  throwOnError(error)
+  if (!recipient) return 'Account not found'
+
+  if (recipient.message_privacy === 'nobody') return 'This person is not accepting messages.'
+  if (recipient.message_privacy === 'friends') {
+    const { data: mutualFollow, error: followError } = await admin.from('follows')
+      .select('follower_id')
+      .eq('follower_id', senderId)
+      .eq('following_id', recipientId)
+      .eq('status', 'accepted')
+      .maybeSingle()
+    throwOnError(followError)
+    if (!mutualFollow) return 'This person only accepts messages from friends.'
+    const { data: followsBack, error: followsBackError } = await admin.from('follows')
+      .select('follower_id')
+      .eq('follower_id', recipientId)
+      .eq('following_id', senderId)
+      .eq('status', 'accepted')
+      .maybeSingle()
+    throwOnError(followsBackError)
+    if (!followsBack) return 'This person only accepts messages from friends.'
+  }
+  return null
+}
+
+async function getConversationMembership(conversationId: string, viewerId: string) {
+  const { data, error } = await admin.from('conversation_members')
+    .select('conversation_id,user_id,role,joined_at,cleared_at,last_read_at')
+    .eq('conversation_id', conversationId)
+  throwOnError(error)
+  const members = data || []
+  return members.some(member => member.user_id === viewerId) ? members : null
+}
+
+async function handleMessages(request: Request, viewerId: string, headers: Record<string, string>) {
+  const url = new URL(request.url)
+  const pathSegments = url.pathname.split('/').filter(Boolean)
+  const functionIndex = pathSegments.indexOf('vynzo-api')
+  const endpointSegments = functionIndex >= 0 ? pathSegments.slice(functionIndex + 1) : pathSegments
+  if (endpointSegments[0] === 'api') endpointSegments.shift()
+  const route = `/${endpointSegments.join('/')}`
+  const method = request.method
+
+  if (route === '/messages' && method === 'GET') {
+    const { data: memberships, error: membershipsError } = await admin.from('conversation_members')
+      .select('conversation_id,cleared_at,joined_at')
+      .eq('user_id', viewerId)
+      .order('joined_at', { ascending: false })
+      .limit(100)
+    throwOnError(membershipsError)
+    const conversationIds = (memberships || []).map(member => member.conversation_id)
+    if (!conversationIds.length) return jsonResponse(200, { conversations: [] }, headers)
+
+    const [conversationsResult, membersResult, messagesResult] = await Promise.all([
+      admin.from('conversations')
+        .select('id,is_group,group_name,group_avatar,created_at')
+        .in('id', conversationIds),
+      admin.from('conversation_members')
+        .select('conversation_id,user_id,joined_at')
+        .in('conversation_id', conversationIds),
+      admin.from('messages')
+        .select('id,conversation_id,content,media_url,view_once,sender_id,created_at')
+        .in('conversation_id', conversationIds)
+        .order('created_at', { ascending: false })
+        .limit(1000)
+    ])
+    throwOnError(conversationsResult.error)
+    throwOnError(membersResult.error)
+    throwOnError(messagesResult.error)
+
+    const peerIds = [...new Set((membersResult.data || [])
+      .filter(member => member.user_id !== viewerId)
+      .map(member => member.user_id))]
+    const peerResult = peerIds.length
+      ? await admin.from('users').select('id,username,display_name,avatar_url').in('id', peerIds)
+      : { data: [], error: null }
+    throwOnError(peerResult.error)
+
+    const clearedAtByConversation = new Map((memberships || []).map(member => [
+      member.conversation_id,
+      member.cleared_at ? new Date(member.cleared_at).getTime() : Number.NEGATIVE_INFINITY
+    ]))
+    const latestMessageByConversation = new Map<string, NonNullable<typeof messagesResult.data>[number]>()
+    for (const message of messagesResult.data || []) {
+      if (new Date(message.created_at).getTime() <= (clearedAtByConversation.get(message.conversation_id) ?? Number.NEGATIVE_INFINITY)) continue
+      if (!latestMessageByConversation.has(message.conversation_id)) {
+        latestMessageByConversation.set(message.conversation_id, message)
+      }
+    }
+
+    const membersByConversation = new Map<string, typeof membersResult.data>()
+    for (const member of membersResult.data || []) {
+      const current = membersByConversation.get(member.conversation_id) || []
+      current.push(member)
+      membersByConversation.set(member.conversation_id, current)
+    }
+    const usersById = new Map((peerResult.data || []).map(user => [user.id, user]))
+    const conversations = (conversationsResult.data || []).map(conversation => {
+      const peer = (membersByConversation.get(conversation.id) || [])
+        .filter(member => member.user_id !== viewerId)
+        .sort((a, b) => String(a.joined_at).localeCompare(String(b.joined_at)))
+        .map(member => usersById.get(member.user_id))
+        .find(Boolean)
+      return {
+        ...conversation,
+        other_username: peer?.username || null,
+        other_display_name: peer?.display_name || null,
+        other_avatar_url: peer?.avatar_url || null,
+        last_message: latestMessageByConversation.get(conversation.id) || null
+      }
+    }).sort((a, b) => {
+      const aTime = a.last_message ? new Date(a.last_message.created_at).getTime() : new Date(a.created_at).getTime()
+      const bTime = b.last_message ? new Date(b.last_message.created_at).getTime() : new Date(b.created_at).getTime()
+      return bTime - aTime
+    })
+    return jsonResponse(200, { conversations }, headers)
+  }
+
+  const messagesMatch = route.match(/^\/messages\/([^/]+)\/messages$/)
+  if (messagesMatch && method === 'GET') {
+    const [, conversationId] = messagesMatch
+    const members = await getConversationMembership(conversationId, viewerId)
+    if (!members) return jsonResponse(403, { error: 'Access denied to this conversation' }, headers)
+    const viewerMembership = members.find(member => member.user_id === viewerId)!
+    const otherMembers = members.filter(member => member.user_id !== viewerId)
+    const senderIds = [...new Set([...members.map(member => member.user_id), viewerId])]
+    let messageQuery = admin.from('messages')
+      .select('id,conversation_id,sender_id,content,media_url,created_at,view_once,viewed_at')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: true })
+      .limit(500)
+    if (viewerMembership.cleared_at) messageQuery = messageQuery.gt('created_at', viewerMembership.cleared_at)
+    const [{ data: messages, error }, { data: users, error: usersError }, { data: viewer, error: viewerError }] = await Promise.all([
+      messageQuery,
+      admin.from('users').select('id,username,display_name,avatar_url,read_receipts').in('id', senderIds),
+      admin.from('users').select('read_receipts').eq('id', viewerId).single()
+    ])
+    throwOnError(error)
+    throwOnError(usersError)
+    throwOnError(viewerError)
+    if (!viewer) throw new Error('The authenticated user profile is unavailable.')
+
+    const usersById = new Map((users || []).map(user => [user.id, user]))
+    const messagesWithUsers = (messages || []).map(message => {
+      const sender = usersById.get(message.sender_id)
+      const readers = otherMembers.filter(member => member.user_id !== message.sender_id)
+      const readAtOrAfterMessage = (member: (typeof members)[number]) =>
+        Boolean(member.last_read_at && new Date(member.last_read_at).getTime() >= new Date(message.created_at).getTime())
+      const wasRead = readers.some(readAtOrAfterMessage)
+      const seen = message.sender_id === viewerId && viewer.read_receipts !== false
+        && readers.some(member => readAtOrAfterMessage(member)
+          && usersById.get(member.user_id)?.read_receipts !== false)
+      return {
+        ...message,
+        sender_username: sender?.username,
+        sender_display_name: sender?.display_name,
+        sender_avatar_url: sender?.avatar_url,
+        seen,
+        can_unsend: message.sender_id === viewerId && !wasRead
+      }
+    })
+    return jsonResponse(200, { messages: messagesWithUsers, read_receipts: viewer.read_receipts !== false }, headers)
+  }
+
+  const readMatch = route.match(/^\/messages\/([^/]+)\/read$/)
+  if (readMatch && method === 'POST') {
+    const [, conversationId] = readMatch
+    const { data, error } = await admin.from('conversation_members')
+      .update({ last_read_at: new Date().toISOString() })
+      .eq('conversation_id', conversationId)
+      .eq('user_id', viewerId)
+      .select('last_read_at')
+      .maybeSingle()
+    throwOnError(error)
+    if (!data) return jsonResponse(403, { error: 'Access denied to this conversation' }, headers)
+    return jsonResponse(200, { read_at: data.last_read_at }, headers)
+  }
+
+  if (messagesMatch && method === 'POST') {
+    const [, conversationId] = messagesMatch
+    const members = await getConversationMembership(conversationId, viewerId)
+    if (!members) return jsonResponse(403, { error: 'Access denied to this conversation' }, headers)
+    const conversationResult = await admin.from('conversations')
+      .select('is_group')
+      .eq('id', conversationId)
+      .maybeSingle()
+    throwOnError(conversationResult.error)
+    if (!conversationResult.data) return jsonResponse(404, { error: 'Conversation not found' }, headers)
+
+    let content = ''
+    let file: File | null = null
+    if (request.headers.get('content-type')?.toLowerCase().includes('multipart/form-data')) {
+      const form = await request.formData()
+      content = typeof form.get('content') === 'string' ? String(form.get('content')).trim() : ''
+      const uploaded = form.get('media')
+      if (uploaded instanceof File) file = uploaded
+    } else {
+      const body = await request.json()
+      content = typeof body?.content === 'string' ? body.content.trim() : ''
+    }
+    if (!content && !file) return jsonResponse(400, { error: 'Message cannot be empty' }, headers)
+    if (content.length > 2000) return jsonResponse(400, { error: 'Message must be 2000 characters or fewer.' }, headers)
+
+    for (const member of members) {
+      if (member.user_id === viewerId || conversationResult.data.is_group) continue
+      const blockReason = await getMessageBlockReason(viewerId, member.user_id)
+      if (blockReason) return jsonResponse(403, { error: blockReason }, headers)
+    }
+
+    let mediaUrl: string | null = null
+    let mediaPath: string | null = null
+    if (file) {
+      if (!allowedMediaTypes.has(file.type)) return jsonResponse(400, { error: 'Choose a supported image or video file.' }, headers)
+      if (file.size === 0 || file.size > 50 * 1024 * 1024) return jsonResponse(413, { error: 'Message media must be 50 MB or smaller.' }, headers)
+      const extensions: Record<string, string> = {
+        'image/jpeg': 'jpg',
+        'image/png': 'png',
+        'image/webp': 'webp',
+        'image/gif': 'gif',
+        'video/mp4': 'mp4',
+        'video/webm': 'webm',
+        'video/quicktime': 'mov'
+      }
+      mediaPath = `${viewerId}/messages/${conversationId}/${crypto.randomUUID()}.${extensions[file.type]}`
+      const { error: uploadError } = await admin.storage.from('uploads').upload(mediaPath, file, {
+        contentType: file.type,
+        upsert: false
+      })
+      throwOnError(uploadError)
+      mediaUrl = admin.storage.from('uploads').getPublicUrl(mediaPath).data.publicUrl
+    }
+
+    try {
+      const { data: inserted, error } = await admin.from('messages')
+        .insert({ conversation_id: conversationId, sender_id: viewerId, content, media_url: mediaUrl })
+        .select('id,conversation_id,sender_id,content,media_url,created_at,view_once,viewed_at')
+        .single()
+      throwOnError(error)
+      const { data: sender, error: senderError } = await admin.from('users')
+        .select('username,display_name,avatar_url')
+        .eq('id', viewerId)
+        .single()
+      throwOnError(senderError)
+      if (!sender) throw new Error('The sender profile is unavailable.')
+      return jsonResponse(201, {
+        message: {
+          ...inserted,
+          username: sender.username,
+          display_name: sender.display_name,
+          avatar_url: sender.avatar_url,
+          seen: false,
+          can_unsend: true
+        }
+      }, headers)
+    } catch (error) {
+      if (mediaPath) {
+        const { error: cleanupError } = await admin.storage.from('uploads').remove([mediaPath])
+        if (cleanupError) console.error('Failed to clean up unsaved message media:', cleanupError)
+      }
+      throw error
+    }
+  }
+
+  const deleteMessageMatch = route.match(/^\/messages\/([^/]+)\/messages\/([^/]+)$/)
+  if (deleteMessageMatch && method === 'DELETE') {
+    const [, conversationId, messageId] = deleteMessageMatch
+    const members = await getConversationMembership(conversationId, viewerId)
+    if (!members) return jsonResponse(403, { error: 'Access denied to this conversation' }, headers)
+    const { data: message, error } = await admin.from('messages')
+      .select('id,conversation_id,sender_id,created_at,view_once_path')
+      .eq('id', messageId)
+      .eq('conversation_id', conversationId)
+      .eq('sender_id', viewerId)
+      .maybeSingle()
+    throwOnError(error)
+    if (!message) return jsonResponse(404, { error: 'Message not found or you do not own it.' }, headers)
+    const seen = members.some(member => member.user_id !== viewerId
+      && member.last_read_at
+      && new Date(member.last_read_at).getTime() >= new Date(message.created_at).getTime())
+    if (seen) return jsonResponse(404, { error: 'This message can no longer be deleted because it has already been seen.' }, headers)
+    const { error: deleteError } = await admin.from('messages')
+      .delete()
+      .eq('id', messageId)
+      .eq('conversation_id', conversationId)
+      .eq('sender_id', viewerId)
+    throwOnError(deleteError)
+    if (message.view_once_path) {
+      const { error: storageError } = await admin.storage.from('view-once').remove([message.view_once_path])
+      if (storageError) console.error('Deleted view-once message media cleanup error:', storageError)
+    }
+    return jsonResponse(200, { messageId }, headers)
+  }
+
+  const clearMatch = route.match(/^\/messages\/([^/]+)\/messages$/)
+  if (clearMatch && method === 'DELETE') {
+    const [, conversationId] = clearMatch
+    const { data, error } = await admin.from('conversation_members')
+      .update({ cleared_at: new Date().toISOString() })
+      .eq('conversation_id', conversationId)
+      .eq('user_id', viewerId)
+      .select('cleared_at')
+      .maybeSingle()
+    throwOnError(error)
+    if (!data) return jsonResponse(403, { error: 'Access denied to this conversation' }, headers)
+    return jsonResponse(200, { cleared_at: data.cleared_at }, headers)
+  }
+
+  if (route === '/messages/conversations' && method === 'POST') {
+    const body = await request.json()
+    if (body?.isGroup === true) {
+      const rawMemberIds: unknown = body?.memberIds
+      const memberIds: string[] = Array.isArray(rawMemberIds)
+        ? [...new Set<string>(rawMemberIds.filter((id): id is string => typeof id === 'string' && id.length <= 64))]
+          .filter(id => id !== viewerId)
+        : []
+      if (memberIds.length < 1 || memberIds.length > 49) {
+        return jsonResponse(400, { error: 'A group conversation must include between 1 and 49 other members.' }, headers)
+      }
+      const name = typeof body.groupName === 'string' ? body.groupName.trim() : ''
+      if (name.length > 100) return jsonResponse(400, { error: 'Group name must be 100 characters or fewer.' }, headers)
+      for (const memberId of memberIds) {
+        const reason = await getMessageBlockReason(viewerId, memberId)
+        if (reason) return jsonResponse(403, { error: reason }, headers)
+      }
+      const { data: conversation, error: conversationError } = await admin.from('conversations')
+        .insert({ is_group: true, group_name: name || 'New Group' })
+        .select('id')
+        .single()
+      throwOnError(conversationError)
+      if (!conversation) throw new Error('Supabase did not return the new group conversation.')
+      const { error: membersError } = await admin.from('conversation_members').insert([
+        { conversation_id: conversation.id, user_id: viewerId, role: 'admin' },
+        ...memberIds.map(userId => ({ conversation_id: conversation.id, user_id: userId, role: 'member' }))
+      ])
+      if (membersError) {
+        const { error: cleanupError } = await admin.from('conversations').delete().eq('id', conversation.id)
+        if (cleanupError) console.error('Failed to clean up incomplete group conversation:', cleanupError)
+        throwOnError(membersError)
+      }
+      return jsonResponse(201, { message: 'Group conversation created', conversationId: conversation.id }, headers)
+    }
+
+    const recipientId = typeof body?.recipientId === 'string' ? body.recipientId : ''
+    if (!recipientId) return jsonResponse(400, { error: 'Recipient ID is required for direct messages' }, headers)
+    if (recipientId === viewerId) return jsonResponse(400, { error: 'You cannot create a conversation with yourself.' }, headers)
+    const blockReason = await getMessageBlockReason(viewerId, recipientId)
+    if (blockReason) return jsonResponse(403, { error: blockReason }, headers)
+    const { data: existingMembers, error: existingError } = await admin.from('conversation_members')
+      .select('conversation_id')
+      .eq('user_id', viewerId)
+    throwOnError(existingError)
+    const existingIds = (existingMembers || []).map(member => member.conversation_id)
+    if (existingIds.length) {
+      const { data: conversations, error: conversationError } = await admin.from('conversations')
+        .select('id')
+        .eq('is_group', false)
+        .in('id', existingIds)
+      throwOnError(conversationError)
+      const directConversationIds = (conversations || []).map(conversation => conversation.id)
+      if (directConversationIds.length) {
+        const { data: recipientMemberships, error: recipientError } = await admin.from('conversation_members')
+          .select('conversation_id')
+          .eq('user_id', recipientId)
+          .in('conversation_id', directConversationIds)
+        throwOnError(recipientError)
+        if (recipientMemberships?.length) {
+          return jsonResponse(200, { conversationId: recipientMemberships[0].conversation_id }, headers)
+        }
+      }
+    }
+
+    const { data: conversation, error: insertError } = await admin.from('conversations')
+      .insert({ is_group: false })
+      .select('id')
+      .single()
+    throwOnError(insertError)
+    if (!conversation) throw new Error('Supabase did not return the new direct conversation.')
+    const { error: membersError } = await admin.from('conversation_members').insert([
+      { conversation_id: conversation.id, user_id: viewerId },
+      { conversation_id: conversation.id, user_id: recipientId }
+    ])
+    if (membersError) {
+      const { error: cleanupError } = await admin.from('conversations').delete().eq('id', conversation.id)
+      if (cleanupError) console.error('Failed to clean up incomplete direct conversation:', cleanupError)
+      throwOnError(membersError)
+    }
+    return jsonResponse(201, { conversationId: conversation.id }, headers)
+  }
+
+  return jsonResponse(404, { error: 'Endpoint not found' }, headers)
+}
+
+async function handleLive(request: Request, viewerId: string | undefined, headers: Record<string, string>) {
+  const url = new URL(request.url)
+  const pathSegments = url.pathname.split('/').filter(Boolean)
+  const functionIndex = pathSegments.indexOf('vynzo-api')
+  const endpointSegments = functionIndex >= 0 ? pathSegments.slice(functionIndex + 1) : pathSegments
+  if (endpointSegments[0] === 'api') endpointSegments.shift()
+  const route = `/${endpointSegments.join('/')}`
+  const method = request.method
+
+  if (route === '/live' && method === 'GET') {
+    const { data: sessions, error } = await admin.from('live_sessions')
+      .select('id,host_id,title,category,viewer_count,created_at')
+      .eq('is_active', true)
+      .order('viewer_count', { ascending: false })
+      .order('created_at', { ascending: false })
+    throwOnError(error)
+    if (!sessions?.length) return jsonResponse(200, { liveStreams: [] }, headers)
+
+    const hostIds = [...new Set(sessions.map(session => session.host_id))]
+    const [usersResult, followingResult, followedByResult] = await Promise.all([
+      admin.from('users').select('id,username,display_name,avatar_url').in('id', hostIds),
+      viewerId
+        ? admin.from('follows').select('following_id').eq('follower_id', viewerId).eq('status', 'accepted').in('following_id', hostIds)
+        : Promise.resolve({ data: [], error: null }),
+      viewerId
+        ? admin.from('follows').select('follower_id').eq('following_id', viewerId).eq('status', 'accepted').in('follower_id', hostIds)
+        : Promise.resolve({ data: [], error: null })
+    ])
+    throwOnError(usersResult.error)
+    throwOnError(followingResult.error)
+    throwOnError(followedByResult.error)
+    const usersById = new Map((usersResult.data || []).map(user => [user.id, user]))
+    const friendIds = new Set([
+      ...(followingResult.data || []).map(row => row.following_id),
+      ...(followedByResult.data || []).map(row => row.follower_id)
+    ])
+    const liveStreams = sessions.map(session => {
+      const host = usersById.get(session.host_id)
+      return {
+        id: session.id,
+        title: session.title,
+        category: session.category,
+        viewer_count: session.viewer_count,
+        created_at: session.created_at,
+        host_id: session.host_id,
+        host_username: host?.username,
+        host_display_name: host?.display_name,
+        host_avatar_url: host?.avatar_url,
+        is_friend: friendIds.has(session.host_id)
+      }
+    }).sort((a, b) => Number(b.is_friend) - Number(a.is_friend))
+    return jsonResponse(200, { liveStreams }, headers)
+  }
+
+  if (route === '/live/start' && method === 'POST' && viewerId) {
+    const body = await request.json()
+    const title = typeof body?.title === 'string' ? body.title.trim().slice(0, 100) : ''
+    const category = typeof body?.category === 'string' && body.category.trim()
+      ? body.category.trim().slice(0, 100)
+      : 'General'
+    if (!title) return jsonResponse(400, { error: 'Livestream title is required' }, headers)
+
+    const { data: session, error: insertError } = await admin.from('live_sessions')
+      .insert({ host_id: viewerId, title, category, is_active: true })
+      .select('id,title,category,viewer_count,created_at')
+      .single()
+    throwOnError(insertError)
+    if (!session) throw new Error('Supabase did not return the new livestream session.')
+
+    const { error: endPreviousError } = await admin.from('live_sessions')
+      .update({ is_active: false })
+      .eq('host_id', viewerId)
+      .eq('is_active', true)
+      .neq('id', session.id)
+    if (endPreviousError) {
+      const { error: cleanupError } = await admin.from('live_sessions').delete().eq('id', session.id).eq('host_id', viewerId)
+      if (cleanupError) console.error('Failed to clean up incomplete livestream start:', cleanupError)
+      throwOnError(endPreviousError)
+    }
+    return jsonResponse(201, { message: 'Livestream started successfully', session }, headers)
+  }
+
+  const titleMatch = route.match(/^\/live\/([^/]+)\/title$/)
+  if (titleMatch && method === 'PATCH' && viewerId) {
+    const [, sessionId] = titleMatch
+    const body = await request.json()
+    const title = typeof body?.title === 'string' ? body.title.trim().slice(0, 100) : ''
+    if (!title) return jsonResponse(400, { error: 'Livestream title is required' }, headers)
+    const { data: session, error } = await admin.from('live_sessions')
+      .update({ title })
+      .eq('id', sessionId)
+      .eq('host_id', viewerId)
+      .eq('is_active', true)
+      .select('id,title')
+      .maybeSingle()
+    throwOnError(error)
+    if (!session) return jsonResponse(404, { error: 'Livestream not found' }, headers)
+    return jsonResponse(200, { session }, headers)
+  }
+
+  const endMatch = route.match(/^\/live\/([^/]+)\/end$/)
+  if (endMatch && method === 'POST' && viewerId) {
+    const [, sessionId] = endMatch
+    const { error } = await admin.from('live_sessions')
+      .update({ is_active: false })
+      .eq('id', sessionId)
+      .eq('host_id', viewerId)
+    throwOnError(error)
+    return jsonResponse(200, { message: 'Livestream ended successfully' }, headers)
+  }
+
+  return jsonResponse(404, { error: 'Endpoint not found' }, headers)
+}
+
 Deno.serve(async request => {
   const headers = corsHeaders(request.headers.get('Origin'))
   if (request.method === 'OPTIONS') return new Response('ok', { headers })
 
   try {
     const viewer = await getViewer(request)
-    if (!viewer) return jsonResponse(401, { error: 'Invalid or expired session.' }, headers)
     const pathSegments = new URL(request.url).pathname.split('/').filter(Boolean)
     const functionIndex = pathSegments.indexOf('vynzo-api')
     const endpointSegments = functionIndex >= 0 ? pathSegments.slice(functionIndex + 1) : pathSegments
     if (endpointSegments[0] === 'api') endpointSegments.shift()
+    if (endpointSegments[0] === 'live') return await handleLive(request, viewer?.id, headers)
+    if (!viewer) return jsonResponse(401, { error: 'Invalid or expired session.' }, headers)
     if (endpointSegments[0] === 'posts') return await handlePosts(request, viewer.id, headers)
     if (endpointSegments[0] === 'users') return await handleUsers(request, viewer.id, headers)
     if (endpointSegments[0] === 'moderation') return await handleModeration(request, viewer.id, headers)
+    if (endpointSegments[0] === 'messages' && !endpointSegments.some(segment => segment === 'view-once')) {
+      return await handleMessages(request, viewer.id, headers)
+    }
     const storyModerationRoute = endpointSegments.length === 3
       && endpointSegments[0] === 'stories'
       && endpointSegments[2] === 'moderate'
@@ -1142,6 +1672,33 @@ Deno.serve(async request => {
     return jsonResponse(404, { error: 'Endpoint not found' }, headers)
   } catch (error) {
     console.error('Vynzo Edge Function error:', error)
-    return jsonResponse(500, { error: 'The Vynzo service could not complete the request.' }, headers)
+    const { code, name, status } = getErrorMetadata(error)
+    if (error instanceof TypeError && /fetch|network|connection/i.test(error.message)) {
+      return jsonResponse(503, { error: 'Supabase could not be reached from this Edge Function. Check the project status and function network logs.' }, headers)
+    }
+    if (name?.toLowerCase().includes('storage')) {
+      if (status === 403) {
+        return jsonResponse(403, { error: 'Supabase Storage denied this upload. Verify the bucket configuration and access policy.' }, headers)
+      }
+      if (status === 413) {
+        return jsonResponse(413, { error: 'Supabase Storage rejected this upload because it exceeds the configured file-size limit.' }, headers)
+      }
+      return jsonResponse(status && status >= 400 && status < 500 ? status : 502, {
+        error: 'Supabase Storage could not complete this upload. Check the bucket configuration and Storage logs.'
+      }, headers)
+    }
+    if (code === '42501' || status === 403) {
+      return jsonResponse(403, { error: 'Supabase denied this operation. Verify database grants, RLS policies, and Storage access rules.' }, headers)
+    }
+    if (code === '23505') {
+      return jsonResponse(409, { error: 'A record with the supplied value already exists.' }, headers)
+    }
+    if (code === '23514' || code?.startsWith('22')) {
+      return jsonResponse(400, { error: 'The submitted data is invalid.' }, headers)
+    }
+    if (code === 'PGRST202' || code === 'PGRST204' || code === 'PGRST205') {
+      return jsonResponse(503, { error: 'Supabase Data API schema or permissions are not configured for this operation.' }, headers)
+    }
+    return jsonResponse(500, { error: 'Supabase could not complete the request. Check the Edge Function and database logs.' }, headers)
   }
 })

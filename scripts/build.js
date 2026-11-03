@@ -7,7 +7,9 @@ const dist = path.join(root, 'dist');
 fs.rmSync(dist, { recursive: true, force: true });
 fs.cpSync(path.join(root, 'frontend'), dist, { recursive: true });
 
-const publishableKey = process.env.VYNZO_SUPABASE_PUBLISHABLE_KEY?.trim();
+const wranglerConfig = JSON.parse(fs.readFileSync(path.join(root, 'wrangler.jsonc'), 'utf8'));
+const publishableKey = process.env.VYNZO_SUPABASE_PUBLISHABLE_KEY?.trim()
+  || wranglerConfig.vars?.VYNZO_SUPABASE_PUBLISHABLE_KEY?.trim();
 if (!publishableKey) {
   console.warn('VYNZO_SUPABASE_PUBLISHABLE_KEY is unset; Supabase Auth will remain unavailable in this build.');
   process.exit(0);

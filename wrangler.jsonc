@@ -1,6 +1,9 @@
 {
 	"name": "vynzosocial",
 	"compatibility_date": "2026-11-02",
+	"vars": {
+		"VYNZO_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_i-NMgPe43-Tt-Afc9aQXoQ_dsBx6RwR"
+	},
 	"assets": {
 		"directory": "./dist"
 	}

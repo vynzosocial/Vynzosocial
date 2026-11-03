@@ -54,6 +54,9 @@ export async function initMessaging() {
         refreshConversations().catch(err => {
           console.error('Failed to refresh conversations:', err);
         });
+        refreshCurrentConversation().catch(err => {
+          console.error('Failed to refresh messages:', err);
+        });
       }
     }, 5000);
     document.addEventListener('visibilitychange', () => {
@@ -61,9 +64,41 @@ export async function initMessaging() {
         refreshConversations().catch(err => {
           console.error('Failed to refresh conversations:', err);
         });
+        refreshCurrentConversation().catch(err => {
+          console.error('Failed to refresh messages:', err);
+        });
       }
     });
   }
+}
+
+async function refreshCurrentConversation() {
+  const conversationId = currentConversationId;
+  const container = document.getElementById('chat-messages-container');
+  if (!conversationId || !container) return;
+
+  const data = await apiRequest(`/messages/${encodeURIComponent(conversationId)}/messages`);
+  if (currentConversationId !== conversationId) return;
+
+  const currentUser = JSON.parse(localStorage.getItem('vynzo_user') || '{}');
+  const existingIds = new Set(
+    [...container.querySelectorAll('.message-bubble')].map(bubble => bubble.dataset.messageId)
+  );
+  const hasNewIncoming = data.messages.some(message =>
+    message.sender_id !== currentUser.id && !existingIds.has(message.id)
+  );
+  const wasAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+  readReceiptsEnabled = data.read_receipts !== false;
+
+  const fragment = document.createDocumentFragment();
+  for (const message of data.messages) {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = messageMarkup(message, currentUser);
+    fragment.appendChild(wrapper.firstElementChild);
+  }
+  container.replaceChildren(fragment);
+  if (wasAtBottom) container.scrollTop = container.scrollHeight;
+  if (hasNewIncoming && document.visibilityState === 'visible') markConversationRead(conversationId);
 }
 
 async function refreshConversations() {
