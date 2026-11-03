@@ -10,7 +10,10 @@ const BROWSER_BACKEND_ORIGIN = isLocalDevelopmentHost
 
 const isNativeApp = Boolean(window.Capacitor?.isNativePlatform?.());
 const configuredBackendOrigin = localStorage.getItem('vynzo_backend_url')?.trim().replace(/\/+$/, '');
+const isInvalidRenderAlias = configuredBackendOrigin?.toLowerCase() === 'https://vynzosocial-api.onrender.com';
+if (isInvalidRenderAlias) localStorage.removeItem('vynzo_backend_url');
+const backendOverride = isInvalidRenderAlias ? null : configuredBackendOrigin;
 
-export const API_ORIGIN = configuredBackendOrigin
+export const API_ORIGIN = backendOverride
   || (isNativeApp ? APP_BACKEND_ORIGIN : BROWSER_BACKEND_ORIGIN);
 export const API_BASE_URL = API_ORIGIN ? `${API_ORIGIN}/api` : '';
