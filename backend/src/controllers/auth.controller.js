@@ -55,7 +55,7 @@ async function register(req, res) {
       return res.status(400).json({ error: 'Please enter a valid date of birth.' });
     }
     if (ageOn(birthDate) < 18) {
-      return res.status(400).json({ error: 'You must be 18 years or older to join Vynzo.' });
+      return res.status(400).json({ error: 'The date of birth entered shows that you are under 18. Check the day, month, and year; Vynzo is for people aged 18 or older.' });
     }
     const display_name = `${first_name} ${last_name}`.slice(0, 100);
     if (age_confirmed !== true) {

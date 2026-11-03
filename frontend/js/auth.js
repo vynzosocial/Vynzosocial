@@ -58,14 +58,19 @@ document.addEventListener('DOMContentLoaded', () => {
       const birth_year = document.getElementById('birth_year').value;
       const nationality = document.getElementById('nationality').value;
 
-      const birth = new Date(Number(birth_year), Number(birth_month) - 1, Number(birth_day));
-      if (birth.getDate() !== Number(birth_day) || birth.getMonth() !== Number(birth_month) - 1) {
+      const birthDay = Number(birth_day);
+      const birthMonth = Number(birth_month);
+      const birthYear = Number(birth_year);
+      const birth = new Date(Date.UTC(birthYear, birthMonth - 1, birthDay));
+      if (birth.getUTCDate() !== birthDay || birth.getUTCMonth() !== birthMonth - 1 || birth.getUTCFullYear() !== birthYear) {
         if (errorEl) errorEl.textContent = 'Please enter a valid date of birth.';
         return;
       }
-      const eighteenth = new Date(birth.getFullYear() + 18, birth.getMonth(), birth.getDate());
-      if (eighteenth > new Date()) {
-        if (errorEl) errorEl.textContent = 'You must be 18 years or older to join Vynzo.';
+      const now = new Date();
+      const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+      const eighteenthBirthday = Date.UTC(birthYear + 18, birthMonth - 1, birthDay);
+      if (today < eighteenthBirthday) {
+        if (errorEl) errorEl.textContent = 'The date of birth entered shows that you are under 18. Check the day, month, and year; Vynzo is for people aged 18 or older.';
         return;
       }
 
