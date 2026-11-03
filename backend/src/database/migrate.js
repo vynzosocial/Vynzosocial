@@ -375,8 +375,7 @@ CREATE TABLE IF NOT EXISTS blog_moderation_logs (
 );
 CREATE INDEX IF NOT EXISTS idx_blog_mod_logs_created ON blog_moderation_logs (created_at DESC);
 
--- The API is the only way to reach these tables. RLS with no policies denies direct
--- Data API access; the backend's owner connection bypasses RLS.
+-- The API is the only way to reach database records; browser roles receive no table grants.
 ALTER TABLE blog_articles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE blog_likes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE blog_bookmarks ENABLE ROW LEVEL SECURITY;
@@ -394,6 +393,18 @@ BEGIN
     REVOKE ALL ON blog_articles, blog_likes, blog_bookmarks, blog_comments, blog_reports, blog_appeals, blog_moderation_logs FROM authenticated;
   END IF;
 END $$;
+
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC, anon, authenticated, service_role;
+REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC, anon, authenticated, service_role;
+REVOKE CREATE ON SCHEMA public FROM anon, authenticated, service_role;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  REVOKE ALL ON TABLES FROM PUBLIC, anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  REVOKE ALL ON SEQUENCES FROM PUBLIC, anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated, service_role;
 `;
 
 async function runMigrations() {
