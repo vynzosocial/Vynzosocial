@@ -12,12 +12,26 @@ export async function apiRequest(endpoint, options = {}) {
     ...options.headers
   };
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers
-  });
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers
+    });
+  } catch (err) {
+    if (err instanceof TypeError) {
+      throw new Error(`Cannot reach the Vynzo API at ${API_ORIGIN}. Check that the backend is deployed and running, then try again.`);
+    }
+    throw err;
+  }
 
-  const data = await response.json();
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error(`The Vynzo API returned an invalid response (HTTP ${response.status}). Please try again later.`);
+  }
+
   if (!response.ok) {
     throw new Error(data.error || 'Something went wrong');
   }
