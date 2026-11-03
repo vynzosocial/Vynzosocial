@@ -1,8 +1,12 @@
-const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const db = require('../database/db');
 const { JWT_SECRET } = require('../middleware/auth.middleware');
-const { syncAuthUser } = require('../utils/auth-sync');
+const {
+  SupabaseAuthError,
+  signUpWithEmail,
+  signInWithEmail,
+  deleteAuthUser
+} = require('../services/supabase-auth');
 
 const TERMS_VERSION = '2026-11-01';
 
@@ -65,12 +69,38 @@ async function register(req, res) {
       return res.status(400).json({ error: 'You must agree to the Vynzo Terms, Community Guidelines and Conditions.' });
     }
 
-    const saltRounds = 10;
-    const password_hash = await bcrypt.hash(password, saltRounds);
+    const existingUsername = await db.query(
+      'SELECT 1 FROM users WHERE lower(username) = lower($1) LIMIT 1',
+      [username]
+    );
+    if (existingUsername.rows.length) {
+      return res.status(409).json({ error: 'That username is already in use.' });
+    }
+
+    const authResult = await signUpWithEmail(email, password);
+    const authUser = authResult.user;
+    if (!authUser?.id) {
+      throw new Error('Supabase Auth did not return a user after signup.');
+    }
+    if (Array.isArray(authUser.identities) && authUser.identities.length === 0) {
+      return res.status(202).json({
+        message: 'If this email can be registered, Supabase will send a verification link. Existing users can log in.'
+      });
+    }
+    if (authResult.session || authResult.access_token || authUser.email_confirmed_at) {
+      try {
+        await deleteAuthUser(authUser.id);
+      } catch (cleanupError) {
+        console.error('Unable to remove a user created without email confirmation:', cleanupError.message);
+      }
+      return res.status(503).json({
+        error: 'Email verification is not enabled for this Supabase project. Please contact support.'
+      });
+    }
 
     const query = `
       WITH new_user AS (
-        INSERT INTO users (username, email, password_hash, display_name, age_confirmed_at, terms_accepted_at, terms_version,
+        INSERT INTO users (id, username, email, display_name, age_confirmed_at, terms_accepted_at, terms_version,
                            first_name, last_name, birth_date, nationality, phone)
         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, $5, $6, $7, $8, $9, $10)
         RETURNING id, username, email, phone, display_name, created_at
@@ -84,17 +114,32 @@ async function register(req, res) {
       FROM new_user
       JOIN new_identifier ON new_identifier.user_id = new_user.id
     `;
-    const values = [username, email, password_hash, display_name, TERMS_VERSION, first_name, last_name, birthDate.iso, nationality, null];
-    const result = await db.query(query, values);
+    const values = [authUser.id, username, email, display_name, TERMS_VERSION, first_name, last_name, birthDate.iso, nationality, null];
+    try {
+      await db.query(query, values);
+    } catch (profileError) {
+      try {
+        await deleteAuthUser(authUser.id);
+      } catch (cleanupError) {
+        console.error('Unable to remove an Auth user after profile creation failed:', cleanupError.message);
+      }
+      throw profileError;
+    }
 
-    const user = result.rows[0];
-    await syncAuthUser(user.id);
-    const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
-
-    res.status(201).json({ message: 'User registered successfully', token, user });
+    res.status(202).json({
+      message: `We sent a verification link to ${email}. Please verify your email before logging in.`
+    });
   } catch (err) {
     if (err.code === '23505') {
-      return res.status(409).json({ error: 'Username or email already exists' });
+      return res.status(409).json({ error: 'That username is already in use.' });
+    }
+    if (err instanceof SupabaseAuthError) {
+      if (err.status === 422 || err.status === 400) {
+        return res.status(400).json({ error: err.message });
+      }
+      if (err.status === 429) {
+        return res.status(429).json({ error: 'Too many verification emails were requested. Please try again later.' });
+      }
     }
     console.error('Register error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -111,25 +156,46 @@ async function login(req, res) {
 
     const isEmail = identifier.includes('@');
     const loginPhone = isEmail ? { phone: null } : normalizePhone(identifier);
-    // Without an @, the identifier can be a phone number or a username.
-    const result = isEmail
-      ? await db.query('SELECT * FROM users WHERE lower(email) = lower($1) LIMIT 1', [identifier])
+    const lookup = isEmail
+      ? await db.query('SELECT id, email FROM users WHERE lower(email) = lower($1) LIMIT 1', [identifier])
       : await db.query(
-        `SELECT * FROM users WHERE ($1::text IS NOT NULL AND phone = $1) OR lower(username) = lower($2)
+        `SELECT id, email FROM users WHERE ($1::text IS NOT NULL AND phone = $1) OR lower(username) = lower($2)
          ORDER BY (username = $2) DESC LIMIT 1`,
         [loginPhone.phone || null, identifier]
       );
-    if (result.rows.length === 0) {
+    const account = lookup.rows[0];
+    if (!account?.email) {
       return res.status(401).json({ error: 'Invalid username, email, phone number or password' });
     }
 
+    let authResult;
+    try {
+      authResult = await signInWithEmail(account.email, password);
+    } catch (err) {
+      if (err instanceof SupabaseAuthError && /email not confirmed/i.test(err.message)) {
+        return res.status(403).json({ error: 'Please verify your email before logging in. Check your inbox for the confirmation link.' });
+      }
+      if (err instanceof SupabaseAuthError && [400, 401].includes(err.status)) {
+        return res.status(401).json({ error: 'Invalid username, email, phone number or password' });
+      }
+      throw err;
+    }
+
+    if (!authResult.user?.email_confirmed_at) {
+      return res.status(403).json({ error: 'Please verify your email before logging in. Check your inbox for the confirmation link.' });
+    }
+
+    const result = await db.query(
+      `SELECT id, username, email, phone, display_name, bio, avatar_url, suspended_until
+       FROM users WHERE id = $1 LIMIT 1`,
+      [authResult.user.id]
+    );
     const user = result.rows[0];
+    if (!user) {
+      return res.status(403).json({ error: 'Your account profile is not available. Please contact support.' });
+    }
     if (user.suspended_until && new Date(user.suspended_until) > new Date()) {
       return res.status(403).json({ error: 'This account is suspended. Contact Vynzo support if you think this is a mistake.' });
-    }
-    const validPassword = await bcrypt.compare(password, user.password_hash);
-    if (!validPassword) {
-      return res.status(401).json({ error: 'Invalid username, email, phone number or password' });
     }
 
     const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });

@@ -1,4 +1,3 @@
-const crypto = require('crypto');
 const db = require('../database/db');
 
 const SYSTEM_USERNAME = 'vynzo_team';
@@ -8,11 +7,11 @@ async function getSystemUserId() {
   const found = await db.query('SELECT id FROM users WHERE username = $1', [SYSTEM_USERNAME]);
   if (found.rows[0]) return found.rows[0].id;
   const created = await db.query(
-    `INSERT INTO users (username, email, password_hash, display_name)
-     VALUES ($1, $2, $3, 'Vynzo Team')
+    `INSERT INTO users (username, email, display_name)
+     VALUES ($1, $2, 'Vynzo Team')
      ON CONFLICT (username) DO UPDATE SET display_name = users.display_name
      RETURNING id`,
-    [SYSTEM_USERNAME, 'team@vynzo.invalid', `!${crypto.randomBytes(32).toString('hex')}`]
+    [SYSTEM_USERNAME, 'team@vynzo.invalid']
   );
   return created.rows[0].id;
 }

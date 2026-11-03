@@ -1,6 +1,5 @@
 const db = require('../database/db');
-const fs = require('fs/promises');
-const path = require('path');
+const cloudStorage = require('../config/storage');
 const { visibleStorySql, STORY_PRIVACY_VALUES, canViewStory } = require('../utils/privacy');
 const { scanStory, removeStory } = require('../services/story-moderation');
 
@@ -248,13 +247,10 @@ async function deleteStory(req, res) {
       return res.status(404).json({ error: 'Story not found or you do not own it' });
     }
 
-    const filename = path.basename(result.rows[0].media_url);
     try {
-      await fs.unlink(path.join(__dirname, '../../uploads', filename));
+      await cloudStorage.deletePublicPath(result.rows[0].media_url);
     } catch (err) {
-      if (err.code !== 'ENOENT') {
-        console.error('Deleted story media cleanup error:', err);
-      }
+      console.error('Deleted story media cleanup error:', err);
     }
     res.json({ success: true });
   } catch (err) {

@@ -1,7 +1,7 @@
 const crypto = require('crypto');
-const fs = require('fs/promises');
 const path = require('path');
 const db = require('../database/db');
+const cloudStorage = require('../config/storage');
 const { cleanHtml, htmlToText, toEmbedUrl, extractImagePaths, extractHashtags } = require('../services/blog-sanitize');
 const { moderateContent, moderateComment, moderationMode, aiEnabled } = require('../services/blog-moderation');
 
@@ -172,17 +172,17 @@ function lastBlogUpload(req, res) {
 
 async function uploadBlogImage(req, res) {
   if (!req.file) return res.status(400).json({ error: 'Image or video file is required' });
-  const file = req.file.path;
   const reject = async message => {
-    await fs.unlink(file).catch(() => {});
+    try {
+      await cloudStorage.deleteFile(req.file.filename);
+    } catch (err) {
+      console.error('Rejected blog upload cleanup failed:', err);
+    }
     return res.status(400).json({ error: message });
   };
   try {
     const ext = path.extname(req.file.filename).toLowerCase();
-    const handle = await fs.open(file, 'r');
-    const header = Buffer.alloc(12);
-    await handle.read(header, 0, 12, 0);
-    await handle.close();
+    const header = req.file.buffer.subarray(0, 12);
     const kind = MAGIC.find(m => m.ext.includes(ext) && m.test(header));
     if (!kind) return await reject('The file is not a valid JPEG, PNG, GIF or WEBP image, or MP4, WEBM or MOV video.');
     if (!kind.video && req.file.size > MAX_IMAGE_BYTES) return await reject('Images can be up to 15 MB.');

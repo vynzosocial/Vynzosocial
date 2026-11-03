@@ -97,9 +97,12 @@ document.addEventListener('DOMContentLoaded', () => {
             age_confirmed, terms_accepted
           })
         });
-        localStorage.setItem('vynzo_token', res.token);
-        localStorage.setItem('vynzo_user', JSON.stringify(res.user));
-        window.location.href = '../index.html';
+        const successEl = document.getElementById('success-message');
+        if (successEl) {
+          successEl.textContent = res.message;
+          successEl.hidden = false;
+        }
+        registerForm.hidden = true;
       } catch (err) {
         if (errorEl) errorEl.textContent = err.message;
       }

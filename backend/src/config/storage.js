@@ -1,57 +1,120 @@
-const fs = require('fs');
-const path = require('path');
-
-const BUCKET = 'uploads';
+const PUBLIC_BUCKET = 'uploads';
+const PRIVATE_BUCKET = 'view-once';
 
 function config() {
-  const base = (process.env.SUPABASE_URL || '').replace(/\/$/, '') ||
-    (() => {
-      const m = (process.env.SUPABASE_DATABASE_URL || '').match(/-U\s+postgres\.(\w+)/);
-      return m ? `https://${m[1]}.supabase.co` : '';
-    })();
-  return { base, key: process.env.SUPABASE_SERVICE_ROLE_KEY };
+  const base = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base || !key) {
+    throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for Supabase Storage.');
+  }
+  return { base, key };
 }
 
-function enabled() {
+function headers(key, extra = {}) {
+  return { Authorization: `Bearer ${key}`, apikey: key, ...extra };
+}
+
+async function ensureBucket({ id, public: isPublic }) {
   const { base, key } = config();
-  return Boolean(base && key);
-}
-
-function publicUrl(name) {
-  return `${config().base}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(name)}`;
-}
-
-async function ensureBucket() {
-  const { base, key } = config();
-  const res = await fetch(`${base}/storage/v1/bucket`, {
+  const response = await fetch(`${base}/storage/v1/bucket`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, apikey: key, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: BUCKET, name: BUCKET, public: true })
+    headers: headers(key, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ id, name: id, public: isPublic })
   });
-  if (!res.ok) {
-    const text = await res.text();
-    if (!/already exists|Duplicate/i.test(text)) throw new Error(`Bucket create failed: ${res.status} ${text}`);
+  if (response.ok) return;
+
+  const error = await response.text();
+  if (response.status !== 409 && !/already exists|duplicate/i.test(error)) {
+    throw new Error(`Supabase Storage bucket "${id}" setup failed: ${response.status} ${error}`);
+  }
+
+  const existing = await fetch(`${base}/storage/v1/bucket/${encodeURIComponent(id)}`, {
+    headers: headers(key)
+  });
+  if (!existing.ok) {
+    throw new Error(`Unable to verify Supabase Storage bucket "${id}": ${existing.status} ${await existing.text()}`);
+  }
+  const bucket = await existing.json();
+  if (bucket.public !== isPublic) {
+    throw new Error(`Supabase Storage bucket "${id}" must be ${isPublic ? 'public' : 'private'}.`);
   }
 }
 
-const MIME = {
-  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
-  '.gif': 'image/gif', '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime'
-};
-
-async function uploadFile(filePath, name, mime) {
-  const { base, key } = config();
-  const res = await fetch(`${base}/storage/v1/object/${BUCKET}/${encodeURIComponent(name)}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${key}`,
-      apikey: key,
-      'Content-Type': mime || MIME[path.extname(name).toLowerCase()] || 'application/octet-stream',
-      'x-upsert': 'true'
-    },
-    body: fs.readFileSync(filePath)
-  });
-  if (!res.ok) throw new Error(`Upload of ${name} failed: ${res.status} ${await res.text()}`);
+async function ensureBuckets() {
+  await ensureBucket({ id: PUBLIC_BUCKET, public: true });
+  await ensureBucket({ id: PRIVATE_BUCKET, public: false });
 }
 
-module.exports = { enabled, publicUrl, ensureBucket, uploadFile };
+async function uploadBuffer(name, buffer, mime, bucket = PUBLIC_BUCKET) {
+  const { base, key } = config();
+  const response = await fetch(
+    `${base}/storage/v1/object/${encodeURIComponent(bucket)}/${encodeURIComponent(name)}`,
+    {
+      method: 'POST',
+      headers: headers(key, {
+        'Content-Type': mime || 'application/octet-stream',
+        'x-upsert': 'true'
+      }),
+      body: buffer
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`Supabase Storage upload of ${name} failed: ${response.status} ${await response.text()}`);
+  }
+}
+
+async function downloadFile(name, bucket = PUBLIC_BUCKET) {
+  const { base, key } = config();
+  const response = await fetch(
+    `${base}/storage/v1/object/${encodeURIComponent(bucket)}/${encodeURIComponent(name)}`,
+    { headers: headers(key) }
+  );
+  if (!response.ok) {
+    throw new Error(`Supabase Storage download of ${name} failed: ${response.status} ${await response.text()}`);
+  }
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function deleteFile(name, bucket = PUBLIC_BUCKET) {
+  const { base, key } = config();
+  const response = await fetch(
+    `${base}/storage/v1/object/${encodeURIComponent(bucket)}`,
+    {
+      method: 'DELETE',
+      headers: headers(key, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ prefixes: [name] })
+    }
+  );
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`Supabase Storage deletion of ${name} failed: ${response.status} ${await response.text()}`);
+  }
+}
+
+function publicUrl(name) {
+  const { base } = config();
+  return `${base}/storage/v1/object/public/${PUBLIC_BUCKET}/${encodeURIComponent(name)}`;
+}
+
+function nameFromPublicPath(publicPath) {
+  const name = String(publicPath || '').split('/').pop();
+  if (!name || name === publicPath) {
+    throw new Error('Expected a stored Supabase public media path.');
+  }
+  return decodeURIComponent(name);
+}
+
+function deletePublicPath(publicPath) {
+  return deleteFile(nameFromPublicPath(publicPath), PUBLIC_BUCKET);
+}
+
+module.exports = {
+  PUBLIC_BUCKET,
+  PRIVATE_BUCKET,
+  ensureBuckets,
+  uploadBuffer,
+  downloadFile,
+  deleteFile,
+  publicUrl,
+  nameFromPublicPath,
+  deletePublicPath
+};

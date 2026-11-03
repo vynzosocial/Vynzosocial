@@ -1,6 +1,5 @@
 const db = require('../database/db');
-const fs = require('fs/promises');
-const path = require('path');
+const cloudStorage = require('../config/storage');
 const { visiblePostSql, canViewPost, STORY_PRIVACY_VALUES } = require('../utils/privacy');
 
 const isTrue = value => value === true || value === 'true' || value === '1' || value === 'on';
@@ -47,9 +46,9 @@ async function deletePost(req, res) {
     }
 
     try {
-      await fs.unlink(path.join(__dirname, '../../uploads', path.basename(result.rows[0].media_url)));
+      await cloudStorage.deletePublicPath(result.rows[0].media_url);
     } catch (err) {
-      if (err.code !== 'ENOENT') console.error('Deleted post media cleanup error:', err);
+      console.error('Deleted post media cleanup error:', err);
     }
     res.json({ success: true });
   } catch (err) {

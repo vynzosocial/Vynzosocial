@@ -1,44 +1,43 @@
 const multer = require('multer');
 const crypto = require('crypto');
 const path = require('path');
-const fs = require('fs');
 const cloud = require('./storage');
 
-const uploadDir = path.join(__dirname, '../../uploads');
-
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+function cloudStorage(bucket) {
+  return {
+    _handleFile(req, file, cb) {
+      const chunks = [];
+      let size = 0;
+      let completed = false;
+      const finish = (err, info) => {
+        if (completed) return;
+        completed = true;
+        cb(err, info);
+      };
+      file.stream.on('data', chunk => {
+        chunks.push(chunk);
+        size += chunk.length;
+      });
+      file.stream.once('error', err => finish(err));
+      file.stream.once('end', async () => {
+        const buffer = Buffer.concat(chunks);
+        const field = file.fieldname.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 30) || 'file';
+        const extension = path.extname(file.originalname).slice(0, 12);
+        const filename = `${field}-${Date.now()}-${crypto.randomBytes(8).toString('hex')}${extension}`;
+        try {
+          await cloud.uploadBuffer(filename, buffer, file.mimetype, bucket);
+          finish(null, { filename, size, buffer });
+        } catch (err) {
+          finish(err);
+        }
+      });
+    },
+    _removeFile(req, file, cb) {
+      if (!file.filename) return cb(null);
+      cloud.deleteFile(file.filename, bucket).then(() => cb(null), cb);
+    }
+  };
 }
-
-const diskStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname);
-    cb(null, `${file.fieldname}-${uniqueSuffix}${ext}`);
-  }
-});
-
-// Saves to disk (local backup), then mirrors the file to Supabase Storage.
-const storage = {
-  _handleFile(req, file, cb) {
-    diskStorage._handleFile(req, file, async (err, info) => {
-      if (err) return cb(err);
-      if (!cloud.enabled()) return cb(null, info);
-      try {
-        await cloud.uploadFile(info.path, info.filename, file.mimetype);
-        cb(null, info);
-      } catch (uploadErr) {
-        fs.unlink(info.path, () => cb(uploadErr));
-      }
-    });
-  },
-  _removeFile(req, file, cb) {
-    diskStorage._removeFile(req, file, cb);
-  }
-};
 
 const fileFilter = (req, file, cb) => {
   const allowedMimeTypes = [
@@ -67,40 +66,20 @@ const avatarFileFilter = (req, file, cb) => {
   }
 };
 
-const upload = multer({
-  storage,
-  fileFilter,
-  limits: {
-    fileSize: 50 * 1024 * 1024 // 50MB max file size
-  }
-});
+const limits = { fileSize: 50 * 1024 * 1024 };
+const upload = multer({ storage: cloudStorage(cloud.PUBLIC_BUCKET), fileFilter, limits });
 
 upload.avatar = multer({
-  storage,
+  storage: cloudStorage(cloud.PUBLIC_BUCKET),
   fileFilter: avatarFileFilter,
-  limits: {
-    fileSize: 5 * 1024 * 1024
-  }
+  limits: { fileSize: 5 * 1024 * 1024 }
 });
 
-// View-once photos live in a private folder that is never served statically or mirrored to cloud storage.
-const privateUploadDir = path.join(__dirname, '../../private_uploads');
-if (!fs.existsSync(privateUploadDir)) {
-  fs.mkdirSync(privateUploadDir, { recursive: true });
-}
-
 upload.viewOnce = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, privateUploadDir),
-    filename: (req, file, cb) => {
-      const ext = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' }[file.mimetype] || '.bin';
-      cb(null, `${crypto.randomBytes(24).toString('hex')}${ext}`);
-    }
-  }),
+  storage: cloudStorage(cloud.PRIVATE_BUCKET),
   fileFilter: avatarFileFilter,
   limits: { fileSize: 10 * 1024 * 1024 }
 });
-upload.privateUploadDir = privateUploadDir;
 
 const blogFileFilter = (req, file, cb) => {
   const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/webm', 'video/quicktime'];
@@ -109,9 +88,9 @@ const blogFileFilter = (req, file, cb) => {
 };
 
 upload.blog = multer({
-  storage,
+  storage: cloudStorage(cloud.PUBLIC_BUCKET),
   fileFilter: blogFileFilter,
-  limits: { fileSize: 50 * 1024 * 1024 }
+  limits
 });
 
 module.exports = upload;

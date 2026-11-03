@@ -1,5 +1,5 @@
-const fs = require('fs/promises');
 const path = require('path');
+const cloudStorage = require('../config/storage');
 
 /*
  * Blog moderation engine.
@@ -169,11 +169,10 @@ function chunkText(text, size = 8000) {
 }
 
 async function imageToDataUrl(publicPath) {
-  const file = path.join(__dirname, '../../uploads', path.basename(publicPath));
-  const stat = await fs.stat(file);
-  if (stat.size > 4 * 1024 * 1024) throw new Error('image too large to scan');
-  const buffer = await fs.readFile(file);
-  const ext = path.extname(file).toLowerCase();
+  const name = cloudStorage.nameFromPublicPath(publicPath);
+  const buffer = await cloudStorage.downloadFile(name);
+  if (buffer.length > 4 * 1024 * 1024) throw new Error('image too large to scan');
+  const ext = path.extname(name).toLowerCase();
   const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : ext === '.gif' ? 'image/gif' : 'image/jpeg';
   return `data:${mime};base64,${buffer.toString('base64')}`;
 }

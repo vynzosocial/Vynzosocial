@@ -1,7 +1,6 @@
 require('dotenv').config();
 const express = require('express');
 const http = require('http');
-const path = require('path');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
@@ -23,6 +22,8 @@ const { registerCallHandlers } = require('./realtime/call.socket');
 
 const app = express();
 const server = http.createServer(app);
+const cloudStorage = require('./config/storage');
+const { validateAuthConfig } = require('./services/supabase-auth');
 const io = new Server(server, {
   cors: {
     origin: "*",
@@ -55,12 +56,7 @@ app.use('/api', (req, res, next) => (
   req.path.startsWith('/auth') ? next() : generalApiLimiter(req, res, next)
 ));
 
-// Serve static uploaded media files
-const cloudStorage = require('./config/storage');
-if (cloudStorage.enabled()) {
-  app.get('/uploads/:name', (req, res) => res.redirect(302, cloudStorage.publicUrl(req.params.name)));
-}
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.get('/uploads/:name', (req, res) => res.redirect(302, cloudStorage.publicUrl(req.params.name)));
 
 // Mount API Routes
 app.use('/api/auth', authRoutes);
@@ -90,8 +86,16 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Vynzo production-ready server running on port ${PORT}`);
-  restoreLivePresence(io);
-  require('./services/blog-autoreview').startBlogAutoReview();
-});
+validateAuthConfig();
+cloudStorage.ensureBuckets()
+  .then(() => {
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`Vynzo production-ready server running on port ${PORT}`);
+      restoreLivePresence(io);
+      require('./services/blog-autoreview').startBlogAutoReview();
+    });
+  })
+  .catch(err => {
+    console.error('Unable to initialize Supabase Storage:', err);
+    process.exitCode = 1;
+  });

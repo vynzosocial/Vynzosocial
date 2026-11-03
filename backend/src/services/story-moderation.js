@@ -1,6 +1,5 @@
-const fs = require('fs/promises');
-const path = require('path');
 const db = require('../database/db');
+const cloudStorage = require('../config/storage');
 const { moderateContent, aiEnabled } = require('./blog-moderation');
 const { notifyUser } = require('./moderation-notice');
 
@@ -17,7 +16,11 @@ function label(category) {
 // Deletes a story, keeps an audit record and tells the owner why.
 async function removeStory(io, story, { reason, actorId = null, action }) {
   await db.query('DELETE FROM stories WHERE id = $1', [story.id]);
-  await fs.unlink(path.join(__dirname, '../../uploads', path.basename(story.media_url))).catch(() => {});
+  try {
+    await cloudStorage.deletePublicPath(story.media_url);
+  } catch (err) {
+    console.error('Story media cleanup failed:', err);
+  }
   await db.query(
     `INSERT INTO story_moderation_logs (user_id, actor_id, media_type, action, reason) VALUES ($1, $2, $3, $4, $5)`,
     [story.user_id, actorId, story.media_type, action, reason]

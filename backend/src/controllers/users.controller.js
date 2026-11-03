@@ -2,7 +2,6 @@ const db = require('../database/db');
 const { isHostConnectedToLive } = require('../services/live-presence');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('../middleware/auth.middleware');
-const { syncAuthUser } = require('../utils/auth-sync');
 const { MESSAGE_PRIVACY_VALUES, POST_PRIVACY_VALUES, FOLLOWING_PRIVACY_VALUES, messageBlockReason } = require('../utils/privacy');
 
 async function updateMyProfile(req, res) {
@@ -32,9 +31,8 @@ async function updateMyProfile(req, res) {
     if (!result.rows.length) {
       return res.status(404).json({ error: 'Account not found' });
     }
-
     const user = result.rows[0];
-    await syncAuthUser(user.id);
+    const user = result.rows[0];
     const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ user, token });
   } catch (err) {
@@ -64,7 +62,6 @@ async function updateMyAvatar(req, res) {
       return res.status(404).json({ error: 'Account not found' });
     }
 
-    await syncAuthUser(req.user.id);
     res.json({ user: result.rows[0] });
   } catch (err) {
     console.error('Update profile photo error:', err);

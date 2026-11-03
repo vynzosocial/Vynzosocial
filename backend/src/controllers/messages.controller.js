@@ -1,7 +1,6 @@
-const fs = require('fs');
 const path = require('path');
 const db = require('../database/db');
-const { privateUploadDir } = require('../config/multer.config');
+const cloudStorage = require('../config/storage');
 const { messageBlockReason } = require('../utils/privacy');
 
 // Get all conversations for the logged-in user
@@ -163,7 +162,14 @@ async function sendConversationMessage(req, res) {
 }
 
 async function sendViewOncePhoto(req, res) {
-  const discard = () => { if (req.file) fs.unlink(req.file.path, () => {}); };
+  const discard = async () => {
+    if (!req.file) return;
+    try {
+      await cloudStorage.deleteFile(req.file.filename, cloudStorage.PRIVATE_BUCKET);
+    } catch (err) {
+      console.error('View-once upload cleanup failed:', err);
+    }
+  };
   try {
     const userId = req.user.id;
     const { conversationId } = req.params;
@@ -174,7 +180,7 @@ async function sendViewOncePhoto(req, res) {
       [conversationId, userId]
     );
     if (!memberCheck.rows.length) {
-      discard();
+      await discard();
       return res.status(403).json({ error: 'Access denied to this conversation' });
     }
     const others = await db.query(
@@ -186,7 +192,7 @@ async function sendViewOncePhoto(req, res) {
     for (const other of others.rows) {
       const reason = await messageBlockReason(userId, other.user_id);
       if (reason) {
-        discard();
+        await discard();
         return res.status(403).json({ error: reason });
       }
     }
@@ -205,7 +211,7 @@ async function sendViewOncePhoto(req, res) {
     req.app.get('io').to(conversationId).emit('receive_message', message);
     res.status(201).json({ message: { ...message, seen: false, can_unsend: false } });
   } catch (err) {
-    discard();
+    await discard();
     console.error('Send view-once photo error:', err);
     res.status(500).json({ error: 'Failed to send photo' });
   }
@@ -229,22 +235,26 @@ async function openViewOncePhoto(req, res) {
       return res.status(410).json({ error: 'This photo is no longer available.' });
     }
     const { view_once_path: name, viewed_at: viewedAt } = claimed.rows[0];
-    const filePath = path.join(privateUploadDir, path.basename(name || ''));
     let data;
     try {
-      data = await fs.promises.readFile(filePath);
+      data = await cloudStorage.downloadFile(name, cloudStorage.PRIVATE_BUCKET);
     } catch (e) {
+      console.error('View-once photo download failed:', e);
       return res.status(410).json({ error: 'This photo is no longer available.' });
     }
     await db.query('UPDATE messages SET view_once_path = NULL WHERE id = $1', [messageId]);
-    fs.unlink(filePath, () => {});
+    try {
+      await cloudStorage.deleteFile(name, cloudStorage.PRIVATE_BUCKET);
+    } catch (err) {
+      console.error('View-once photo deletion failed:', err);
+    }
 
     req.app.get('io').to(conversationId).emit('view_once_opened', {
       conversation_id: conversationId,
       message_id: messageId,
       viewed_at: viewedAt
     });
-    const ext = path.extname(filePath).toLowerCase();
+    const ext = path.extname(name).toLowerCase();
     const types = { '.jpg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif' };
     res.set({
       'Content-Type': types[ext] || 'application/octet-stream',
