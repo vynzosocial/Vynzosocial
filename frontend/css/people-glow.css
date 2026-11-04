@@ -226,3 +226,9 @@ body:has(.people-page) .nav-item.active {
   display: block;
   color: #ffe58a;
 }
+@media (max-width: 768px) {
+  .people-page { animation: none; background-attachment: scroll; }
+  .people-page::after { display: none; }
+  .people-page button, .people-page .account-search-result, .people-page .account-search-result::after { animation: none; filter: none; }
+  .people-page .people-search-results:empty { min-height: 120px; }
+}
