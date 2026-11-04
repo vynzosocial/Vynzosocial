@@ -48,7 +48,7 @@ function jsonResponse(
 ): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...headers, 'Content-Type': 'application/json' }
+    headers: { ...headers, 'Content-Type': 'application/json; charset=utf-8' }
   })
 }
 

@@ -8,6 +8,7 @@ let socket = null;
 let currentConversationMeta = null;
 let currentConversationId = null;
 let conversationRefreshInterval = null;
+let backgroundRefreshInProgress = false;
 let readReceiptsEnabled = true;
 const MAX_VIDEO_SECONDS = 60;
 
@@ -37,6 +38,24 @@ export async function initMessaging() {
     console.error('Message realtime connection failed:', err.message);
   });
 
+  async function retryConversationLoad() {
+    try {
+      const conversations = await refreshConversations();
+      const requestedConversationId = new URLSearchParams(window.location.search).get('conversationId');
+      if (requestedConversationId) {
+        const conversation = conversations.find(item => item.id === requestedConversationId);
+        if (conversation) {
+          await selectConversation(conversation, currentUser);
+          return;
+        }
+      }
+      showChatError('Select a conversation to start chatting.');
+    } catch (err) {
+      console.error('Could not retry loading conversations:', err);
+      showConversationError(err.message || 'Could not load your conversations.', retryConversationLoad);
+    }
+  }
+
   try {
     const conversations = await refreshConversations();
     const requestedConversationId = new URLSearchParams(window.location.search).get('conversationId');
@@ -51,30 +70,29 @@ export async function initMessaging() {
   } catch (err) {
     console.error('Failed to load conversations:', err);
     showChatError(err.message || 'Could not load your conversations. Please try again.');
+    showConversationError(err.message || 'Could not load your conversations.', retryConversationLoad);
   }
 
   if (!conversationRefreshInterval) {
     conversationRefreshInterval = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        refreshConversations().catch(err => {
-          console.error('Failed to refresh conversations:', err);
-        });
-        refreshCurrentConversation().catch(err => {
-          console.error('Failed to refresh messages:', err);
-        });
-      }
-    }, 5000);
+      if (document.visibilityState === 'visible') refreshVisibleConversations();
+    }, 30000);
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') {
-        refreshConversations().catch(err => {
-          console.error('Failed to refresh conversations:', err);
-        });
-        refreshCurrentConversation().catch(err => {
-          console.error('Failed to refresh messages:', err);
-        });
-      }
+      if (document.visibilityState === 'visible') refreshVisibleConversations();
     });
   }
+
+}
+
+function refreshVisibleConversations() {
+  if (backgroundRefreshInProgress) return;
+  backgroundRefreshInProgress = true;
+  Promise.all([
+    refreshConversations().catch(err => console.error('Failed to refresh conversations:', err)),
+    refreshCurrentConversation().catch(err => console.error('Failed to refresh messages:', err))
+  ]).finally(() => {
+    backgroundRefreshInProgress = false;
+  });
 }
 
 async function refreshCurrentConversation() {
@@ -609,6 +627,24 @@ function showChatError(message) {
   status.className = 'chat-empty-state';
   status.textContent = message;
   chatArea.replaceChildren(status);
+}
+
+function showConversationError(message, onRetry) {
+  const container = document.getElementById('conversations-list');
+  if (!container) return;
+
+  const status = document.createElement('p');
+  status.className = 'conversations-error';
+  status.textContent = message;
+  const retry = document.createElement('button');
+  retry.type = 'button';
+  retry.textContent = 'Try again';
+  retry.addEventListener('click', async () => {
+    retry.disabled = true;
+    retry.textContent = 'Retrying...';
+    await onRetry();
+  });
+  container.replaceChildren(status, retry);
 }
 
 function escapeHtml(str) {

@@ -28,12 +28,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     photoInput.disabled = true;
     photoButton.disabled = true;
+    showSettingsUnavailable('Log in to load your settings.');
   } else {
     if (user.username) heading.textContent = `@${user.username}`;
     userInfoEl.textContent = `Logged in as @${user.username}${user.email ? ` (${user.email})` : ''}`;
+    usernameInput.value = user.username || '';
+    bioInput.value = user.bio || '';
+    bioCount.textContent = String(bioInput.value.length);
     loadProfile(user).catch(err => {
       console.error('Could not load profile settings:', err);
       setStatus(status, err.message || 'Could not load profile settings.', 'error');
+      showSettingsUnavailable('Could not load settings. Check your connection and refresh.');
     });
   }
 
@@ -81,6 +86,16 @@ document.addEventListener('DOMContentLoaded', () => {
     event.preventDefault();
     if (!user.id) return;
 
+    const nextUsername = usernameInput.value.trim().toLowerCase();
+    const currentUsername = String(user.username || '').toLowerCase();
+    if (nextUsername !== currentUsername
+      && !/^(?=(?:.*[0-9]){2})[a-zA-Z0-9](?:[a-zA-Z0-9._]{0,28}[a-zA-Z0-9])$/.test(nextUsername)) {
+      usernameInput.setCustomValidity('Username must contain at least 2 digits and use 2–30 allowed characters.');
+      usernameInput.reportValidity();
+      return;
+    }
+    usernameInput.setCustomValidity('');
+
     saveProfileButton.disabled = true;
     setStatus(status, 'Saving your profile...', '');
     try {
@@ -122,6 +137,23 @@ function formatStat(value) {
   if (number <= 5000) return String(number);
   const compact = (divisor, suffix) => `${Math.floor(number / divisor * 10) / 10}${suffix}`;
   return number < 1000000 ? compact(1000, 'K') : compact(1000000, 'M');
+}
+
+function showSettingsUnavailable(message) {
+  const vynzoId = document.getElementById('profile-vynzo-id');
+  if (vynzoId.value === 'Loading...') vynzoId.value = 'Unavailable';
+
+  for (const id of [
+    'privacy-hint',
+    'posts-privacy-hint',
+    'following-privacy-hint',
+    'read-receipts-hint',
+    'message-privacy-hint',
+    'allow-calls-hint'
+  ]) {
+    const hint = document.getElementById(id);
+    if (hint.textContent === 'Loading...') hint.textContent = message;
+  }
 }
 
 async function loadProfile(user) {

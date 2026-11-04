@@ -3,7 +3,10 @@ import { API_BASE_URL, API_ORIGIN } from './config.js?v=sb4';
 import { supabase } from './supabase-client.js';
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabase-config.js';
 
+const API_TIMEOUT_MESSAGE = 'The request took too long. Check your connection and try again.';
+
 export async function apiRequest(endpoint, options = {}) {
+  const requestDeadline = Date.now() + 12000;
   const apiPath = endpoint.split('?')[0];
   const useSupabaseUserApi = apiPath === '/users/me/profile'
     || apiPath === '/users/me/privacy'
@@ -36,7 +39,7 @@ export async function apiRequest(endpoint, options = {}) {
 
   let token = localStorage.getItem('vynzo_token');
   if (supabase) {
-    const { data } = await supabase.auth.getSession();
+    const { data } = await withTimeout(supabase.auth.getSession(), requestDeadline);
     if (data?.session?.access_token) token = data.session.access_token;
   }
   const headers = {
@@ -47,27 +50,48 @@ export async function apiRequest(endpoint, options = {}) {
   };
 
   let response;
+  const requestController = new AbortController();
+  const timeoutId = window.setTimeout(
+    () => requestController.abort(),
+    Math.max(0, requestDeadline - Date.now())
+  );
+  const callerSignal = options.signal;
+  const abortFromCaller = () => requestController.abort();
+  if (callerSignal?.aborted) {
+    abortFromCaller();
+  } else {
+    callerSignal?.addEventListener('abort', abortFromCaller, { once: true });
+  }
   try {
     const requestUrl = useSupabaseApi
       ? `${SUPABASE_URL}/functions/v1/vynzo-api/api${endpoint}`
       : `${API_BASE_URL}${endpoint}`;
     response = await fetch(requestUrl, {
+      cache: 'no-store',
       ...options,
+      signal: requestController.signal,
       headers
     });
   } catch (err) {
+    if (requestController.signal.aborted && !callerSignal?.aborted) {
+      throw new Error('The request took too long. Check your connection and try again.');
+    }
     if (err instanceof TypeError) {
       const serviceUrl = useSupabaseApi ? `${SUPABASE_URL}/functions/v1/vynzo-api` : API_ORIGIN;
       const serviceName = useSupabaseApi ? 'Supabase Edge Function' : 'Vynzo API';
       throw new Error(`Cannot reach the ${serviceName} at ${serviceUrl}. Check the service deployment and network connection, then try again.`);
     }
     throw err;
+  } finally {
+    window.clearTimeout(timeoutId);
+    callerSignal?.removeEventListener('abort', abortFromCaller);
   }
 
   let data;
   try {
-    data = await response.json();
-  } catch {
+    data = await withTimeout(response.json(), requestDeadline);
+  } catch (err) {
+    if (err instanceof Error && err.message === API_TIMEOUT_MESSAGE) throw err;
     const serviceName = useSupabaseApi ? 'Supabase' : 'Vynzo API';
     throw new Error(`${serviceName} returned an invalid response (HTTP ${response.status}). Check the service logs and try again.`);
   }
@@ -89,6 +113,17 @@ export async function apiRequest(endpoint, options = {}) {
     throw new Error(data.error || 'Something went wrong');
   }
   return data;
+}
+
+function withTimeout(promise, deadline) {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) return Promise.reject(new Error(API_TIMEOUT_MESSAGE));
+
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error(API_TIMEOUT_MESSAGE)), remaining);
+  });
+  return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timeoutId));
 }
 
 // For endpoints that answer with a file instead of JSON (for example view-once photos).
