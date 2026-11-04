@@ -1,9 +1,9 @@
-import { apiRequest } from './api.js?v=sb3';
+import { apiRequest } from './api.js?v=sb4';
 import { openPostViewer } from './feed.js?v=prot4';
 import { protectMedia } from './media-protect.js';
 import { openUserStories } from './stories.js?v=prot4';
 
-import { API_ORIGIN as MEDIA_BASE_URL } from './config.js?v=sb3';
+import { API_ORIGIN as MEDIA_BASE_URL } from './config.js?v=sb4';
 
 export function initAccountSearch() {
   const form = document.getElementById('account-search-form');

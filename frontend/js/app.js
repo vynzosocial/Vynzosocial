@@ -2,8 +2,8 @@ import { restoreSupabaseSession } from './supabase-client.js';
 import { initFeed } from './feed.js?v=prot4';
 import { initStoriesCarousel } from './stories.js?v=prot4';
 import { initHomeFriends } from './home-friends.js';
-import { apiRequest } from './api.js?v=sb3';
-import { API_ORIGIN } from './config.js?v=sb3';
+import { apiRequest } from './api.js?v=sb4';
+import { API_ORIGIN } from './config.js?v=sb4';
 
 function renderHomeUser() {
   const user = JSON.parse(localStorage.getItem('vynzo_user') || '{}');

@@ -1,7 +1,7 @@
-import { apiRequest } from './api.js?v=sb3';
+import { apiRequest } from './api.js?v=sb4';
 import { signOutSupabase } from './supabase-client.js';
 
-import { API_ORIGIN as MEDIA_BASE_URL } from './config.js?v=sb3';
+import { API_ORIGIN as MEDIA_BASE_URL } from './config.js?v=sb4';
 
 document.addEventListener('DOMContentLoaded', () => {
   const userInfoEl = document.getElementById('user-info-display');

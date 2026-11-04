@@ -1,5 +1,5 @@
-import { API_ORIGIN } from './config.js?v=sb3';
-import { createRealtimeSocket } from './realtime.js?v=sb3';
+import { API_ORIGIN } from './config.js?v=sb4';
+import { createRealtimeSocket } from './realtime.js?v=sb4';
 
 const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: ['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' }] };
 

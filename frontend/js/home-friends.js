@@ -1,7 +1,7 @@
-import { apiRequest } from './api.js?v=sb3';
+import { apiRequest } from './api.js?v=sb4';
 import { openUserProfile } from './users.js';
 
-import { API_ORIGIN as MEDIA_BASE_URL } from './config.js?v=sb3';
+import { API_ORIGIN as MEDIA_BASE_URL } from './config.js?v=sb4';
 let refreshInterval = null;
 let loading = false;
 

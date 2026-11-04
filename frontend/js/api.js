@@ -1,5 +1,5 @@
 import './supabase-client.js';
-import { API_BASE_URL, API_ORIGIN } from './config.js?v=sb3';
+import { API_BASE_URL, API_ORIGIN } from './config.js?v=sb4';
 import { supabase } from './supabase-client.js';
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabase-config.js';
 

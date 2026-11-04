@@ -1,8 +1,8 @@
 // Socket.IO-compatible realtime layer built on Supabase Realtime (broadcast + presence).
 // It replaces the removed Render backend for live rooms, calls and instant message pings.
 import { supabase } from './supabase-client.js';
-import { apiRequest } from './api.js?v=sb3';
-import { createOfflineSocket } from './config.js?v=sb3';
+import { apiRequest } from './api.js?v=sb4';
+import { createOfflineSocket } from './config.js?v=sb4';
 
 const MAX_LIVE_GUESTS = 10;
 const LAYOUTS = ['auto', 'full', 'panel', 'fixed', 'sidebar', 'side', 'spotlight', 'round1', 'round2'];

@@ -1411,9 +1411,13 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
     const form = await request.formData()
     const photo = form.get('photo')
     if (!(photo instanceof File)) return jsonResponse(400, { error: 'Choose a photo to send' }, headers)
-    const photoExtensions: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' }
-    if (!photoExtensions[photo.type]) return jsonResponse(400, { error: 'View-once photos must be JPEG, PNG, WEBP or GIF.' }, headers)
-    if (photo.size === 0 || photo.size > 10 * 1024 * 1024) return jsonResponse(413, { error: 'View-once photos must be 10 MB or smaller.' }, headers)
+    const photoExtensions: Record<string, string> = {
+      'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
+      'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov'
+    }
+    if (!photoExtensions[photo.type]) return jsonResponse(400, { error: 'View-once media must be a JPEG, PNG, WEBP, GIF, MP4, WEBM or MOV file.' }, headers)
+    const maxViewOnceBytes = photo.type.startsWith('video/') ? 50 * 1024 * 1024 : 10 * 1024 * 1024
+    if (photo.size === 0 || photo.size > maxViewOnceBytes) return jsonResponse(413, { error: 'This file is too large for view-once (photos 10 MB, videos 50 MB).' }, headers)
 
     const { data: conversation, error: conversationError } = await admin.from('conversations')
       .select('is_group').eq('id', conversationId).maybeSingle()
@@ -1804,7 +1808,7 @@ Deno.serve(async request => {
     if (endpointSegments[0] === 'posts') return await handlePosts(request, viewer.id, headers)
     if (endpointSegments[0] === 'users') return await handleUsers(request, viewer.id, headers)
     if (endpointSegments[0] === 'moderation') return await handleModeration(request, viewer.id, headers)
-    if (endpointSegments[0] === 'messages' && !endpointSegments.some(segment => segment === 'view-once')) {
+    if (endpointSegments[0] === 'messages') {
       return await handleMessages(request, viewer.id, headers)
     }
     const storyModerationRoute = endpointSegments.length === 3

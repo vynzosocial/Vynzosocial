@@ -1,8 +1,8 @@
-import { apiRequest, apiBlobRequest } from './api.js?v=sb3';
-import { API_ORIGIN } from './config.js?v=sb3';
-import { createRealtimeSocket } from './realtime.js?v=sb3';
+import { apiRequest, apiBlobRequest } from './api.js?v=sb4';
+import { API_ORIGIN } from './config.js?v=sb4';
+import { createRealtimeSocket } from './realtime.js?v=sb4';
 import { attachEmojiPicker } from './emoji-picker.js?v=scope4';
-import { initCalls, startCall } from './calls.js?v=sb3';
+import { initCalls, startCall } from './calls.js?v=sb4';
 
 let socket = null;
 let currentConversationMeta = null;
@@ -299,7 +299,7 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
       remove.setAttribute('aria-label', 'Remove attachment');
       remove.addEventListener('click', clearAttachment);
       preview.append(media, remove);
-      if (!file.type.startsWith('video/') && file.size <= 10 * 1024 * 1024) {
+      if (file.size <= 50 * 1024 * 1024 && (file.type.startsWith('video/') || file.size <= 10 * 1024 * 1024)) {
         const label = document.createElement('label');
         label.className = 'view-once-toggle';
         const box = document.createElement('input');
@@ -526,18 +526,21 @@ async function openViewOnce(conversationId, messageId) {
   const guard = window.Capacitor?.Plugins?.ScreenGuard;
   guard?.setSecure?.({ enabled: true }).catch?.(() => {});
 
+  const isVideo = blob.type.startsWith('video/');
   const overlay = document.createElement('div');
   overlay.className = 'view-once-viewer';
   overlay.innerHTML = `
-    <div class="view-once-stage"><img alt="View-once photo" draggable="false"><div class="view-once-mark"></div></div>
-    <p class="view-once-note">View once · this photo disappears when you close it</p>
+    <div class="view-once-stage">${isVideo
+      ? '<video playsinline autoplay controls controlsList="nodownload noplaybackrate noremoteplayback" disablePictureInPicture disableRemotePlayback draggable="false"></video>'
+      : '<img alt="View-once photo" draggable="false">'}<div class="view-once-mark"></div></div>
+    <p class="view-once-note">View once · this ${isVideo ? 'video' : 'photo'} disappears when you close it</p>
     <button type="button" class="view-once-close">Close</button>`;
-  const img = overlay.querySelector('img');
+  const img = overlay.querySelector('img, video');
   img.src = url;
   const me = JSON.parse(localStorage.getItem('vynzo_user') || '{}');
   overlay.querySelector('.view-once-mark').textContent = Array(40).fill(`@${me.username || 'vynzo'}`).join('   ');
 
-  const hide = () => overlay.classList.add('hidden-content');
+  const hide = () => { overlay.classList.add('hidden-content'); if (isVideo) img.pause(); };
   const show = () => { if (document.visibilityState === 'visible') overlay.classList.remove('hidden-content'); };
   const block = e => e.preventDefault();
   const onKey = e => {
