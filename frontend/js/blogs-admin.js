@@ -1,5 +1,5 @@
-import { apiRequest } from './api.js?v=sb2';
-import { API_ORIGIN } from './config.js?v=sb2';
+import { apiRequest } from './api.js?v=sb3';
+import { API_ORIGIN } from './config.js?v=sb3';
 
 if (!localStorage.getItem('vynzo_token')) location.href = '../index.html';
 
