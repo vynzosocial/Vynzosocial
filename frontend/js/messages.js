@@ -1,5 +1,6 @@
-import { apiRequest, apiBlobRequest } from './api.js?v=sb4';
+import { apiRequest, apiBlobRequest } from './api.js?v=sb6';
 import { API_ORIGIN } from './config.js?v=sb4';
+import { supabase } from './supabase-client.js';
 import { createRealtimeSocket } from './realtime.js?v=sb4';
 import { attachEmojiPicker } from './emoji-picker.js?v=scope4';
 import { initCalls, startCall } from './calls.js?v=sb4';
@@ -324,14 +325,20 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
   async function useFile(file) {
     status.hidden = true;
     try {
+      if (!file.type) {
+        const guessed = { mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif' }[(file.name.split('.').pop() || '').toLowerCase()];
+        if (guessed) file = new File([file], file.name, { type: guessed });
+      }
       if (file.type.startsWith('video/')) {
-        const duration = await getVideoDuration(file);
-        if (duration > MAX_VIDEO_SECONDS + 0.5) {
+        const duration = await getVideoDuration(file).catch(() => null);
+        if (duration && duration > MAX_VIDEO_SECONDS + 0.5) {
           throw new Error(`Videos can be at most ${MAX_VIDEO_SECONDS} seconds. This one is ${Math.round(duration)} seconds.`);
         }
+        if (file.size > 50 * 1024 * 1024) throw new Error('This video is larger than 50 MB. Choose a shorter one.');
       } else if (file.size > 50 * 1024 * 1024) {
         throw new Error('File is too large (max 50MB).');
       }
+      if (file.type.startsWith('image/') && file.type !== 'image/gif') file = await shrinkImage(file);
       attachment = file;
       preview.replaceChildren();
       const url = URL.createObjectURL(file);
@@ -384,8 +391,13 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     status.hidden = true;
     try {
       await apiRequest(`/messages/${encodeURIComponent(conversationId)}`, { method: 'DELETE' });
+      document.querySelector(`.conversation-item[data-conversation-id="${CSS.escape(conversationId)}"]`)?.remove();
+      if (!document.querySelector('#conversations-list .conversation-item')) {
+        document.getElementById('conversations-list').innerHTML = '<p style="padding:16px; color:var(--text-muted);">No messages yet.</p>';
+      }
       if (currentConversationId === conversationId) {
         currentConversationId = null;
+        window.__vynzoOpenConversation = null;
         currentConversationMeta = null;
         showChatError('Select a conversation to start chatting.');
       }
@@ -549,6 +561,12 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     e.preventDefault();
     const content = input.value.trim();
     if (!content && !attachment) return;
+    if (attachment) {
+      const kind = attachment.type.startsWith('video/') ? 'video' : 'photo';
+      const mb = (attachment.size / (1024 * 1024)).toFixed(1);
+      const target = currentConversationMeta ? getConversationName(currentConversationMeta) : 'this chat';
+      if (!window.confirm(`Send this ${kind} (${mb} MB) to ${target}?${viewOnce ? '\nIt can be viewed only once.' : ''}`)) return;
+    }
 
     const conversationId = currentConversationId;
     const sendButton = form.querySelector('.send-btn');
@@ -580,10 +598,14 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
       let body;
       const replyId = replyingTo?.id;
       if (attachment) {
-        body = new FormData();
-        body.append('media', attachment);
-        body.append('content', content);
-        if (replyId) body.append('reply_to_id', replyId);
+        const upload = await apiRequest(`/messages/${encodeURIComponent(conversationId)}/upload-url`, {
+          method: 'POST',
+          body: JSON.stringify({ content_type: attachment.type })
+        });
+        const { error: uploadError } = await supabase.storage.from('uploads')
+          .uploadToSignedUrl(upload.path, upload.token, attachment, { contentType: attachment.type });
+        if (uploadError) throw new Error(`Upload failed: ${uploadError.message || 'please check your connection and try again.'}`);
+        body = JSON.stringify({ content, reply_to_id: replyId, media_path: upload.path });
       } else {
         body = JSON.stringify({ content, reply_to_id: replyId });
       }
@@ -628,6 +650,7 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     msgContainer.querySelectorAll('.message-bubble.outgoing').forEach(bubble => {
       if (new Date(bubble.dataset.createdAt).getTime() > readAt) return;
       bubble.querySelector('.message-delete-button')?.remove();
+      bubble.querySelector('.message-edit-button')?.remove();
       const label = bubble.querySelector('.message-status');
       if (label && event.show_receipt && readReceiptsEnabled) {
         label.textContent = 'Seen';
@@ -730,12 +753,31 @@ function messageMarkup(message, currentUser) {
         ${message.content ? `<span class="message-content">${escapeHtml(message.content)}</span>` : ''}
         ${message.edited_at ? '<span class="message-edited">(edited)</span>' : ''}
         <button class="message-reply-button" type="button" aria-label="Reply to this message" title="Reply">↩</button>
-        ${isOutgoing && message.content && !message.view_once ? '<button class="message-edit-button" type="button" aria-label="Edit message" title="Edit message">✎</button>' : ''}
+        ${isOutgoing && message.content && !message.view_once && message.can_unsend !== false ? '<button class="message-edit-button" type="button" aria-label="Edit message" title="Edit message">✎</button>' : ''}
         ${isOutgoing && message.can_unsend !== false ? '<button class="message-delete-button" type="button" aria-label="Delete message" title="Delete for everyone (only until it is seen)">×</button>' : ''}
         ${isOutgoing && readReceiptsEnabled ? `<span class="message-status ${message.seen ? 'seen' : ''}">${message.seen ? 'Seen' : 'Sent'}</span>` : ''}
       </div>
     </div>
   `;
+}
+
+// Phone photos are often 5 MB+; resizing keeps uploads quick on mobile data.
+async function shrinkImage(file) {
+  if (file.size <= 300 * 1024) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.();
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.82));
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], `${file.name.replace(/\.[^.]+$/, '') || 'photo'}.jpg`, { type: 'image/jpeg' });
+  } catch {
+    return file;
+  }
 }
 
 function replyText(message) {

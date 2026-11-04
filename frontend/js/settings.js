@@ -1,4 +1,4 @@
-import { apiRequest } from './api.js?v=sb4';
+import { apiRequest } from './api.js?v=sb6';
 import { signOutSupabase } from './supabase-client.js';
 
 import { API_ORIGIN as MEDIA_BASE_URL } from './config.js?v=sb4';

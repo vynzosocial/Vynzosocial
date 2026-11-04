@@ -1,4 +1,4 @@
-import { apiRequest } from './api.js?v=sb5';
+import { apiRequest } from './api.js?v=sb6';
 import { API_ORIGIN } from './config.js?v=sb4';
 import { t, getLang, applyLang, toggleLang } from './blogs-i18n.js?v=8';
 

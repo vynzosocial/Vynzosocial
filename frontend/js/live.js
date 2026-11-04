@@ -1,4 +1,4 @@
-import { apiRequest } from './api.js?v=sb4';
+import { apiRequest } from './api.js?v=sb6';
 import { API_ORIGIN } from './config.js?v=sb4';
 import { createRealtimeSocket } from './realtime.js?v=sb4';
 
@@ -358,7 +358,7 @@ let viewersTimer = null;
 async function showProfile(userId) {
   if (!userId) return;
   try {
-    const mod = await import('./users.js?v=block1');
+    const mod = await import('./users.js?v=up1');
     await mod.openUserProfile(userId);
   } catch (err) {
     console.error('Unable to open profile:', err);

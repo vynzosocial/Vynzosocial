@@ -6,7 +6,7 @@ import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabase-config.js';
 const API_TIMEOUT_MESSAGE = 'The request took too long. Check your connection and try again.';
 
 export async function apiRequest(endpoint, options = {}) {
-  const requestDeadline = Date.now() + 12000;
+  const requestDeadline = Date.now() + (options.body instanceof FormData ? 240000 : 12000);
   const apiPath = endpoint.split('?')[0];
   const useSupabaseUserApi = apiPath === '/users/me/profile'
     || apiPath === '/users/me/privacy'

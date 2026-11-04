@@ -1,4 +1,4 @@
-import { apiRequest } from './api.js?v=sb4';
+import { apiRequest } from './api.js?v=sb6';
 import { timeAgo } from './time-ago.js';
 import { protectMedia } from './media-protect.js';
 import { openCamera } from './camera-capture.js';

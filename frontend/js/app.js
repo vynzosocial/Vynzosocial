@@ -1,8 +1,8 @@
 import { restoreSupabaseSession } from './supabase-client.js';
-import { initFeed } from './feed.js?v=prot4';
-import { initStoriesCarousel } from './stories.js?v=prot4';
-import { initHomeFriends } from './home-friends.js?v=block1';
-import { apiRequest } from './api.js?v=sb4';
+import { initFeed } from './feed.js?v=up1';
+import { initStoriesCarousel } from './stories.js?v=up1';
+import { initHomeFriends } from './home-friends.js?v=up1';
+import { apiRequest } from './api.js?v=sb6';
 import { API_ORIGIN } from './config.js?v=sb4';
 
 function renderHomeUser() {

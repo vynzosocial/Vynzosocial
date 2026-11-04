@@ -1375,6 +1375,24 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
     return jsonResponse(200, { conversations }, headers)
   }
 
+  const uploadUrlMatch = route.match(/^\/messages\/([^/]+)\/upload-url$/)
+  if (uploadUrlMatch && method === 'POST') {
+    const [, conversationId] = uploadUrlMatch
+    const members = await getConversationMembership(conversationId, viewerId)
+    if (!members) return jsonResponse(403, { error: 'Access denied to this conversation' }, headers)
+    const body = await request.json().catch(() => ({}))
+    const extensions: Record<string, string> = {
+      'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
+      'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov'
+    }
+    const extension = extensions[String(body?.content_type || '')]
+    if (!extension) return jsonResponse(400, { error: 'Choose a supported image or video file (JPEG, PNG, WEBP, GIF, MP4, WEBM or MOV).' }, headers)
+    const path = `${viewerId}/messages/${conversationId}/${crypto.randomUUID()}.${extension}`
+    const { data, error } = await admin.storage.from('uploads').createSignedUploadUrl(path)
+    throwOnError(error)
+    return jsonResponse(200, { path, token: data!.token }, headers)
+  }
+
   const messagesMatch = route.match(/^\/messages\/([^/]+)\/messages$/)
   if (messagesMatch && method === 'GET') {
     const [, conversationId] = messagesMatch
@@ -1471,6 +1489,7 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
     let content = ''
     let replyToId: string | null = null
     let file: File | null = null
+    let directPath: string | null = null
     if (request.headers.get('content-type')?.toLowerCase().includes('multipart/form-data')) {
       const form = await request.formData()
       content = typeof form.get('content') === 'string' ? String(form.get('content')).trim() : ''
@@ -1481,6 +1500,13 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
       const body = await request.json()
       content = typeof body?.content === 'string' ? body.content.trim() : ''
       if (typeof body?.reply_to_id === 'string') replyToId = body.reply_to_id || null
+      if (typeof body?.media_path === 'string' && body.media_path) {
+        directPath = body.media_path
+        const prefix = `${viewerId}/messages/${conversationId}/`
+        if (!directPath!.startsWith(prefix) || directPath!.includes('..') || !/\.(jpg|png|webp|gif|mp4|webm|mov)$/i.test(directPath!)) {
+          return jsonResponse(400, { error: 'Invalid media upload.' }, headers)
+        }
+      }
     }
     let replyTarget: { id: string; sender_id: string; content: string | null; media_url: string | null; view_once: boolean } | null = null
     if (replyToId) {
@@ -1492,7 +1518,7 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
       if (targetError || !target) return jsonResponse(400, { error: 'The message you are replying to is no longer available.' }, headers)
       replyTarget = target
     }
-    if (!content && !file) return jsonResponse(400, { error: 'Message cannot be empty' }, headers)
+    if (!content && !file && !directPath) return jsonResponse(400, { error: 'Message cannot be empty' }, headers)
     if (content.length > 2000) return jsonResponse(400, { error: 'Message must be 2000 characters or fewer.' }, headers)
 
     for (const member of members) {
@@ -1503,6 +1529,10 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
 
     let mediaUrl: string | null = null
     let mediaPath: string | null = null
+    if (directPath) {
+      mediaPath = directPath
+      mediaUrl = admin.storage.from('uploads').getPublicUrl(directPath).data.publicUrl
+    }
     if (file) {
       if (!allowedMediaTypes.has(file.type)) return jsonResponse(400, { error: 'Choose a supported image or video file.' }, headers)
       if (file.size === 0 || file.size > 50 * 1024 * 1024) return jsonResponse(413, { error: 'Message media must be 50 MB or smaller.' }, headers)
@@ -1654,13 +1684,17 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
     if (!content) return jsonResponse(400, { error: 'Message cannot be empty' }, headers)
     if (content.length > 2000) return jsonResponse(400, { error: 'Message must be 2000 characters or fewer.' }, headers)
     const { data: message, error } = await admin.from('messages')
-      .select('id,sender_id,content,view_once')
+      .select('id,sender_id,content,view_once,created_at')
       .eq('id', messageId)
       .eq('conversation_id', conversationId)
       .eq('sender_id', viewerId)
       .maybeSingle()
     throwOnError(error)
     if (!message) return jsonResponse(404, { error: 'Message not found or you do not own it.' }, headers)
+    const alreadySeen = members.some(member => member.user_id !== viewerId
+      && member.last_read_at
+      && new Date(member.last_read_at).getTime() >= new Date(message.created_at).getTime())
+    if (alreadySeen) return jsonResponse(403, { error: 'This message can no longer be edited because it has already been seen.' }, headers)
     if (message.view_once || !message.content) {
       return jsonResponse(400, { error: 'Only text messages can be edited.' }, headers)
     }

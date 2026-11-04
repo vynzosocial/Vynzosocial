@@ -1,4 +1,4 @@
-import { apiRequest } from './api.js?v=sb4';
+import { apiRequest } from './api.js?v=sb6';
 import { createRealtimeSocket } from './realtime.js?v=sb4';
 import { initCalls } from './calls.js?v=sb4';
 
