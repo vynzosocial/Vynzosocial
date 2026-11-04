@@ -84,7 +84,7 @@ async function getViewer(request: Request): Promise<{ id: string } | null> {
     global: { headers: { Authorization: `Bearer ${token}` } }
   })
   const { data, error } = await authClient.auth.getUser(token)
-  if (error && 'status' in error && (error.status === 401 || error.status === 403)) return null
+  if (error && (('status' in error && Number(error.status) >= 400 && Number(error.status) < 500) || error.name === 'AuthSessionMissingError')) return null
   if (error) throw error
   if (!data.user) return null
   return { id: data.user.id }
@@ -2187,6 +2187,6 @@ Deno.serve(async request => {
     if (code === 'PGRST202' || code === 'PGRST204' || code === 'PGRST205') {
       return jsonResponse(503, { error: 'Supabase Data API schema or permissions are not configured for this operation.' }, headers)
     }
-    return jsonResponse(500, { error: `Supabase could not complete the request. [debug: ${String((error as { message?: string })?.message ?? error).slice(0, 200)} @ ${new URL(request.url).pathname.split('/').slice(-3).join('/')}]` }, headers)
+    return jsonResponse(500, { error: 'Supabase could not complete the request.' }, headers)
   }
 })
