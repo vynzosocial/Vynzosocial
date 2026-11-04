@@ -18,25 +18,40 @@ export async function initFeed() {
   await loadFeed(container);
 }
 
-async function loadFeed(container) {
+const FEED_PAGE = 20;
+
+async function loadFeed(container, offset = 0) {
   try {
-    const scope = ['all', 'me'].includes(window.vynzoFeedScope) ? `?scope=${window.vynzoFeedScope}` : '';
-    const data = await apiRequest(`/posts/feed${scope}`);
+    const params = new URLSearchParams({ limit: String(FEED_PAGE), offset: String(offset) });
+    if (['all', 'me'].includes(window.vynzoFeedScope)) params.set('scope', window.vynzoFeedScope);
+    const data = await apiRequest(`/posts/feed?${params}`);
+    container.querySelector('.feed-more')?.remove();
     if (!data.posts || data.posts.length === 0) {
-      container.innerHTML = '<div class="post-placeholder"><p>No posts yet. Add a photo or video to start the home feed.</p></div>';
+      if (offset === 0) container.innerHTML = '<div class="post-placeholder"><p>No posts yet. Add a photo or video to start the home feed.</p></div>';
       return;
     }
 
     const reel = window.vynzoFeedScope !== 'me';
-    reelObserver?.disconnect();
-    container.classList.toggle('reel-feed', reel);
-    container.innerHTML = '';
-    container.scrollTop = 0;
-    data.posts.forEach(post => {
-      const card = createPostCard(post, reel);
-      container.appendChild(card);
-    });
-    if (reel) observeReels(container);
+    if (offset === 0) {
+      reelObserver?.disconnect();
+      container.classList.toggle('reel-feed', reel);
+      container.innerHTML = '';
+      container.scrollTop = 0;
+    }
+    const cards = data.posts.map(post => createPostCard(post, reel));
+    cards.forEach(card => container.appendChild(card));
+    if (reel) {
+      if (offset === 0) observeReels(container);
+      else cards.forEach(card => reelObserver?.observe(card));
+    }
+    if (data.posts.length >= FEED_PAGE) {
+      const more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'feed-more';
+      more.textContent = 'Load more';
+      more.addEventListener('click', () => { more.disabled = true; loadFeed(container, offset + FEED_PAGE); });
+      container.appendChild(more);
+    }
 
   } catch (err) {
     console.error('Failed to load feed:', err);

@@ -139,3 +139,6 @@
 
 .post-author-link { cursor: pointer; }
 .post-author.post-author-link:hover { text-decoration: underline; }
+
+.feed-more { align-self: center; margin: 4px auto 0; padding: 10px 26px; border-radius: 999px; border: 1px solid var(--border-color, rgba(255,255,255,.3)); background: var(--card-dark, #14101f); color: var(--text-dark, #fff); font-weight: 600; cursor: pointer; }
+.feed-more:disabled { opacity: .5; }
