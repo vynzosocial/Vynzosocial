@@ -1268,7 +1268,7 @@ function replyPreview(
 ) {
   if (!target) return { id: null, unavailable: true }
   const sender = usersById.get(target.sender_id)
-  const text = target.view_once ? '📷 View-once photo' : (target.content || (target.media_url ? '📎 Photo / video' : ''))
+  const text = target.view_once ? '📷 View-once photo' : (target.content || (target.media_url ? (/\.(weba|m4a|ogg)$/i.test(target.media_url) ? '🎤 Voice message' : '📎 Photo / video') : ''))
   return {
     id: target.id,
     sender_id: target.sender_id,
@@ -1383,10 +1383,11 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
     const body = await request.json().catch(() => ({}))
     const extensions: Record<string, string> = {
       'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
-      'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov'
+      'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov',
+      'audio/webm': 'weba', 'audio/mp4': 'm4a', 'audio/ogg': 'ogg'
     }
-    const extension = extensions[String(body?.content_type || '')]
-    if (!extension) return jsonResponse(400, { error: 'Choose a supported image or video file (JPEG, PNG, WEBP, GIF, MP4, WEBM or MOV).' }, headers)
+    const extension = extensions[String(body?.content_type || '').split(';')[0].trim().toLowerCase()]
+    if (!extension) return jsonResponse(400, { error: 'Choose a supported image, video or voice file.' }, headers)
     const path = `${viewerId}/messages/${conversationId}/${crypto.randomUUID()}.${extension}`
     const { data, error } = await admin.storage.from('uploads').createSignedUploadUrl(path)
     throwOnError(error)
@@ -1503,7 +1504,7 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
       if (typeof body?.media_path === 'string' && body.media_path) {
         directPath = body.media_path
         const prefix = `${viewerId}/messages/${conversationId}/`
-        if (!directPath!.startsWith(prefix) || directPath!.includes('..') || !/\.(jpg|png|webp|gif|mp4|webm|mov)$/i.test(directPath!)) {
+        if (!directPath!.startsWith(prefix) || directPath!.includes('..') || !/\.(jpg|png|webp|gif|mp4|webm|mov|weba|m4a|ogg)$/i.test(directPath!)) {
           return jsonResponse(400, { error: 'Invalid media upload.' }, headers)
         }
       }

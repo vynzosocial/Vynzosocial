@@ -14,6 +14,8 @@ let conversationRefreshInterval = null;
 let backgroundRefreshInProgress = false;
 let readReceiptsEnabled = true;
 const MAX_VIDEO_SECONDS = 60;
+const MAX_VOICE_SECONDS = 300;
+const VOICE_PATTERN = /\.(weba|m4a|ogg)(\?.*)?$/i;
 
 export async function initMessaging() {
   const container = document.getElementById('conversations-list');
@@ -154,7 +156,7 @@ function renderConversations(conversations, currentUser) {
       ${avatarMarkup(conv.other_avatar_url, conversationName, 'author-avatar')}
       <div>
         <div style="font-weight:600;">${escapeHtml(conversationName)}</div>
-        <div style="font-size:12px; color:var(--text-muted);">${escapeHtml(conv.last_message ? (conv.last_message.content || (conv.last_message.view_once ? '📷 View-once photo' : conv.last_message.media_url ? '📎 Photo / video' : 'No messages')) : 'No messages')}</div>
+        <div style="font-size:12px; color:var(--text-muted);">${escapeHtml(conv.last_message ? (conv.last_message.content || (conv.last_message.view_once ? '📷 View-once photo' : conv.last_message.media_url ? (VOICE_PATTERN.test(conv.last_message.media_url) ? '🎤 Voice message' : '📎 Photo / video') : 'No messages')) : 'No messages')}</div>
       </div>
     `;
     item.classList.toggle('active', conv.id === currentConversationId);
@@ -237,6 +239,7 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
       <button class="attach-btn" type="button" id="attach-btn" aria-label="Attach photo or video" title="Photo or video (video up to 60 seconds)">📎</button>
       <button class="attach-btn" type="button" id="camera-btn" aria-label="Take a photo" title="Take a photo with the camera">📷</button>
       <input type="file" id="chat-camera-input" accept="image/*" capture="environment" hidden>
+      <button class="attach-btn" type="button" id="voice-btn" aria-label="Record a voice message" title="Record a voice message">🎤</button>
       <input type="file" id="chat-file-input" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" hidden>
       <input type="text" class="chat-input" id="chat-input-field" placeholder="Type a message..." autocomplete="off">
       <button type="submit" class="send-btn"><span>Send</span><span aria-hidden="true">➤</span></button>
@@ -322,6 +325,91 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     const file = fileInput.files?.[0];
     if (file) useFile(file);
   });
+  const voiceButton = document.getElementById('voice-btn');
+  let recorder = null;
+  let recordTimer = null;
+  let recordStarted = 0;
+  const stopTracks = stream => stream.getTracks().forEach(track => track.stop());
+
+  function showAudioPreview(file) {
+    attachment = file;
+    viewOnce = false;
+    preview.replaceChildren();
+    const audio = document.createElement('audio');
+    audio.src = URL.createObjectURL(file);
+    audio.controls = true;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = '×';
+    remove.setAttribute('aria-label', 'Remove voice message');
+    remove.addEventListener('click', clearAttachment);
+    preview.append(audio, remove);
+    preview.hidden = false;
+  }
+
+  function resetVoiceButton() {
+    clearInterval(recordTimer);
+    voiceButton.classList.remove('recording');
+    voiceButton.textContent = '🎤';
+    voiceButton.setAttribute('aria-label', 'Record a voice message');
+  }
+
+  voiceButton.addEventListener('click', async () => {
+    if (recorder) {
+      recorder.stop();
+      return;
+    }
+    status.hidden = true;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      status.textContent = 'Voice messages are not supported on this device.';
+      status.hidden = false;
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      status.textContent = 'Microphone access was denied. Allow the microphone to record voice messages.';
+      status.hidden = false;
+      return;
+    }
+    const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus', 'audio/ogg']
+      .find(type => MediaRecorder.isTypeSupported(type));
+    const chunks = [];
+    try {
+      recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+    } catch {
+      stopTracks(stream);
+      status.textContent = 'Voice messages are not supported on this device.';
+      status.hidden = false;
+      return;
+    }
+    const active = recorder;
+    active.addEventListener('dataavailable', event => { if (event.data.size) chunks.push(event.data); });
+    active.addEventListener('stop', () => {
+      stopTracks(stream);
+      recorder = null;
+      resetVoiceButton();
+      const baseType = (active.mimeType || mimeType || 'audio/webm').split(';')[0];
+      const blob = new Blob(chunks, { type: baseType });
+      const seconds = (Date.now() - recordStarted) / 1000;
+      if (!blob.size || seconds < 0.7) return;
+      const ext = { 'audio/webm': 'weba', 'audio/mp4': 'm4a', 'audio/ogg': 'ogg' }[baseType] || 'weba';
+      showAudioPreview(new File([blob], `voice-${Date.now()}.${ext}`, { type: baseType }));
+    });
+    recordStarted = Date.now();
+    active.start();
+    voiceButton.classList.add('recording');
+    voiceButton.setAttribute('aria-label', 'Stop recording');
+    const tick = () => {
+      const seconds = Math.floor((Date.now() - recordStarted) / 1000);
+      voiceButton.textContent = `⏹ ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+      if (seconds >= MAX_VOICE_SECONDS && active.state === 'recording') active.stop();
+    };
+    tick();
+    recordTimer = setInterval(tick, 500);
+  });
+
   async function useFile(file) {
     status.hidden = true;
     try {
@@ -562,7 +650,8 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     const content = input.value.trim();
     if (!content && !attachment) return;
     if (attachment) {
-      const kind = attachment.type.startsWith('video/') ? 'video' : 'photo';
+      const isVoice = attachment.type.startsWith('audio/');
+      const kind = isVoice ? 'voice message' : attachment.type.startsWith('video/') ? 'video' : 'photo';
       const mb = (attachment.size / (1024 * 1024)).toFixed(1);
       const target = currentConversationMeta ? getConversationName(currentConversationMeta) : 'this chat';
       if (!window.confirm(`Send this ${kind} (${mb} MB) to ${target}?${viewOnce ? '\nIt can be viewed only once.' : ''}`)) return;
@@ -782,7 +871,7 @@ async function shrinkImage(file) {
 
 function replyText(message) {
   if (message.view_once) return '📷 View-once photo';
-  const text = message.content || (message.media_url ? '📎 Photo / video' : '');
+  const text = message.content || (message.media_url ? (VOICE_PATTERN.test(message.media_url) ? '🎤 Voice message' : '📎 Photo / video') : '');
   return text.length > 140 ? `${text.slice(0, 137)}…` : text;
 }
 
@@ -802,6 +891,9 @@ function mediaMarkup(message) {
   if (message.view_once) return '';
   if (!message.media_url) return '';
   const src = /^https?:/i.test(message.media_url) ? message.media_url : `${API_ORIGIN}${message.media_url}`;
+  if (VOICE_PATTERN.test(message.media_url)) {
+    return `<audio class="message-voice" src="${escapeHtml(src)}" controls preload="metadata"></audio>`;
+  }
   if (/\.(mp4|webm|mov)$/i.test(message.media_url)) {
     return `<video class="message-media" src="${escapeHtml(src)}" controls preload="metadata" playsinline></video>`;
   }

@@ -21,7 +21,7 @@ function conversationName(conversation) {
 function previewText(message) {
   if (message.view_once) return '📷 View-once photo';
   if (message.content) return message.content.length > 120 ? `${message.content.slice(0, 117)}…` : message.content;
-  return message.media_url ? '📎 Photo / video' : 'New message';
+  return message.media_url ? (/\.(weba|m4a|ogg)(\?.*)?$/i.test(message.media_url) ? '🎤 Voice message' : '📎 Photo / video') : 'New message';
 }
 
 function beep() {
