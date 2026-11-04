@@ -2,55 +2,93 @@
   'use strict';
 
   var KEY = 'vynzo_lang';
-  var DICT = window.VynzoI18nAr || {};
+  var LANGS = [
+    { code: 'en', name: 'English' },
+    { code: 'hi', name: 'हिन्दी' },
+    { code: 'ar', name: 'العربية', rtl: true },
+    { code: 'fr', name: 'Français' },
+    { code: 'pt', name: 'Português' },
+    { code: 'ru', name: 'Русский' },
+    { code: 'ur', name: 'اردو', rtl: true }
+  ];
+  var DICTS = window.VynzoI18nDicts = window.VynzoI18nDicts || {};
   var root = document.documentElement;
   var lang = readLang();
+  var DICT = {};
+
+  function langInfo(code) {
+    for (var i = 0; i < LANGS.length; i++) if (LANGS[i].code === code) return LANGS[i];
+    return LANGS[0];
+  }
 
   function readLang() {
     try {
       var saved = localStorage.getItem(KEY);
-      if (saved === 'ar' || saved === 'en') return saved;
+      for (var i = 0; i < LANGS.length; i++) if (LANGS[i].code === saved) return saved;
     } catch (e) { /* storage unavailable */ }
     return 'en';
   }
 
+  function loadDict(code, done) {
+    if (code === 'en') { DICT = {}; done(); return; }
+    if (DICTS[code]) { DICT = DICTS[code]; done(); return; }
+    var s = document.createElement('script');
+    s.src = baseUrl + 'i18n-' + code + '.js?v=1';
+    s.onload = function () { DICT = DICTS[code] || {}; done(); };
+    s.onerror = function () { DICT = {}; done(); };
+    document.head.appendChild(s);
+  }
+
+  var baseUrl = (function () {
+    var me = document.currentScript && document.currentScript.src;
+    return me ? me.replace(/[^\/]*(\?.*)?$/, '') : '';
+  })();
+
+  // Parser-blocking load so the saved language is translated before first paint.
+  if (lang !== 'en' && document.readyState === 'loading') {
+    document.write('<script src="' + baseUrl + 'i18n-' + lang + '.js?v=1"><\/script>');
+  }
+  if (DICTS[lang]) DICT = DICTS[lang];
+
   function applyRoot() {
     root.setAttribute('lang', lang);
-    root.setAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
+    root.setAttribute('dir', langInfo(lang).rtl ? 'rtl' : 'ltr');
   }
   applyRoot();
 
   /* ---------- translation lookup ---------- */
   var EDGE = /^([^\p{L}\p{N}]*)([\s\S]*?)([^\p{L}\p{N}]*)$/u;
   var PATTERNS = [
-    [/^(\d+) min ago$/, function (m) { return 'قبل ' + m[1] + ' دقيقة'; }],
-    [/^(\d+) hours? ago$/, function (m) { return 'قبل ' + m[1] + ' ساعة'; }],
-    [/^(\d+) days? ago$/, function (m) { return 'قبل ' + m[1] + ' يوم'; }],
-    [/^Logged in as (.+)$/, function (m) { return 'تم تسجيل الدخول باسم ' + m[1]; }],
-    [/^View (.+)'s profile$/, function (m) { return 'عرض الملف الشخصي لـ ' + m[1]; }],
-    [/^Watch (.+) live$/, function (m) { return 'مشاهدة بث ' + m[1] + ' المباشر'; }],
-    [/^Post by (.+)$/, function (m) { return 'منشور بواسطة ' + m[1]; }]
+    [/^(\d+) min ago$/, '@min', ['n']],
+    [/^(\d+) hours? ago$/, '@hours', ['n']],
+    [/^(\d+) days? ago$/, '@days', ['n']],
+    [/^Logged in as (.+)$/, '@loggedin', ['name']],
+    [/^View (.+)'s profile$/, '@viewprofile', ['name']],
+    [/^Watch (.+) live$/, '@watchlive', ['name']],
+    [/^Post by (.+)$/, '@postby', ['name']]
   ];
-  var countriesAdded = false;
+  var countriesLang = null;
 
   function has(key) { return Object.prototype.hasOwnProperty.call(DICT, key); }
   function norm(s) {
     return s.replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"').replace(/\s+/g, ' ');
   }
-  function arPunct(s) { return s.replace(/\?/g, '؟').replace(/,/g, '،'); }
+  function arPunct(s) {
+    return (lang === 'ar' || lang === 'ur') ? s.replace(/\?/g, '؟').replace(/,/g, '،') : s;
+  }
 
   function addCountryNames() {
-    if (countriesAdded) return;
-    countriesAdded = true;
+    if (countriesLang === lang) return;
+    countriesLang = lang;
     try {
       var en = new Intl.DisplayNames(['en'], { type: 'region' });
-      var ar = new Intl.DisplayNames(['ar'], { type: 'region' });
+      var loc = new Intl.DisplayNames([lang], { type: 'region' });
       var A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
       for (var i = 0; i < 26; i++) {
         for (var j = 0; j < 26; j++) {
           var code = A[i] + A[j];
           var name = en.of(code);
-          if (name && name !== code && !has(name)) DICT[name] = ar.of(code);
+          if (name && name !== code && !has(name)) DICT[name] = loc.of(code);
         }
       }
     } catch (e) { /* Intl.DisplayNames unsupported */ }
@@ -70,7 +108,11 @@
     if (out === null) {
       for (var i = 0; i < PATTERNS.length; i++) {
         var pm = PATTERNS[i][0].exec(body);
-        if (pm) { out = PATTERNS[i][1](pm); break; }
+        if (pm && has(PATTERNS[i][1])) {
+          out = DICT[PATTERNS[i][1]];
+          for (var k = 0; k < PATTERNS[i][2].length; k++) out = out.replace('{' + PATTERNS[i][2][k] + '}', pm[k + 1]);
+          break;
+        }
       }
     }
     if (out === null && body.indexOf(' — ') > 0) {
@@ -94,7 +136,7 @@
 
   function processText(node) {
     var st = textState.get(node);
-    if (lang === 'ar') {
+    if (lang !== 'en') {
       if (st && node.data === st.ar) return;
       var en = node.data;
       if (!/[A-Za-z]/.test(en)) { textState.delete(node); return; }
@@ -115,7 +157,7 @@
     var st = states && states[name];
     var value = el.getAttribute(name);
     if (value === null) return;
-    if (lang === 'ar') {
+    if (lang !== 'en') {
       if (st && value === st.ar) return;
       if (!/[A-Za-z]/.test(value) || el.closest(SKIP_SELECTOR)) return;
       var ar = tr(value);
@@ -173,29 +215,73 @@
 
   function translatePage() {
     observer.disconnect();
-    if (lang === 'ar') addCountryNames();
+    if (lang !== 'en') addCountryNames();
     walk(document);
-    if (lang === 'ar') observe();
+    if (lang !== 'en') observe();
   }
 
   /* ---------- language selector ---------- */
   var buttons = [];
-
-  function labelFor() { return lang === 'ar' ? 'English' : 'العربية'; }
+  var menu = null;
 
   function refreshButtons() {
+    var info = langInfo(lang);
     buttons.forEach(function (b) {
-      var label = b.querySelector('.vi-label');
-      label.textContent = labelFor();
-      b.setAttribute('aria-label', lang === 'ar' ? 'Switch to English' : 'التبديل إلى العربية');
-      b.setAttribute('lang', lang === 'ar' ? 'en' : 'ar');
+      b.querySelector('.vi-label').textContent = info.name;
+      b.setAttribute('aria-label', 'Language: ' + info.name);
     });
+    if (menu) {
+      menu.querySelectorAll('button').forEach(function (btn) {
+        btn.classList.toggle('active', btn.getAttribute('data-code') === lang);
+      });
+    }
+  }
+
+  function closeMenu() { if (menu) menu.hidden = true; }
+
+  function buildMenu() {
+    menu = document.createElement('div');
+    menu.className = 'vynzo-lang-menu';
+    menu.setAttribute('data-no-i18n', '');
+    menu.setAttribute('role', 'menu');
+    menu.hidden = true;
+    LANGS.forEach(function (l) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.setAttribute('role', 'menuitem');
+      b.setAttribute('data-code', l.code);
+      b.setAttribute('lang', l.code);
+      b.textContent = l.name;
+      b.addEventListener('click', function () { closeMenu(); setLang(l.code); });
+      menu.appendChild(b);
+    });
+    document.body.appendChild(menu);
+    document.addEventListener('click', function (e) {
+      if (!menu.hidden && !e.target.closest('.vynzo-lang-btn, .vynzo-lang-menu')) closeMenu();
+    });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
+    window.addEventListener('resize', closeMenu);
+  }
+
+  function openMenu(anchor) {
+    if (!menu) buildMenu();
+    refreshButtons();
+    menu.hidden = false;
+    var r = anchor.getBoundingClientRect();
+    var h = menu.offsetHeight;
+    var w = menu.offsetWidth;
+    var top = r.top > window.innerHeight / 2 ? r.top - h - 6 : r.bottom + 6;
+    top = Math.max(6, Math.min(top, window.innerHeight - h - 6));
+    var left = Math.max(6, Math.min(r.left, window.innerWidth - w - 6));
+    menu.style.top = top + 'px';
+    menu.style.left = left + 'px';
   }
 
   function makeButton(kind) {
     var el = document.createElement('a');
     el.href = '#';
     el.setAttribute('role', 'button');
+    el.setAttribute('aria-haspopup', 'menu');
     el.setAttribute('data-no-i18n', '');
     el.className = 'vynzo-lang-btn ' + kind;
     var icon = document.createElement('span');
@@ -208,7 +294,7 @@
     el.appendChild(label);
     el.addEventListener('click', function (event) {
       event.preventDefault();
-      setLang(lang === 'ar' ? 'en' : 'ar');
+      if (menu && !menu.hidden) closeMenu(); else openMenu(el);
     });
     buttons.push(el);
     return el;
@@ -229,19 +315,24 @@
   }
 
   function setLang(next) {
-    if (next !== 'ar' && next !== 'en') return;
+    if (!LANGS.some(function (l) { return l.code === next; })) return;
     if (next === lang) return;
-    lang = next;
-    try { localStorage.setItem(KEY, lang); } catch (e) { /* ignore */ }
-    applyRoot();
-    translatePage();
-    refreshButtons();
-    window.dispatchEvent(new CustomEvent('vynzo-lang', { detail: lang }));
+    loadDict(next, function () {
+      observer.disconnect();
+      if (lang !== 'en') { lang = 'en'; walk(document); }
+      lang = next;
+      try { localStorage.setItem(KEY, lang); } catch (e) { /* ignore */ }
+      applyRoot();
+      translatePage();
+      refreshButtons();
+      window.dispatchEvent(new CustomEvent('vynzo-lang', { detail: lang }));
+    });
   }
 
   window.VynzoI18n = {
     get: function () { return lang; },
     set: setLang,
+    languages: LANGS,
     toggle: function () { setLang(lang === 'ar' ? 'en' : 'ar'); },
     tr: function (s) { var out = tr(String(s)); return out === null ? s : out; }
   };
@@ -281,14 +372,26 @@
     'html[dir="rtl"] .account-profile-header{padding-right:0;padding-left:34px}',
     'html[dir="rtl"] .protected-badge{left:auto;right:8px}',
     'html[dir="rtl"] input[type="email"],html[dir="rtl"] input[type="tel"],html[dir="rtl"] input[type="password"],',
-    'html[dir="rtl"] input[type="url"]{direction:ltr;text-align:right}'
+    'html[dir="rtl"] input[type="url"]{direction:ltr;text-align:right}',
+    'html[lang="ur"] body{font-family:"Noto Nastaliq Urdu","Segoe UI",Tahoma,Arial,sans-serif;line-height:1.8}',
+    '.vynzo-lang-menu{position:fixed;z-index:3000;min-width:150px;max-height:70vh;overflow:auto;padding:6px;border-radius:12px;',
+    'background:#1b1530;border:1px solid rgba(255,255,255,.2);box-shadow:0 10px 30px rgba(0,0,0,.45)}',
+    '.vynzo-lang-menu[hidden]{display:none}',
+    '.vynzo-lang-menu button{display:block;width:100%;text-align:start;padding:9px 12px;border:0;border-radius:8px;',
+    'background:transparent;color:#fff;font:inherit;font-size:14px;cursor:pointer}',
+    '.vynzo-lang-menu button:hover{background:rgba(255,255,255,.12)}',
+    '.vynzo-lang-menu button.active{background:rgba(189,130,255,.3);font-weight:700}',
+    'html[data-theme="daylight"] .vynzo-lang-menu{background:#fff;border-color:rgba(0,0,0,.15)}',
+    'html[data-theme="daylight"] .vynzo-lang-menu button{color:#111}'
   ].join('');
   (document.head || root).appendChild(style);
 
   /* ---------- start ---------- */
   function start() {
     mountButtons();
-    if (lang === 'ar') translatePage();
+    if (lang === 'en') return;
+    if (Object.keys(DICT).length) translatePage();
+    else loadDict(lang, translatePage);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();

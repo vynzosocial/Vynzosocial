@@ -624,8 +624,14 @@
     'View-once media must be a JPEG, PNG, WEBP, GIF, MP4, WEBM or MOV file': 'يجب أن تكون وسائط العرض مرة واحدة بصيغة JPEG أو PNG أو WEBP أو GIF أو MP4 أو WEBM أو MOV',
     'This file is too large for view-once (photos 10 MB, videos 50 MB)': 'هذا الملف كبير جدًا للعرض مرة واحدة (الصور 10 ميغابايت، الفيديو 50 ميغابايت)',
 
-/*@@*/
-    '__end__': ''
+    '@min': 'قبل {n} دقيقة',
+    '@hours': 'قبل {n} ساعة',
+    '@days': 'قبل {n} يوم',
+    '@loggedin': 'تم تسجيل الدخول باسم {name}',
+    '@viewprofile': 'عرض الملف الشخصي لـ {name}',
+    '@watchlive': 'مشاهدة بث {name} المباشر',
+    '@postby': 'منشور بواسطة {name}',
+/*@@*/    '__end__': ''
   };
-  window.VynzoI18nAr = D;
+  (window.VynzoI18nDicts = window.VynzoI18nDicts || {}).ar = D;
 })();
