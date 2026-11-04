@@ -229,6 +229,7 @@ function createPostCard(post, reel = false) {
     ${post.caption ? `<p class="post-caption">${escapeHtml(post.caption)}</p>` : ''}
   `;
   details.querySelector('.post-author-row').prepend(createAuthorAvatar(post));
+  makeAuthorLink(details.querySelector('.post-author-row'), post);
 
   const actions = document.createElement('div');
   actions.className = 'post-actions';
@@ -244,7 +245,8 @@ function createPostCard(post, reel = false) {
     card.classList.add('insta-card');
     const header = document.createElement('div');
     header.className = 'post-header';
-    header.append(details.querySelector('.post-author-row'));
+    const authorRow = details.querySelector('.post-author-row');
+    header.append(authorRow);
     const caption = details.querySelector('.post-caption');
     details.textContent = '';
     if (caption) details.append(caption);
@@ -503,6 +505,29 @@ function closePostViewer() {
   modal.querySelector('video')?.pause();
   modal.querySelector('#post-viewer-media').replaceChildren();
   modal.classList.remove('active');
+}
+
+function makeAuthorLink(row, post) {
+  if (!post.author_id) return;
+  const open = async event => {
+    event.stopPropagation();
+    try {
+      const { openUserProfile } = await import('./users.js?v=up3');
+      openUserProfile(post.author_id);
+    } catch (err) {
+      console.error('Could not open profile:', err);
+    }
+  };
+  row.querySelectorAll('.post-author, .post-author-avatar').forEach(el => {
+    el.classList.add('post-author-link');
+    el.title = `View @${post.author_username || 'user'}'s profile`;
+    el.setAttribute('role', 'button');
+    el.tabIndex = 0;
+    el.addEventListener('click', open);
+    el.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(event); }
+    });
+  });
 }
 
 function createAuthorAvatar(post) {

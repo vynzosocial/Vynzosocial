@@ -136,3 +136,6 @@
     border-radius: 0;
   }
 }
+
+.post-author-link { cursor: pointer; }
+.post-author.post-author-link:hover { text-decoration: underline; }
