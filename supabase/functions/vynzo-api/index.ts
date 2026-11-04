@@ -667,13 +667,16 @@ async function handleStories(request: Request, viewerId: string, headers: Record
 
   if (route === '/stories' && method === 'GET') {
     const scope = url.searchParams.get('scope') || 'following'
-    const friends = await getAcceptedConnections(viewerId)
-    const { data: follows, error: followsError } = await admin.from('follows')
-      .select('following_id')
-      .eq('follower_id', viewerId)
-      .eq('status', 'accepted')
-    throwOnError(followsError)
-    const followedIds = new Set((follows || []).map(row => row.following_id))
+    const [friends, followsResult] = await Promise.all([
+      scope === 'me' ? Promise.resolve(new Set<string>()) : getAcceptedConnections(viewerId),
+      scope === 'me' || scope === 'all' || scope === 'any'
+        ? Promise.resolve({ data: [], error: null })
+        : admin.from('follows').select('following_id')
+          .eq('follower_id', viewerId)
+          .eq('status', 'accepted')
+    ])
+    throwOnError(followsResult.error)
+    const followedIds = new Set((followsResult.data || []).map(row => row.following_id))
     let query = admin.from('stories')
       .select('id,user_id,media_type,media_url,is_protected,privacy,created_at,expires_at')
       .gt('expires_at', new Date().toISOString())
@@ -944,18 +947,21 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
     const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 10, 1), 50)
     const offset = Math.min(Math.max(Number(url.searchParams.get('offset')) || 0, 0), 999)
     const scope = url.searchParams.get('scope') || 'following'
-    const friends = await getAcceptedConnections(viewerId)
-    const outgoing = await admin.from('follows')
-      .select('following_id')
-      .eq('follower_id', viewerId)
-      .eq('status', 'accepted')
+    const [friends, outgoing] = await Promise.all([
+      scope === 'me' ? Promise.resolve(new Set<string>()) : getAcceptedConnections(viewerId),
+      scope === 'me' || scope === 'all'
+        ? Promise.resolve({ data: [], error: null })
+        : admin.from('follows').select('following_id')
+          .eq('follower_id', viewerId)
+          .eq('status', 'accepted')
+    ])
     throwOnError(outgoing.error)
     const followedIds = new Set((outgoing.data || []).map(row => row.following_id))
 
     let query = admin.from('posts')
       .select('id,user_id,caption,media_type,media_url,thumbnail_url,views_count,likes_count,comments_count,created_at,is_protected,privacy')
       .order('created_at', { ascending: false })
-      .range(0, 999)
+      .range(scope === 'me' ? offset : 0, scope === 'me' ? offset + limit - 1 : 999)
     if (scope === 'me') query = query.eq('user_id', viewerId)
     else if (scope !== 'all') {
       if (!followedIds.size) return jsonResponse(200, { posts: [], limit, offset }, headers)
@@ -976,8 +982,8 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
         const owner = userById.get(post.user_id)
         return owner && canViewPost(post, owner, viewerId, friends)
       })
-      .slice(offset, offset + limit)
-    const postIds = visiblePosts.map(post => post.id)
+    const pagePosts = scope === 'me' ? visiblePosts : visiblePosts.slice(offset, offset + limit)
+    const postIds = pagePosts.map(post => post.id)
     const { data: likedRows, error: likesError } = postIds.length
       ? await admin.from('likes').select('post_id').eq('user_id', viewerId).in('post_id', postIds)
       : { data: [], error: null }
@@ -985,7 +991,7 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
     const likedIds = new Set((likedRows || []).map(row => row.post_id))
 
     return jsonResponse(200, {
-      posts: visiblePosts.map(post => {
+      posts: pagePosts.map(post => {
         const owner = userById.get(post.user_id)!
         return {
           ...post,

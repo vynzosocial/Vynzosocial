@@ -42,19 +42,20 @@ async function refreshHomeUser() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  try {
-    await restoreSupabaseSession();
-  } catch (err) {
+  const sessionRestore = restoreSupabaseSession().catch(err => {
     console.error('Unable to restore the Supabase session:', err);
-  }
+  });
 
   const welcomePage = document.getElementById('welcome-page');
   const feedApp = document.getElementById('feed-app');
 
   if (!localStorage.getItem('vynzo_token')) {
-    welcomePage.hidden = false;
-    feedApp.hidden = true;
-    return;
+    await sessionRestore;
+    if (!localStorage.getItem('vynzo_token')) {
+      welcomePage.hidden = false;
+      feedApp.hidden = true;
+      return;
+    }
   }
 
   welcomePage.hidden = true;
@@ -79,8 +80,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     body.dataset.feedScope = window.vynzoFeedScope;
     document.dispatchEvent(new CustomEvent('vynzo:scope'));
   }));
-  initFeed();
-  initStoriesCarousel();
-  initHomeFriends();
+  void Promise.all([
+    initFeed(),
+    initStoriesCarousel(),
+    initHomeFriends()
+  ]).catch(err => console.error('Failed to initialize the home page:', err));
   console.log('Vynzo Client, Feed & Stories Initialized.');
 });

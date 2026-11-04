@@ -4,6 +4,7 @@ import { openUserProfile } from './users.js';
 import { API_ORIGIN as MEDIA_BASE_URL } from './config.js?v=sb4';
 let refreshInterval = null;
 let loading = false;
+let requestsLoading = false;
 
 export async function initHomeFriends() {
   const container = document.getElementById('home-friends-list');
@@ -11,7 +12,7 @@ export async function initHomeFriends() {
 
   await loadFriends(container);
   clearInterval(refreshInterval);
-  refreshInterval = setInterval(() => loadFriends(container), 5000);
+  refreshInterval = setInterval(() => loadFriends(container), 30000);
 }
 
 async function loadFriends(container) {
@@ -32,7 +33,8 @@ async function loadFriends(container) {
 async function loadRequests() {
   const section = document.getElementById('home-requests-section');
   const list = document.getElementById('home-requests-list');
-  if (!section || !list) return;
+  if (!section || !list || requestsLoading) return;
+  requestsLoading = true;
   try {
     const data = await apiRequest('/users/follow-requests');
     const requests = data.requests || [];
@@ -40,6 +42,8 @@ async function loadRequests() {
     list.replaceChildren(...requests.map(request => createRequestCard(request, loadRequests)));
   } catch (err) {
     console.error('Failed to load friend requests:', err);
+  } finally {
+    requestsLoading = false;
   }
 }
 

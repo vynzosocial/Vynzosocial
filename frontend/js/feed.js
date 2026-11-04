@@ -168,16 +168,20 @@ function createPostCard(post, reel = false) {
 
   const media = document.createElement(isVideo ? 'video' : 'img');
   media.className = 'post-media';
+  if (isVideo) {
+    media.preload = reel ? 'none' : 'metadata';
+  } else {
+    media.loading = 'lazy';
+    media.decoding = 'async';
+  }
   media.src = /^https?:/i.test(post.media_url) ? post.media_url : `${API_ORIGIN}${post.media_url}`;
   if (isVideo && reel) {
     media.muted = reelMuted;
     media.playsInline = true;
     media.loop = true;
-    media.preload = 'auto';
   } else if (isVideo) {
     media.muted = true;
     media.playsInline = true;
-    media.preload = 'metadata';
     media.addEventListener('loadedmetadata', () => {
       if (Number.isFinite(media.duration) && media.duration > 0) media.currentTime = Math.min(0.1, media.duration / 2);
     }, { once: true });

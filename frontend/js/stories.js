@@ -85,10 +85,10 @@ function renderStories(container, usersWithStories) {
     if (latestStory.media_type === 'video') {
       const video = document.createElement('video');
       video.className = 'story-preview-media';
-      video.src = mediaUrl(latestStory.media_url);
       video.muted = true;
       video.playsInline = true;
-      video.preload = 'metadata';
+      video.preload = 'none';
+      video.src = mediaUrl(latestStory.media_url);
       ring.appendChild(video);
       const playIcon = document.createElement('span');
       playIcon.className = 'story-preview-play';
@@ -97,8 +97,10 @@ function renderStories(container, usersWithStories) {
     } else {
       const preview = document.createElement('img');
       preview.className = 'story-preview-media';
-      preview.src = mediaUrl(latestStory.media_url);
       preview.alt = 'Open story';
+      preview.loading = 'lazy';
+      preview.decoding = 'async';
+      preview.src = mediaUrl(latestStory.media_url);
       ring.appendChild(preview);
     }
 
