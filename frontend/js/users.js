@@ -303,7 +303,34 @@ function renderUserProfile(container, profile, posts) {
     }
   });
 
-  header.append(avatar, identity, messageButton, followButton);
+  const blockButton = document.createElement('button');
+  blockButton.type = 'button';
+  blockButton.className = 'account-block-button';
+  blockButton.hidden = profile.is_owner;
+  blockButton.textContent = profile.is_blocked ? 'Unblock' : 'Block';
+  blockButton.style.cssText = 'background:transparent;border:1px solid #e5334b;color:#e5334b;border-radius:999px;padding:6px 14px;cursor:pointer;font:inherit';
+  blockButton.addEventListener('click', async () => {
+    const unblocking = Boolean(profile.is_blocked);
+    const question = unblocking
+      ? `Unblock @${profile.username}?`
+      : `Block @${profile.username}? You will no longer see each other's posts, stories, comments or blogs, and any follow between you will be removed.`;
+    if (!window.confirm(question)) return;
+    blockButton.disabled = true;
+    try {
+      await apiRequest(`/moderation/block/${profile.id}`, { method: unblocking ? 'DELETE' : 'POST' });
+      await openUserProfile(profile.id);
+    } catch (err) {
+      console.error('Could not update block:', err);
+      alert(err.message || 'Could not update block. Please try again.');
+      blockButton.disabled = false;
+    }
+  });
+
+  if (profile.is_blocked) {
+    followButton.hidden = true;
+    messageButton.hidden = true;
+  }
+  header.append(avatar, identity, messageButton, followButton, blockButton);
   container.appendChild(header);
 
   const storyButton = document.createElement('button');
@@ -313,7 +340,7 @@ function renderUserProfile(container, profile, posts) {
   storyButton.hidden = true;
   storyButton.addEventListener('click', () => openUserStories(profile.id));
   container.appendChild(storyButton);
-  apiRequest('/stories?scope=any').then(data => {
+  if (!profile.is_blocked) apiRequest('/stories?scope=any').then(data => {
     if ((data.usersWithStories || []).some(item => item.user_id === profile.id)) {
       storyButton.hidden = false;
       avatar.classList.add('has-story');

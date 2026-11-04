@@ -210,11 +210,13 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
         <div class="chat-call-actions">
           <button type="button" class="chat-call-btn" id="voice-call-btn" aria-label="Voice call" title="Voice call">📞</button>
           <button type="button" class="chat-call-btn" id="video-call-btn" aria-label="Video call" title="Video call">🎥</button>
-          <button type="button" class="chat-call-btn" id="clear-chat-btn" aria-label="Clear chat" title="Clear chat">🗑</button>
+          <button type="button" class="chat-call-btn" id="clear-chat-btn" aria-label="Clear chat" title="Clear chat">🧹</button>
+          <button type="button" class="chat-call-btn" id="delete-chat-btn" aria-label="Delete conversation" title="Delete conversation">🗑</button>
         </div>
       ` : `
         <div class="chat-call-actions">
-          <button type="button" class="chat-call-btn" id="clear-chat-btn" aria-label="Clear chat" title="Clear chat">🗑</button>
+          <button type="button" class="chat-call-btn" id="clear-chat-btn" aria-label="Clear chat" title="Clear chat">🧹</button>
+          <button type="button" class="chat-call-btn" id="delete-chat-btn" aria-label="Delete conversation" title="Delete conversation">🗑</button>
         </div>
       `}
     </div>
@@ -224,6 +226,8 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     <form class="chat-input-form" id="chat-form">
       <div class="chat-attachment-preview" id="chat-attachment-preview" hidden></div>
       <button class="attach-btn" type="button" id="attach-btn" aria-label="Attach photo or video" title="Photo or video (video up to 60 seconds)">📎</button>
+      <button class="attach-btn" type="button" id="camera-btn" aria-label="Take a photo" title="Take a photo with the camera">📷</button>
+      <input type="file" id="chat-camera-input" accept="image/*" capture="environment" hidden>
       <input type="file" id="chat-file-input" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" hidden>
       <input type="text" class="chat-input" id="chat-input-field" placeholder="Type a message..." autocomplete="off">
       <button type="submit" class="send-btn"><span>Send</span><span aria-hidden="true">➤</span></button>
@@ -292,9 +296,24 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
   });
 
   document.getElementById('attach-btn').addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', async () => {
+  const cameraInput = document.getElementById('chat-camera-input');
+  document.getElementById('camera-btn').addEventListener('click', () => {
+    if (window.matchMedia('(pointer: coarse)').matches || !navigator.mediaDevices?.getUserMedia) cameraInput.click();
+    else openCameraCapture(file => useFile(file), message => {
+      status.textContent = message;
+      status.hidden = false;
+    });
+  });
+  cameraInput.addEventListener('change', () => {
+    const file = cameraInput.files?.[0];
+    cameraInput.value = '';
+    if (file) useFile(file);
+  });
+  fileInput.addEventListener('change', () => {
     const file = fileInput.files?.[0];
-    if (!file) return;
+    if (file) useFile(file);
+  });
+  async function useFile(file) {
     status.hidden = true;
     try {
       if (file.type.startsWith('video/')) {
@@ -332,7 +351,7 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
       status.textContent = err.message || 'Could not use this file.';
       status.hidden = false;
     }
-  });
+  }
 
   document.getElementById('clear-chat-btn').addEventListener('click', async () => {
     const conversationId = currentConversationId;
@@ -351,11 +370,58 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     }
   });
 
+  document.getElementById('delete-chat-btn').addEventListener('click', async () => {
+    const conversationId = currentConversationId;
+    if (!window.confirm('Delete this whole conversation? It will be removed for you only; the other person keeps their copy.')) return;
+    status.hidden = true;
+    try {
+      await apiRequest(`/messages/${encodeURIComponent(conversationId)}`, { method: 'DELETE' });
+      if (currentConversationId === conversationId) {
+        currentConversationId = null;
+        currentConversationMeta = null;
+        showChatError('Select a conversation to start chatting.');
+      }
+      refreshConversations().catch(err => {
+        console.error('Could not refresh conversations:', err);
+      });
+    } catch (err) {
+      console.error('Could not delete conversation:', err);
+      status.textContent = err.message || 'Could not delete this conversation. Please try again.';
+      status.hidden = false;
+    }
+  });
+
   input.addEventListener('input', () => {
     status.hidden = true;
   });
 
   msgContainer.addEventListener('click', async event => {
+    const editButton = event.target.closest('.message-edit-button');
+    if (editButton) {
+      const editBubble = editButton.closest('.message-bubble');
+      const contentEl = editBubble.querySelector('.message-content');
+      const edited = window.prompt('Edit your message', contentEl.textContent);
+      const next = edited === null ? '' : edited.trim();
+      if (!next || next === contentEl.textContent) return;
+      status.hidden = true;
+      try {
+        const result = await apiRequest(
+          `/messages/${encodeURIComponent(currentConversationId)}/messages/${encodeURIComponent(editBubble.dataset.messageId)}`,
+          { method: 'PATCH', body: JSON.stringify({ content: next }) }
+        );
+        contentEl.textContent = result.message.content;
+        if (!editBubble.querySelector('.message-edited')) {
+          contentEl.insertAdjacentHTML('afterend', '<span class="message-edited">(edited)</span>');
+        }
+        notifyPeer(currentConversationId);
+        refreshConversations().catch(() => {});
+      } catch (err) {
+        console.error('Could not edit message:', err);
+        status.textContent = err.message || 'Could not edit this message. Please try again.';
+        status.hidden = false;
+      }
+      return;
+    }
     const button = event.target.closest('.message-delete-button');
     if (!button) return;
 
@@ -480,6 +546,53 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
   });
 }
 
+// Desktop camera: live preview in an overlay, returns the captured frame as a JPEG File.
+async function openCameraCapture(onCapture, onError) {
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+  } catch {
+    onError('Camera access was blocked. Allow the camera in your browser settings and try again.');
+    return;
+  }
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px';
+  const video = document.createElement('video');
+  video.autoplay = true;
+  video.muted = true;
+  video.playsInline = true;
+  video.srcObject = stream;
+  video.style.cssText = 'max-width:100%;max-height:70vh;border-radius:12px;background:#000';
+  const bar = document.createElement('div');
+  bar.style.cssText = 'display:flex;gap:12px';
+  const shoot = document.createElement('button');
+  shoot.type = 'button';
+  shoot.textContent = '📸 Take photo';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.textContent = 'Cancel';
+  [shoot, cancel].forEach(b => { b.style.cssText = 'padding:10px 18px;border-radius:999px;border:0;font:inherit;cursor:pointer'; });
+  const close = () => {
+    stream.getTracks().forEach(track => track.stop());
+    overlay.remove();
+  };
+  cancel.addEventListener('click', close);
+  shoot.addEventListener('click', () => {
+    if (!video.videoWidth) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    canvas.toBlob(blob => {
+      close();
+      if (blob) onCapture(new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' }));
+    }, 'image/jpeg', 0.9);
+  });
+  bar.append(shoot, cancel);
+  overlay.append(video, bar);
+  document.body.appendChild(overlay);
+}
+
 function joinConversation(conversationId) {
   socket.timeout(5000).emit('join_conversation', conversationId, (err, response) => {
     if (err || !response || !response.ok) {
@@ -515,6 +628,8 @@ function messageMarkup(message, currentUser) {
         ${mediaMarkup(message)}
         ${message.view_once ? viewOnceMarkup(message, isOutgoing) : ''}
         ${message.content ? `<span class="message-content">${escapeHtml(message.content)}</span>` : ''}
+        ${message.edited_at ? '<span class="message-edited">(edited)</span>' : ''}
+        ${isOutgoing && message.content && !message.view_once ? '<button class="message-edit-button" type="button" aria-label="Edit message" title="Edit message">✎</button>' : ''}
         ${isOutgoing && message.can_unsend !== false ? '<button class="message-delete-button" type="button" aria-label="Delete message" title="Delete for everyone (only until it is seen)">×</button>' : ''}
         ${isOutgoing && readReceiptsEnabled ? `<span class="message-status ${message.seen ? 'seen' : ''}">${message.seen ? 'Seen' : 'Sent'}</span>` : ''}
       </div>

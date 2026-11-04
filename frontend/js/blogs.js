@@ -1,6 +1,6 @@
-import { apiRequest } from './api.js?v=sb4';
+import { apiRequest } from './api.js?v=sb5';
 import { API_ORIGIN } from './config.js?v=sb4';
-import { t, getLang, applyLang, toggleLang } from './blogs-i18n.js';
+import { t, getLang, applyLang, toggleLang } from './blogs-i18n.js?v=8';
 
 if (!localStorage.getItem('vynzo_token')) location.href = '../index.html';
 
@@ -58,7 +58,7 @@ function reportDialog(type, id) {
 
 /* ---------- Cards and feed ---------- */
 function card(a, opts = {}) {
-  const cover = a.cover_url ? `<img class="bl-cover" src="${esc(mediaUrl(a.cover_url))}" alt="" loading="lazy">` : '<div class="bl-cover bl-cover-empty">&#128221;</div>';
+  const cover = a.cover_url ? `<img class="bl-cover" src="${esc(mediaUrl(a.cover_url))}" alt="" loading="lazy" decoding="async">` : '<div class="bl-cover bl-cover-empty">&#128221;</div>';
   const status = opts.status ? `<span class="bl-status s-${a.status}">${t('status_' + a.status)}</span>` : '';
   return `<article class="bl-card" data-id="${a.id}" dir="${dirOf(a.language)}">
     ${cover}
@@ -158,7 +158,8 @@ function fixMedia(root) {
   root.querySelectorAll('img, video').forEach(el => {
     const src = el.getAttribute('src') || '';
     if (src.startsWith('/uploads/')) el.src = API_ORIGIN + src;
-    if (el.tagName === 'IMG') el.loading = 'lazy';
+    if (el.tagName === 'IMG') { el.loading = 'lazy'; el.decoding = 'async'; }
+    if (el.tagName === 'VIDEO') el.preload = 'metadata';
   });
 }
 
@@ -335,8 +336,25 @@ let unloading = false;
 window.addEventListener('pagehide', () => { unloading = true; });
 
 // Uploads an image or video. The marker lets the editor recover the file if the page reloads before the reply arrives.
+// Shrinks large photos to max 1600px WebP before upload so articles load fast. Falls back to the original file.
+async function shrinkImage(file) {
+  if (!/^image\/(png|jpe?g|webp)$/i.test(file.type) || file.size < 200 * 1024) return file;
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
+    canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/webp', 0.78));
+    if (!blob || blob.type !== 'image/webp' || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.webp', { type: 'image/webp' });
+  } catch { return file; }
+}
+
 async function uploadMedia(file, target) {
   sessionStorage.setItem(PENDING_UPLOAD_KEY, JSON.stringify({ target, at: Date.now() }));
+  if (target !== 'video') file = await shrinkImage(file);
   const fd = new FormData();
   fd.append('image', file);
   try {
@@ -458,9 +476,9 @@ async function renderEditor(id) {
     const f = e.target.files[0]; e.target.value = '';
     if (!f) return;
     toast(t('uploading'));
-    try { const url = await uploadImage(f); insertAtCaret(`<img src="${API_ORIGIN}${url}" alt=""><p><br></p>`); snapshot(); toast(t('imageUploaded')); } catch { /* shown */ }
+    try { const url = await uploadImage(f); insertAtCaret(`<img src="${esc(mediaUrl(url))}" alt=""><p><br></p>`); snapshot(); toast(t('imageUploaded')); } catch { /* shown */ }
   };
-  const videoHtml = url => `<video src="${API_ORIGIN}${url}" controls preload="metadata" playsinline></video><p><br></p>`;
+  const videoHtml = url => `<video src="${esc(mediaUrl(url))}" controls preload="metadata" playsinline></video><p><br></p>`;
   view.querySelector('#ed-vid-file').onchange = async e => {
     const f = e.target.files[0]; e.target.value = '';
     if (!f) return;

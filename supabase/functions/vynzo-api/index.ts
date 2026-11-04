@@ -1,4 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.91.0'
+import { GUIDELINES_MESSAGE, suspensionMessage, violatesGuidelines } from './community-rules.ts'
+import { handleBlogs } from './blogs.ts'
+import { startBlogAutoReview } from './blog-autoreview.ts'
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')
 const secretKeys = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') || '{}')
@@ -11,6 +14,8 @@ if (!supabaseUrl || !serviceRoleKey) {
 const admin = createClient(supabaseUrl, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false }
 })
+
+startBlogAutoReview(admin)
 
 const allowedOrigins = new Set([
   'https://www.vynzosocial.com',
@@ -95,6 +100,24 @@ async function getAcceptedConnections(userId: string): Promise<Set<string>> {
   const follows = new Set((outgoing.data || []).map(row => row.following_id))
   const followedBy = new Set((incoming.data || []).map(row => row.follower_id))
   return new Set([...follows].filter(id => followedBy.has(id)))
+}
+
+// Everyone the viewer blocked plus everyone who blocked the viewer; content from either side is hidden.
+async function getBlockedIds(viewerId: string): Promise<Set<string>> {
+  const { data, error } = await admin.from('blocks').select('blocker_id,blocked_id')
+    .or(`blocker_id.eq.${viewerId},blocked_id.eq.${viewerId}`)
+  throwOnError(error)
+  return new Set((data || []).map(row => row.blocker_id === viewerId ? row.blocked_id : row.blocker_id))
+}
+
+async function getBlockRelation(viewerId: string, targetId: string) {
+  const [mine, theirs] = await Promise.all([
+    admin.from('blocks').select('blocker_id').eq('blocker_id', viewerId).eq('blocked_id', targetId).maybeSingle(),
+    admin.from('blocks').select('blocker_id').eq('blocker_id', targetId).eq('blocked_id', viewerId).maybeSingle()
+  ])
+  throwOnError(mine.error)
+  throwOnError(theirs.error)
+  return { blockedByMe: Boolean(mine.data), blockedMe: Boolean(theirs.data) }
 }
 
 async function getFollowStatus(viewerId: string, userIds: string[]) {
@@ -203,11 +226,13 @@ async function getPostContext(postId: string, viewerId: string) {
   throwOnError(postError)
   if (!post) return null
 
-  const [{ data: owner, error: ownerError }, friends] = await Promise.all([
+  const [{ data: owner, error: ownerError }, friends, blocked] = await Promise.all([
     admin.from('users').select('id,is_private,posts_privacy').eq('id', post.user_id).maybeSingle(),
-    getAcceptedConnections(viewerId)
+    getAcceptedConnections(viewerId),
+    getBlockedIds(viewerId)
   ])
   throwOnError(ownerError)
+  if (blocked.has(post.user_id)) return null
   if (!owner || !canViewPost(post, owner, viewerId, friends)) return null
   return { post, owner }
 }
@@ -233,11 +258,13 @@ async function getStoryContext(storyId: string, viewerId: string) {
   throwOnError(storyError)
   if (!story) return null
 
-  const [{ data: owner, error: ownerError }, friends] = await Promise.all([
+  const [{ data: owner, error: ownerError }, friends, blocked] = await Promise.all([
     admin.from('users').select('id,is_private').eq('id', story.user_id).maybeSingle(),
-    getAcceptedConnections(viewerId)
+    getAcceptedConnections(viewerId),
+    getBlockedIds(viewerId)
   ])
   throwOnError(ownerError)
+  if (blocked.has(story.user_id)) return null
   if (!owner || !canViewStory(story, owner, viewerId, friends)) return null
   return { story, owner }
 }
@@ -276,6 +303,7 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
       }
     }
     if (bio.length > 500) return jsonResponse(400, { error: 'Bio must be 500 characters or fewer.' }, headers)
+    if (violatesGuidelines(bio, username)) return jsonResponse(422, { error: GUIDELINES_MESSAGE, code: 'guidelines' }, headers)
     const { data: user, error } = await admin.from('users').update({ username, bio, updated_at: new Date().toISOString() })
       .eq('id', viewerId)
       .select('id,username,email,display_name,bio,avatar_url')
@@ -418,18 +446,19 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
     if (query.length < 2 || query.length > 50) return jsonResponse(400, { error: 'Search must be between 2 and 50 characters' }, headers)
     const escaped = query.replace(/[\\%_]/g, character => `\\${character}`)
     const pattern = `%${escaped}%`
-    const [usernameResults, displayNameResults] = await Promise.all([
+    const [usernameResults, displayNameResults, blockedIds] = await Promise.all([
       admin.from('users').select('id,username,display_name,avatar_url,is_private')
-        .neq('id', viewerId).ilike('username', pattern).limit(20),
+        .neq('id', viewerId).ilike('username', pattern).limit(40),
       admin.from('users').select('id,username,display_name,avatar_url,is_private')
-        .neq('id', viewerId).ilike('display_name', pattern).limit(20)
+        .neq('id', viewerId).ilike('display_name', pattern).limit(40),
+      getBlockedIds(viewerId)
     ])
     throwOnError(usernameResults.error)
     throwOnError(displayNameResults.error)
     const users = [...new Map([
       ...(usernameResults.data || []),
       ...(displayNameResults.data || [])
-    ].map(user => [user.id, user])).values()].slice(0, 20)
+    ].filter(user => !blockedIds.has(user.id)).map(user => [user.id, user])).values()].slice(0, 20)
     const ids = (users || []).map(user => user.id)
     const [followStatus, summaries] = await Promise.all([getFollowStatus(viewerId, ids), getUserSummaries(ids)])
     const results = ids.map(id => {
@@ -459,6 +488,10 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
       const { data: target, error: targetError } = await admin.from('users').select('id').eq('id', targetId).maybeSingle()
       throwOnError(targetError)
       if (!target) return jsonResponse(404, { error: 'Account not found' }, headers)
+      const relationBlock = await getBlockRelation(viewerId, targetId)
+      if (relationBlock.blockedByMe || relationBlock.blockedMe) {
+        return jsonResponse(403, { error: relationBlock.blockedByMe ? 'Unblock this account first.' : 'You cannot follow this account.' }, headers)
+      }
       const { error } = await admin.from('follows').upsert(
         { follower_id: viewerId, following_id: targetId, status: 'accepted' },
         { onConflict: 'follower_id,following_id' }
@@ -487,6 +520,34 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
     throwOnError(error)
     if (!user) return jsonResponse(404, { error: 'Account not found' }, headers)
     const isOwner = viewerId === targetId
+    if (!isOwner) {
+      const blockState = await getBlockRelation(viewerId, targetId)
+      if (blockState.blockedMe) return jsonResponse(404, { error: 'Account not found' }, headers)
+      if (blockState.blockedByMe) {
+        return jsonResponse(200, {
+          profile: {
+            id: user.id,
+            username: user.username,
+            display_name: user.display_name,
+            avatar_url: user.avatar_url,
+            is_owner: false,
+            is_blocked: true,
+            is_following: false,
+            follows_me: false,
+            follow_requested: false,
+            is_friend: false,
+            can_message: false,
+            message_block_reason: 'You blocked this account.',
+            can_view_content: false,
+            posts_count: null,
+            followers_count: 0,
+            friends_count: 0,
+            following_count: null
+          },
+          posts: []
+        }, headers)
+      }
+    }
     const [identifierResult, relation] = await Promise.all([
       isOwner
         ? admin.rpc('get_vynzo_id', { target_user_id: targetId })
@@ -658,7 +719,23 @@ async function handleModeration(request: Request, viewerId: string, headers: Rec
       { onConflict: 'blocker_id,blocked_id', ignoreDuplicates: true }
     )
     throwOnError(error)
-    return jsonResponse(200, { message: 'User blocked successfully' }, headers)
+    await Promise.all([
+      admin.from('follows').delete().eq('follower_id', viewerId).eq('following_id', blockedId),
+      admin.from('follows').delete().eq('follower_id', blockedId).eq('following_id', viewerId)
+    ])
+    return jsonResponse(200, { message: 'User blocked successfully', is_blocked: true }, headers)
+  }
+  if (blockMatch && request.method === 'DELETE') {
+    const { error } = await admin.from('blocks').delete().eq('blocker_id', viewerId).eq('blocked_id', blockMatch[1])
+    throwOnError(error)
+    return jsonResponse(200, { message: 'User unblocked', is_blocked: false }, headers)
+  }
+  if (route === '/moderation/blocks' && request.method === 'GET') {
+    const { data, error } = await admin.from('blocks').select('blocked_id').eq('blocker_id', viewerId)
+    throwOnError(error)
+    const ids = (data || []).map(row => row.blocked_id)
+    const summaries = await getUserSummaries(ids, false)
+    return jsonResponse(200, { users: ids.map(id => summaries.get(id)).filter(Boolean) }, headers)
   }
   return jsonResponse(404, { error: 'Endpoint not found' }, headers)
 }
@@ -696,13 +773,14 @@ async function handleStories(request: Request, viewerId: string, headers: Record
       query = query.in('user_id', [...followedIds])
     }
 
-    const [{ data: stories, error }, { data: viewer, error: viewerError }] = await Promise.all([
+    const [{ data: stories, error }, { data: viewer, error: viewerError }, blockedIds] = await Promise.all([
       query,
-      admin.from('users').select('is_admin').eq('id', viewerId).maybeSingle()
+      admin.from('users').select('is_admin').eq('id', viewerId).maybeSingle(),
+      getBlockedIds(viewerId)
     ])
     throwOnError(error)
     throwOnError(viewerError)
-    const userIds = [...new Set((stories || []).map(story => story.user_id))]
+    const userIds = [...new Set((stories || []).map(story => story.user_id))].filter(id => !blockedIds.has(id))
     const { data: users, error: usersError } = userIds.length
       ? await admin.from('users').select('id,username,display_name,avatar_url,is_private').in('id', userIds)
       : { data: [], error: null }
@@ -901,8 +979,9 @@ async function handleStories(request: Request, viewerId: string, headers: Record
       : { data: [], error: null }
     throwOnError(usersError)
     const userById = new Map((users || []).map(user => [user.id, user]))
+    const blockedForStoryComments = await getBlockedIds(viewerId)
     return jsonResponse(200, {
-      comments: (comments || []).map(comment => ({
+      comments: (comments || []).filter(comment => !blockedForStoryComments.has(comment.user_id)).map(comment => ({
         ...comment,
         ...userById.get(comment.user_id)
       }))
@@ -914,6 +993,7 @@ async function handleStories(request: Request, viewerId: string, headers: Record
     const content = typeof body?.content === 'string' ? body.content.trim() : ''
     if (!content) return jsonResponse(400, { error: 'Comment content cannot be empty' }, headers)
     if (content.length > 500) return jsonResponse(400, { error: 'Comment must be 500 characters or fewer' }, headers)
+    if (violatesGuidelines(content)) return jsonResponse(422, { error: GUIDELINES_MESSAGE, code: 'guidelines' }, headers)
     const { data: comment, error } = await admin.from('story_comments')
       .insert({ story_id: storyId, user_id: viewerId, content })
       .select('id,story_id,user_id,content,created_at')
@@ -977,7 +1057,8 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
 
     const { data: candidates, error } = await query
     throwOnError(error)
-    const userIds = [...new Set((candidates || []).map(post => post.user_id))]
+    const blockedIds = await getBlockedIds(viewerId)
+    const userIds = [...new Set((candidates || []).map(post => post.user_id))].filter(id => !blockedIds.has(id))
     const { data: users, error: usersError } = userIds.length
       ? await admin.from('users').select('id,username,display_name,avatar_url,is_private,posts_privacy').in('id', userIds)
       : { data: [], error: null }
@@ -1024,6 +1105,8 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
     if (file.size > 50 * 1024 * 1024 || !allowedMediaTypes.has(file.type)) {
       return jsonResponse(400, { error: 'Choose a supported image or video file up to 50 MB.' }, headers)
     }
+    const caption = String(form.get('caption') || '').slice(0, 2200)
+    if (violatesGuidelines(caption)) return jsonResponse(422, { error: GUIDELINES_MESSAGE, code: 'guidelines' }, headers)
 
     const extension = file.name.match(/\.[a-zA-Z0-9]{1,10}$/)?.[0] || ''
     const path = `${viewerId}/${crypto.randomUUID()}${extension}`
@@ -1036,7 +1119,7 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
     const mediaUrl = admin.storage.from('uploads').getPublicUrl(path).data.publicUrl
     const { data: post, error } = await admin.from('posts').insert({
       user_id: viewerId,
-      caption: String(form.get('caption') || '').slice(0, 2200),
+      caption,
       media_type: file.type.startsWith('video/') ? 'video' : 'image',
       media_url: mediaUrl,
       is_protected: ['true', '1', 'on'].includes(String(form.get('protected') || '').toLowerCase())
@@ -1108,8 +1191,9 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
       : { data: [], error: null }
     throwOnError(usersError)
     const userById = new Map((users || []).map(user => [user.id, user]))
+    const blockedForComments = await getBlockedIds(viewerId)
     return jsonResponse(200, {
-      comments: (comments || []).map(comment => {
+      comments: (comments || []).filter(comment => !blockedForComments.has(comment.user_id)).map(comment => {
         const user = userById.get(comment.user_id)
         return {
           id: comment.id,
@@ -1130,6 +1214,7 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
     const content = String(body?.content || '').trim()
     if (!content) return jsonResponse(400, { error: 'Comment content cannot be empty' }, headers)
     if (content.length > 500) return jsonResponse(400, { error: 'Comment must be 500 characters or fewer.' }, headers)
+    if (violatesGuidelines(content)) return jsonResponse(422, { error: GUIDELINES_MESSAGE, code: 'guidelines' }, headers)
     const { data: comment, error } = await admin.from('comments')
       .insert({ post_id: postId, user_id: viewerId, content })
       .select('id,post_id,user_id,content,created_at')
@@ -1197,7 +1282,7 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
 
   if (route === '/messages' && method === 'GET') {
     const { data: memberships, error: membershipsError } = await admin.from('conversation_members')
-      .select('conversation_id,cleared_at,joined_at')
+      .select('conversation_id,cleared_at,joined_at,deleted_at')
       .eq('user_id', viewerId)
       .order('joined_at', { ascending: false })
       .limit(100)
@@ -1234,6 +1319,7 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
       member.conversation_id,
       member.cleared_at ? new Date(member.cleared_at).getTime() : Number.NEGATIVE_INFINITY
     ]))
+    const deletedByConversation = new Map((memberships || []).map(member => [member.conversation_id, member.deleted_at]))
     const latestMessageByConversation = new Map<string, NonNullable<typeof messagesResult.data>[number]>()
     for (const message of messagesResult.data || []) {
       if (new Date(message.created_at).getTime() <= (clearedAtByConversation.get(message.conversation_id) ?? Number.NEGATIVE_INFINITY)) continue
@@ -1249,7 +1335,10 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
       membersByConversation.set(member.conversation_id, current)
     }
     const usersById = new Map((peerResult.data || []).map(user => [user.id, user]))
-    const conversations = (conversationsResult.data || []).map(conversation => {
+    const conversations = (conversationsResult.data || []).filter(conversation => {
+      const deletedAt = deletedByConversation.get(conversation.id)
+      return !deletedAt || latestMessageByConversation.has(conversation.id)
+    }).map(conversation => {
       const peer = (membersByConversation.get(conversation.id) || [])
         .filter(member => member.user_id !== viewerId)
         .sort((a, b) => String(a.joined_at).localeCompare(String(b.joined_at)))
@@ -1280,7 +1369,7 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
     const otherMembers = members.filter(member => member.user_id !== viewerId)
     const senderIds = [...new Set([...members.map(member => member.user_id), viewerId])]
     let messageQuery = admin.from('messages')
-      .select('id,conversation_id,sender_id,content,media_url,created_at,view_once,viewed_at')
+      .select('id,conversation_id,sender_id,content,media_url,created_at,view_once,viewed_at,edited_at')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true })
       .limit(500)
@@ -1498,6 +1587,52 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
     })
   }
 
+  const editMessageMatch = route.match(/^\/messages\/([^/]+)\/messages\/([^/]+)$/)
+  if (editMessageMatch && method === 'PATCH') {
+    const [, conversationId, messageId] = editMessageMatch
+    const members = await getConversationMembership(conversationId, viewerId)
+    if (!members) return jsonResponse(403, { error: 'Access denied to this conversation' }, headers)
+    const body = await request.json().catch(() => ({}))
+    const content = typeof body?.content === 'string' ? body.content.trim() : ''
+    if (!content) return jsonResponse(400, { error: 'Message cannot be empty' }, headers)
+    if (content.length > 2000) return jsonResponse(400, { error: 'Message must be 2000 characters or fewer.' }, headers)
+    const { data: message, error } = await admin.from('messages')
+      .select('id,sender_id,content,view_once')
+      .eq('id', messageId)
+      .eq('conversation_id', conversationId)
+      .eq('sender_id', viewerId)
+      .maybeSingle()
+    throwOnError(error)
+    if (!message) return jsonResponse(404, { error: 'Message not found or you do not own it.' }, headers)
+    if (message.view_once || !message.content) {
+      return jsonResponse(400, { error: 'Only text messages can be edited.' }, headers)
+    }
+    if (content === message.content) return jsonResponse(200, { message }, headers)
+    const { data: updated, error: updateError } = await admin.from('messages')
+      .update({ content, edited_at: new Date().toISOString() })
+      .eq('id', messageId)
+      .eq('sender_id', viewerId)
+      .select('id,conversation_id,sender_id,content,media_url,created_at,view_once,viewed_at,edited_at')
+      .single()
+    throwOnError(updateError)
+    return jsonResponse(200, { message: updated }, headers)
+  }
+
+  const deleteConversationMatch = route.match(/^\/messages\/([^/]+)$/)
+  if (deleteConversationMatch && method === 'DELETE') {
+    const [, conversationId] = deleteConversationMatch
+    const now = new Date().toISOString()
+    const { data, error } = await admin.from('conversation_members')
+      .update({ cleared_at: now, deleted_at: now })
+      .eq('conversation_id', conversationId)
+      .eq('user_id', viewerId)
+      .select('deleted_at')
+      .maybeSingle()
+    throwOnError(error)
+    if (!data) return jsonResponse(403, { error: 'Access denied to this conversation' }, headers)
+    return jsonResponse(200, { deleted_at: data.deleted_at }, headers)
+  }
+
   const deleteMessageMatch = route.match(/^\/messages\/([^/]+)\/messages\/([^/]+)$/)
   if (deleteMessageMatch && method === 'DELETE') {
     const [, conversationId, messageId] = deleteMessageMatch
@@ -1664,7 +1799,8 @@ async function handleLive(request: Request, viewerId: string | undefined, header
       ...(followingResult.data || []).map(row => row.following_id),
       ...(followedByResult.data || []).map(row => row.follower_id)
     ])
-    const liveStreams = sessions.map(session => {
+    const blockedForLive = viewerId ? await getBlockedIds(viewerId) : new Set<string>()
+    const liveStreams = sessions.filter(session => !blockedForLive.has(session.host_id)).map(session => {
       const host = usersById.get(session.host_id)
       return {
         id: session.id,
@@ -1689,6 +1825,7 @@ async function handleLive(request: Request, viewerId: string | undefined, header
       ? body.category.trim().slice(0, 100)
       : 'General'
     if (!title) return jsonResponse(400, { error: 'Livestream title is required' }, headers)
+    if (violatesGuidelines(title, category)) return jsonResponse(422, { error: GUIDELINES_MESSAGE, code: 'guidelines' }, headers)
 
     const { data: session, error: insertError } = await admin.from('live_sessions')
       .insert({ host_id: viewerId, title, category, is_active: true })
@@ -1716,6 +1853,7 @@ async function handleLive(request: Request, viewerId: string | undefined, header
     const body = await request.json()
     const title = typeof body?.title === 'string' ? body.title.trim().slice(0, 100) : ''
     if (!title) return jsonResponse(400, { error: 'Livestream title is required' }, headers)
+    if (violatesGuidelines(title)) return jsonResponse(422, { error: GUIDELINES_MESSAGE, code: 'guidelines' }, headers)
     const { data: session, error } = await admin.from('live_sessions')
       .update({ title })
       .eq('id', sessionId)
@@ -1871,8 +2009,16 @@ Deno.serve(async request => {
     if (endpointSegments[0] === 'auth' && endpointSegments[1] === 'register' && request.method === 'POST') {
       return await handlePhoneRegister(request, headers)
     }
+    const isRead = request.method === 'GET' || request.method === 'HEAD'
+    const suspensionExempt = (endpointSegments[0] === 'moderation' && endpointSegments[1] === 'report')
+      || (endpointSegments[0] === 'blogs' && endpointSegments[2] === 'appeal')
+    if (viewer && !isRead && !suspensionExempt) {
+      const suspended = await suspensionMessage(admin, viewer.id)
+      if (suspended) return jsonResponse(403, { error: suspended, code: 'suspended' }, headers)
+    }
     if (endpointSegments[0] === 'live') return await handleLive(request, viewer?.id, headers)
     if (!viewer) return jsonResponse(401, { error: 'Invalid or expired session.' }, headers)
+    if (endpointSegments[0] === 'blogs') return await handleBlogs(request, viewer.id, headers, admin)
     if (endpointSegments[0] === 'posts') return await handlePosts(request, viewer.id, headers)
     if (endpointSegments[0] === 'users') return await handleUsers(request, viewer.id, headers)
     if (endpointSegments[0] === 'moderation') return await handleModeration(request, viewer.id, headers)

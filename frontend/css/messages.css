@@ -301,7 +301,8 @@
   white-space: pre-wrap;
 }
 
-.message-delete-button {
+.message-delete-button,
+.message-edit-button {
   flex: 0 0 auto;
   padding: 0 2px;
   border: 0;
@@ -313,8 +314,20 @@
   opacity: 0.72;
 }
 
+.message-edit-button {
+  font-size: 15px;
+}
+
+.message-edited {
+  flex: 0 0 auto;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
 .message-delete-button:hover,
-.message-delete-button:focus-visible {
+.message-delete-button:focus-visible,
+.message-edit-button:hover,
+.message-edit-button:focus-visible {
   color: #fff;
   opacity: 1;
 }

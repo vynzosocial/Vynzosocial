@@ -24,6 +24,8 @@ export async function apiRequest(endpoint, options = {}) {
     || /^\/live\/[^/]+\/(title|end|heartbeat)$/.test(apiPath);
   const useSupabaseApi = Boolean(supabase)
     && (apiPath.startsWith('/posts/')
+      || apiPath === '/blogs'
+      || apiPath.startsWith('/blogs/')
       || apiPath === '/stories'
       || apiPath.startsWith('/stories/')
       || useSupabaseMessageApi
