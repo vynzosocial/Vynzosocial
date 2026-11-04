@@ -142,6 +142,11 @@ function renderConversations(conversations, currentUser) {
   if (!container) return;
 
   const unreadOf = conv => (conv.id === currentConversationId ? 0 : (conv.unread_count || 0));
+  const timeOf = conv => new Date(conv.last_message?.created_at || conv.created_at || 0).getTime();
+  conversations = [...conversations].sort((a, b) => {
+    const unreadDiff = (unreadOf(b) > 0) - (unreadOf(a) > 0);
+    return unreadDiff || timeOf(b) - timeOf(a);
+  });
   const total = conversations.reduce((sum, conv) => sum + unreadOf(conv), 0);
   const totalBadge = document.getElementById('unread-total');
   if (totalBadge) {
