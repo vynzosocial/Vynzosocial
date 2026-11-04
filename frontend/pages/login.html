@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/png" href="../assets/favicon-32.png">
-    <title>Vynzo â€” Login</title>
+    <title>Vynzo — Login</title>
     <link rel="stylesheet" href="../css/variables.css">
     <link rel="stylesheet" href="../css/reset.css">
     <style>
@@ -30,8 +30,8 @@
         <div id="error-message" class="error"></div>
         <form id="login-form">
             <div class="form-group">
-                <label for="email">Email</label>
-                <input type="email" id="email" required autocomplete="email">
+                <label for="email">Email, username or phone number</label>
+                <input type="text" id="email" required autocomplete="username" maxlength="254">
             </div>
             <div class="form-group">
                 <label for="password">Password</label>
@@ -47,6 +47,6 @@
             Don't have an account? <a href="register.html">Register</a>
         </div>
     </div>
-    <script type="module" src="../js/auth.js?v=email-only1"></script>
+    <script type="module" src="../js/auth.js?v=phone1"></script>
 </body>
 </html>

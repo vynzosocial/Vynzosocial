@@ -341,8 +341,8 @@ function setupMessagePrivacy(current) {
 }
 function privacyHint(isPrivate) {
   return isPrivate
-    ? 'On Ã¢â‚¬â€ only friends can see your posts, videos and stories.'
-    : 'Off Ã¢â‚¬â€ everyone can see your posts, videos and stories.';
+    ? 'On — only friends can see your posts, videos and stories.'
+    : 'Off — everyone can see your posts, videos and stories.';
 }
 
 function setupPrivacyToggle(isPrivate) {

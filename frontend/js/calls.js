@@ -62,7 +62,7 @@ export async function startCall({ conversationId, calleeId, name, avatarUrl, vid
       timerId: null,
       seconds: 0
     };
-    renderCall('Callingâ€¦');
+    renderCall('Calling…');
   });
 }
 
@@ -126,7 +126,7 @@ async function acceptIncoming() {
   };
   incoming = null;
   createPeerConnection();
-  renderCall('Connectingâ€¦');
+  renderCall('Connecting…');
   socket.emit('call_accept', { callId: data.callId });
 }
 
@@ -165,7 +165,7 @@ function createPeerConnection() {
 
 async function handleAccepted(data) {
   if (!call || call.callId !== data.callId || !call.isCaller) return;
-  setStatus('Connectingâ€¦');
+  setStatus('Connecting…');
   const pc = createPeerConnection();
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
@@ -271,10 +271,10 @@ function renderIncoming() {
     <div class="call-panel call-incoming">
       ${avatarHtml(from.avatar_url, name)}
       <h2>${escapeHtml(name)}</h2>
-      <p>Incoming ${incoming.video ? 'video' : 'voice'} callâ€¦</p>
+      <p>Incoming ${incoming.video ? 'video' : 'voice'} call…</p>
       <div class="call-actions">
-        <button type="button" class="call-btn call-decline" id="call-decline" aria-label="Decline">âœ•<span>Decline</span></button>
-        <button type="button" class="call-btn call-accept" id="call-accept" aria-label="Accept">${incoming.video ? 'ðŸŽ¥' : 'ðŸ“ž'}<span>Accept</span></button>
+        <button type="button" class="call-btn call-decline" id="call-decline" aria-label="Decline">✕<span>Decline</span></button>
+        <button type="button" class="call-btn call-accept" id="call-accept" aria-label="Accept">${incoming.video ? '🎥' : '📞'}<span>Accept</span></button>
       </div>
     </div>
   `);
@@ -295,9 +295,9 @@ function renderCall(status) {
       </header>
       ${call.video ? '<video id="call-local" class="call-local" autoplay playsinline muted></video>' : ''}
       <div class="call-actions">
-        <button type="button" class="call-btn call-toggle" id="call-mute" aria-label="Mute microphone">ðŸŽ¤<span>Mute</span></button>
-        ${call.video ? '<button type="button" class="call-btn call-toggle" id="call-camera" aria-label="Turn camera off">ðŸ“·<span>Camera</span></button>' : ''}
-        <button type="button" class="call-btn call-decline" id="call-end" aria-label="End call">âœ•<span>End</span></button>
+        <button type="button" class="call-btn call-toggle" id="call-mute" aria-label="Mute microphone">🎤<span>Mute</span></button>
+        ${call.video ? '<button type="button" class="call-btn call-toggle" id="call-camera" aria-label="Turn camera off">📷<span>Camera</span></button>' : ''}
+        <button type="button" class="call-btn call-decline" id="call-end" aria-label="End call">✕<span>End</span></button>
       </div>
     </div>
   `);

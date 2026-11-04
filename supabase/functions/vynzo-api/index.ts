@@ -1738,6 +1738,54 @@ async function handleLive(request: Request, viewerId: string | undefined, header
   return jsonResponse(404, { error: 'Endpoint not found' }, headers)
 }
 
+function normalizeLoginPhone(value: string): string | null {
+  const digits = value.replace(/[\s().-]/g, '')
+  if (!/^\+?\d{8,15}$/.test(digits)) return null
+  return digits.startsWith('+') ? digits : `+${digits}`
+}
+
+// Signs in with an email, username or phone number and returns the Supabase session.
+async function handlePhoneLogin(request: Request, headers: Record<string, string>): Promise<Response> {
+  const body = await request.json().catch(() => null)
+  const identifier = typeof body?.identifier === 'string' ? body.identifier.trim() : ''
+  const password = typeof body?.password === 'string' ? body.password : ''
+  const invalid = () => jsonResponse(401, { error: 'Invalid username, email, phone number or password' }, headers)
+  if (!identifier || !password || identifier.length > 254) {
+    return jsonResponse(400, { error: 'Enter your email, username or phone number and your password.' }, headers)
+  }
+
+  let email: string | null = null
+  if (identifier.includes('@')) {
+    email = identifier.toLowerCase()
+  } else {
+    const phone = normalizeLoginPhone(identifier)
+    const query = phone
+      ? admin.from('users').select('email').in('phone', [phone, phone.slice(1)])
+      : admin.from('users').select('email').ilike('username', identifier.replace(/[%_\\]/g, '\\$&'))
+    const { data, error } = await query.limit(2)
+    throwOnError(error)
+    if (!data || data.length !== 1) return invalid()
+    email = data[0].email
+  }
+  if (!email) return invalid()
+
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
+  if (!anonKey) throw new Error('SUPABASE_ANON_KEY is not available in this Edge Function.')
+  const authClient = createClient(supabaseUrl!, anonKey, {
+    auth: { autoRefreshToken: false, persistSession: false }
+  })
+  const { data: signedIn, error: signInError } = await authClient.auth.signInWithPassword({ email, password })
+  if (signInError || !signedIn.session) {
+    if (signInError && /confirm/i.test(signInError.message)) {
+      return jsonResponse(401, { error: signInError.message }, headers)
+    }
+    return invalid()
+  }
+  return jsonResponse(200, {
+    session: { access_token: signedIn.session.access_token, refresh_token: signedIn.session.refresh_token }
+  }, headers)
+}
+
 Deno.serve(async request => {
   const headers = corsHeaders(request.headers.get('Origin'))
   if (request.method === 'OPTIONS') return new Response('ok', { headers })
@@ -1748,6 +1796,9 @@ Deno.serve(async request => {
     const functionIndex = pathSegments.indexOf('vynzo-api')
     const endpointSegments = functionIndex >= 0 ? pathSegments.slice(functionIndex + 1) : pathSegments
     if (endpointSegments[0] === 'api') endpointSegments.shift()
+    if (endpointSegments[0] === 'auth' && endpointSegments[1] === 'login' && request.method === 'POST') {
+      return await handlePhoneLogin(request, headers)
+    }
     if (endpointSegments[0] === 'live') return await handleLive(request, viewer?.id, headers)
     if (!viewer) return jsonResponse(401, { error: 'Invalid or expired session.' }, headers)
     if (endpointSegments[0] === 'posts') return await handlePosts(request, viewer.id, headers)

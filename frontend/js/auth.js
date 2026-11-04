@@ -1,4 +1,5 @@
 import { requireSupabase, syncLegacySession } from './supabase-client.js';
+import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabase-config.js';
 
 const NATIONALITIES = ['Afghan','Albanian','Algerian','American','Andorran','Angolan','Argentine','Armenian','Australian','Austrian','Azerbaijani','Bahamian','Bahraini','Bangladeshi','Barbadian','Belarusian','Belgian','Belizean','Beninese','Bhutanese','Bolivian','Bosnian','Botswanan','Brazilian','British','Bruneian','Bulgarian','Burkinabe','Burundian','Cambodian','Cameroonian','Canadian','Cape Verdean','Central African','Chadian','Chilean','Chinese','Colombian','Comorian','Congolese','Costa Rican','Croatian','Cuban','Cypriot','Czech','Danish','Djiboutian','Dominican','Dutch','Ecuadorian','Egyptian','Emirati','Equatorial Guinean','Eritrean','Estonian','Eswatini','Ethiopian','Fijian','Filipino','Finnish','French','Gabonese','Gambian','Georgian','German','Ghanaian','Greek','Grenadian','Guatemalan','Guinean','Guyanese','Haitian','Honduran','Hungarian','Icelandic','Indian','Indonesian','Iranian','Iraqi','Irish','Israeli','Italian','Ivorian','Jamaican','Japanese','Jordanian','Kazakh','Kenyan','Kuwaiti','Kyrgyz','Lao','Latvian','Lebanese','Liberian','Libyan','Liechtensteiner','Lithuanian','Luxembourger','Malagasy','Malawian','Malaysian','Maldivian','Malian','Maltese','Mauritanian','Mauritian','Mexican','Moldovan','Monegasque','Mongolian','Montenegrin','Moroccan','Mozambican','Myanmar','Namibian','Nepalese','New Zealander','Nicaraguan','Nigerian','Nigerien','North Korean','North Macedonian','Norwegian','Omani','Pakistani','Palestinian','Panamanian','Papua New Guinean','Paraguayan','Peruvian','Polish','Portuguese','Qatari','Romanian','Russian','Rwandan','Saudi','Senegalese','Serbian','Seychellois','Sierra Leonean','Singaporean','Slovak','Slovenian','Somali','South African','South Korean','South Sudanese','Spanish','Sri Lankan','Sudanese','Surinamese','Swedish','Swiss','Syrian','Taiwanese','Tajik','Tanzanian','Thai','Togolese','Trinidadian','Tunisian','Turkish','Turkmen','Ugandan','Ukrainian','Uruguayan','Uzbek','Venezuelan','Vietnamese','Yemeni','Zambian','Zimbabwean','Other'];
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -28,7 +29,15 @@ document.addEventListener('DOMContentLoaded', () => {
       const errorEl = document.getElementById('error-message');
 
       try {
-        const { data, error } = await requireSupabase().auth.signInWithPassword({ email, password });
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/vynzo-api/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: SUPABASE_PUBLISHABLE_KEY },
+          body: JSON.stringify({ identifier: email, password })
+        }).catch(() => null);
+        if (!response) throw new Error('Cannot reach Supabase. Check your connection and try again.');
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || 'Unable to sign in.');
+        const { data, error } = await requireSupabase().auth.setSession(result.session);
         if (error) throw error;
         if (!data.session || !data.user) {
           throw new Error('Supabase did not return a signed-in session.');
@@ -49,6 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
       const errorEl = document.getElementById('error-message');
+      const phoneInput = document.getElementById('phone')?.value.replace(/[\s().-]/g, '') || '';
       const age_confirmed = document.getElementById('age_confirmed').checked;
       const terms_accepted = document.getElementById('terms_accepted').checked;
       const first_name = document.getElementById('first_name').value.trim();
@@ -91,15 +101,19 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const normalizedUsername = username.trim().toLowerCase();
         if (!/^[a-zA-Z0-9](?:[a-zA-Z0-9._]{1,28}[a-zA-Z0-9])$/.test(normalizedUsername)) {
-          throw new Error('Username must be 3â€“30 characters and use only letters, numbers, periods, and underscores.');
+          throw new Error('Username must be 3–30 characters and use only letters, numbers, periods, and underscores.');
         }
         const birthDate = `${birthYear}-${String(birthMonth).padStart(2, '0')}-${String(birthDay).padStart(2, '0')}`;
+        if (phoneInput && !/^\+?\d{8,15}$/.test(phoneInput)) {
+          throw new Error('Enter a valid phone number with country code, for example +966501234567.');
+        }
         const { data, error } = await requireSupabase().auth.signUp({
           email,
           password,
           options: {
             data: {
               vynzo_profile_version: '1',
+              ...(phoneInput ? { phone: phoneInput } : {}),
               username: normalizedUsername,
               first_name,
               last_name,
