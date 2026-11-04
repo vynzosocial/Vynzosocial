@@ -58,8 +58,38 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (registerForm) {
     populateRegisterOptions();
+    const NON_ENGLISH = {
+      username: /[\p{L}\p{N}\p{M}](?<![A-Za-z0-9])/gu,
+      first_name: /[^A-Za-z .'-]/g,
+      last_name: /[^A-Za-z .'-]/g,
+      email: /[^\x21-\x7E]/g,
+      phone: /[^0-9+\s().-]/g,
+      password: /[^\x20-\x7E]/g
+    };
+    Object.entries(NON_ENGLISH).forEach(([id, pattern]) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const clean = (e) => {
+        if (e.isComposing) return;
+        const next = el.value.replace(pattern, '');
+        if (next !== el.value) el.value = next;
+      };
+      el.addEventListener('input', clean);
+      el.addEventListener('compositionend', clean);
+      if (id !== 'password') el.setAttribute('lang', 'en');
+      if (id === 'email' || id === 'phone' || id === 'password') el.setAttribute('inputmode', id === 'phone' ? 'tel' : 'text');
+    });
     registerForm.addEventListener('submit', async (e) => {
       e.preventDefault();
+      const nonEnglishField = Object.entries(NON_ENGLISH).find(([id, pattern]) => {
+        const el = document.getElementById(id);
+        return el && el.value.replace(pattern, '') !== el.value;
+      });
+      if (nonEnglishField) {
+        const errorElEn = document.getElementById('error-message');
+        if (errorElEn) errorElEn.textContent = 'Please enter all registration information in English.';
+        return;
+      }
       const username = document.getElementById('username').value.trim();
       const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
