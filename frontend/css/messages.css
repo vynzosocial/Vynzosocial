@@ -790,7 +790,8 @@
     max-width: 88%;
   }
 
-  .chat-input-form {
+  .chat-input-form,
+  .has-emoji-picker.chat-input-form {
     flex-wrap: wrap;
     gap: 6px;
     margin: 0 8px 10px;
