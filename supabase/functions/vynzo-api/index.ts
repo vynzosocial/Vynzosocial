@@ -1763,11 +1763,16 @@ async function handlePhoneLogin(request: Request, headers: Record<string, string
     email = identifier.toLowerCase()
   } else {
     const phone = normalizeLoginPhone(identifier)
-    const query = phone
-      ? admin.from('users').select('email').in('phone', [phone, phone.slice(1)])
-      : admin.from('users').select('email').ilike('username', identifier.replace(/[%_\\]/g, '\\$&'))
-    const { data, error } = await query.limit(2)
-    throwOnError(error)
+    const byUsername = () => admin.from('users').select('email').ilike('username', identifier.replace(/[%_\\]/g, '\\$&')).limit(2)
+    let found = phone
+      ? await admin.from('users').select('email').in('phone', [phone, phone.slice(1)]).limit(2)
+      : await byUsername()
+    throwOnError(found.error)
+    if (phone && !found.data?.length) {
+      found = await byUsername()
+      throwOnError(found.error)
+    }
+    const data = found.data
     if (!data || data.length !== 1) return invalid()
     email = data[0].email
   }
