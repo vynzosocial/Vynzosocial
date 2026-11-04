@@ -1,7 +1,12 @@
 import { requireSupabase, syncLegacySession } from './supabase-client.js';
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabase-config.js';
 
-const NATIONALITIES = ['Afghan','Albanian','Algerian','American','Andorran','Angolan','Argentine','Armenian','Australian','Austrian','Azerbaijani','Bahamian','Bahraini','Bangladeshi','Barbadian','Belarusian','Belgian','Belizean','Beninese','Bhutanese','Bolivian','Bosnian','Botswanan','Brazilian','British','Bruneian','Bulgarian','Burkinabe','Burundian','Cambodian','Cameroonian','Canadian','Cape Verdean','Central African','Chadian','Chilean','Chinese','Colombian','Comorian','Congolese','Costa Rican','Croatian','Cuban','Cypriot','Czech','Danish','Djiboutian','Dominican','Dutch','Ecuadorian','Egyptian','Emirati','Equatorial Guinean','Eritrean','Estonian','Eswatini','Ethiopian','Fijian','Filipino','Finnish','French','Gabonese','Gambian','Georgian','German','Ghanaian','Greek','Grenadian','Guatemalan','Guinean','Guyanese','Haitian','Honduran','Hungarian','Icelandic','Indian','Indonesian','Iranian','Iraqi','Irish','Israeli','Italian','Ivorian','Jamaican','Japanese','Jordanian','Kazakh','Kenyan','Kuwaiti','Kyrgyz','Lao','Latvian','Lebanese','Liberian','Libyan','Liechtensteiner','Lithuanian','Luxembourger','Malagasy','Malawian','Malaysian','Maldivian','Malian','Maltese','Mauritanian','Mauritian','Mexican','Moldovan','Monegasque','Mongolian','Montenegrin','Moroccan','Mozambican','Myanmar','Namibian','Nepalese','New Zealander','Nicaraguan','Nigerian','Nigerien','North Korean','North Macedonian','Norwegian','Omani','Pakistani','Palestinian','Panamanian','Papua New Guinean','Paraguayan','Peruvian','Polish','Portuguese','Qatari','Romanian','Russian','Rwandan','Saudi','Senegalese','Serbian','Seychellois','Sierra Leonean','Singaporean','Slovak','Slovenian','Somali','South African','South Korean','South Sudanese','Spanish','Sri Lankan','Sudanese','Surinamese','Swedish','Swiss','Syrian','Taiwanese','Tajik','Tanzanian','Thai','Togolese','Trinidadian','Tunisian','Turkish','Turkmen','Ugandan','Ukrainian','Uruguayan','Uzbek','Venezuelan','Vietnamese','Yemeni','Zambian','Zimbabwean','Other'];
+const COUNTRY_CODES = 'AF AX AL DZ AS AD AO AI AQ AG AR AM AW AU AT AZ BS BH BD BB BY BE BZ BJ BM BT BO BA BW BV BR IO VG BN BG BF BI KH CM CA CV BQ KY CF TD CL CN CX CC CO KM CG CD CK CR CI HR CU CW CY CZ DK DJ DM DO EC EG SV GQ ER EE SZ ET FK FO FJ FI FR GF PF TF GA GM GE DE GH GI GR GL GD GP GU GT GG GN GW GY HT HM HN HK HU IS IN ID IR IQ IE IM IL IT JM JP JE JO KZ KE KI KW KG LA LV LB LS LR LY LI LT LU MO MG MW MY MV ML MT MH MQ MR MU YT MX FM MD MC MN ME MS MA MZ MM NA NR NP NL NC NZ NI NE NG NU NF KP MK MP NO OM PK PW PS PA PG PY PE PH PN PL PT PR QA RE RO RW WS SM ST SA SN RS SC SL SG SX SK SI SB SO ZA GS KR SS ES LK BL SH KN LC MF PM VC SD SR SJ SE CH SY TW TJ TZ TH TL TG TK TO TT TN TR TM TC TV UM VI UG UA AE GB US UY UZ VU VA VE VN WF EH YE ZM ZW';
+const REGION_NAMES = new Intl.DisplayNames(['en'], { type: 'region' });
+const COUNTRIES = COUNTRY_CODES.split(' ').concat('RU')
+  .map(code => REGION_NAMES.of(code))
+  .filter(name => name !== undefined)
+  .sort((left, right) => left.localeCompare(right));
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 function populateRegisterOptions() {
@@ -14,7 +19,7 @@ function populateRegisterOptions() {
   fill('birth_month', MONTHS.map((name, i) => [i + 1, name]));
   const thisYear = new Date().getFullYear();
   fill('birth_year', Array.from({ length: thisYear - 1900 + 1 }, (_, i) => [thisYear - i, String(thisYear - i)]));
-  fill('nationality', NATIONALITIES.map(name => [name, name]));
+  fill('country', COUNTRIES.map(name => [name, name]));
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -66,7 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const birth_day = document.getElementById('birth_day').value;
       const birth_month = document.getElementById('birth_month').value;
       const birth_year = document.getElementById('birth_year').value;
-      const nationality = document.getElementById('nationality').value;
+      const country = document.getElementById('country').value;
 
       const birthDay = Number(birth_day);
       const birthMonth = Number(birth_month);
@@ -117,7 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
             headers: { 'Content-Type': 'application/json', apikey: SUPABASE_PUBLISHABLE_KEY },
             body: JSON.stringify({
               phone: phoneInput, password, username: normalizedUsername, first_name, last_name,
-              birth_date: birthDate, nationality, age_confirmed, terms_accepted
+              birth_date: birthDate, nationality: country, age_confirmed, terms_accepted
             })
           }).catch(() => null);
           if (!response) throw new Error('Cannot reach Supabase. Check your connection and try again.');
@@ -140,7 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
               first_name,
               last_name,
               birth_date: birthDate,
-              nationality,
+              nationality: country,
               age_confirmed,
               terms_accepted
             }
