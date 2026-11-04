@@ -439,3 +439,30 @@
     min-width: 180px;
   }
 }
+
+
+/* Live page on phones: the lobby fills the screen; the empty placeholder stays hidden until a stream opens. */
+@media (max-width: 900px) {
+  .live-container:not(:has(.live-stage)) {
+    flex-direction: column;
+  }
+
+  .live-container:not(:has(.live-stage)) .live-sidebar {
+    width: 100% !important;
+    height: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+    border: 0;
+    overflow-y: auto;
+  }
+
+  .live-container:not(:has(.live-stage)) .live-main-view {
+    display: none;
+  }
+
+  .live-container:not(:has(.live-stage)) #live-streams-list {
+    flex: 0 0 auto !important;
+    overflow: visible !important;
+    padding-bottom: 16px;
+  }
+}
