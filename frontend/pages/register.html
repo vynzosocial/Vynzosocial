@@ -40,7 +40,7 @@
         <form id="register-form">
             <div class="form-group">
                 <label for="username">Username</label>
-                <input type="text" id="username" required>
+                <input type="text" id="username" minlength="2" maxlength="30" pattern="[A-Za-z0-9](?:[A-Za-z0-9._]{0,28}[A-Za-z0-9])" autocomplete="username" required>
             </div>
             <div class="form-row">
                 <div class="form-group">
@@ -93,6 +93,6 @@
             Already have an account? <a href="login.html">Login</a>
         </div>
     </div>
-    <script type="module" src="../js/auth.js?v=phone3"></script>
+    <script type="module" src="../js/auth.js?v=phone4"></script>
 </body>
 </html>

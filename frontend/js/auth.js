@@ -100,8 +100,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
       try {
         const normalizedUsername = username.trim().toLowerCase();
-        if (!/^[a-zA-Z0-9](?:[a-zA-Z0-9._]{1,28}[a-zA-Z0-9])$/.test(normalizedUsername)) {
-          throw new Error('Username must be 3–30 characters and use only letters, numbers, periods, and underscores.');
+        if (!/^[a-zA-Z0-9](?:[a-zA-Z0-9._]{0,28}[a-zA-Z0-9])$/.test(normalizedUsername)) {
+          throw new Error('Username must be 2–30 characters and use only letters, numbers, periods, and underscores.');
         }
         const birthDate = `${birthYear}-${String(birthMonth).padStart(2, '0')}-${String(birthDay).padStart(2, '0')}`;
         if (phoneInput && !/^\+?\d{8,15}$/.test(phoneInput)) {
