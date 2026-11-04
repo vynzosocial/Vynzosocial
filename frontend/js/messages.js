@@ -338,7 +338,8 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     const audio = document.createElement('audio');
     audio.src = URL.createObjectURL(file);
     audio.controls = true;
-    const remove = document.createElement('button');
+    audio.controlsList = 'nodownload noplaybackrate';
+    audio.addEventListener('contextmenu', e => e.preventDefault());
     remove.type = 'button';
     remove.textContent = '×';
     remove.setAttribute('aria-label', 'Remove voice message');
@@ -892,7 +893,7 @@ function mediaMarkup(message) {
   if (!message.media_url) return '';
   const src = /^https?:/i.test(message.media_url) ? message.media_url : `${API_ORIGIN}${message.media_url}`;
   if (VOICE_PATTERN.test(message.media_url)) {
-    return `<audio class="message-voice" src="${escapeHtml(src)}" controls preload="metadata"></audio>`;
+    return `<div class="voice-player" data-src="${escapeHtml(src)}"><button type="button" class="voice-play" aria-label="Play voice message">▶</button><input class="voice-seek" type="range" min="0" max="100" value="0" step="0.1" aria-label="Seek"><span class="voice-time">0:00</span></div>`;
   }
   if (/\.(mp4|webm|mov)$/i.test(message.media_url)) {
     return `<video class="message-media" src="${escapeHtml(src)}" controls preload="metadata" playsinline></video>`;
@@ -1014,3 +1015,61 @@ function escapeHtml(str) {
     tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
   );
 }
+
+// Custom voice-message player: no native menu, so no download option.
+(() => {
+  const fmt = s => (isFinite(s) && s >= 0) ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '0:00';
+  let current = null;
+  function audioFor(player) {
+    if (player._audio) return player._audio;
+    const audio = new Audio();
+    audio.preload = 'metadata';
+    audio.src = player.dataset.src;
+    const btn = player.querySelector('.voice-play');
+    const seek = player.querySelector('.voice-seek');
+    const time = player.querySelector('.voice-time');
+    let seeking = false;
+    const update = () => {
+      const d = isFinite(audio.duration) ? audio.duration : 0;
+      if (!seeking) seek.value = d ? (audio.currentTime / d) * 100 : 0;
+      time.textContent = audio.paused && !audio.currentTime && d ? fmt(d) : fmt(audio.currentTime);
+    };
+    audio.addEventListener('loadedmetadata', () => {
+      if (audio.duration === Infinity) {
+        audio.currentTime = 1e101;
+        audio.addEventListener('timeupdate', function fix() {
+          audio.removeEventListener('timeupdate', fix);
+          audio.currentTime = 0;
+        });
+      }
+      update();
+    });
+    audio.addEventListener('timeupdate', update);
+    audio.addEventListener('play', () => { btn.textContent = '⏸'; });
+    audio.addEventListener('pause', () => { btn.textContent = '▶'; });
+    audio.addEventListener('ended', () => { btn.textContent = '▶'; audio.currentTime = 0; update(); });
+    audio.addEventListener('error', () => { time.textContent = 'Unavailable'; });
+    seek.addEventListener('input', () => {
+      seeking = true;
+      if (isFinite(audio.duration)) audio.currentTime = (seek.value / 100) * audio.duration;
+    });
+    seek.addEventListener('change', () => { seeking = false; });
+    player._audio = audio;
+    return audio;
+  }
+  document.addEventListener('click', event => {
+    const btn = event.target.closest('.voice-play');
+    if (!btn) return;
+    const audio = audioFor(btn.closest('.voice-player'));
+    if (audio.paused) {
+      if (current && current !== audio) current.pause();
+      current = audio;
+      audio.play().catch(() => {});
+    } else {
+      audio.pause();
+    }
+  });
+  document.addEventListener('contextmenu', event => {
+    if (event.target.closest('.voice-player')) event.preventDefault();
+  });
+})();

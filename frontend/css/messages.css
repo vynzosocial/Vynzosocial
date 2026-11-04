@@ -677,15 +677,48 @@
 }
 
 .message-bubble:has(.message-media),
-.message-bubble:has(.message-voice) {
+.message-bubble:has(.voice-player) {
   flex-wrap: wrap;
 }
 
-.message-voice {
-  display: block;
-  width: min(240px, 100%);
-  height: 40px;
-  margin-bottom: 4px;
+.voice-player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(250px, 100%);
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.voice-play {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.25);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.voice-seek {
+  flex: 1;
+  min-width: 0;
+  height: 4px;
+  accent-color: #fff;
+}
+
+.voice-time {
+  flex: 0 0 auto;
+  min-width: 34px;
+  font-size: 12px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .chat-attachment-preview audio {
