@@ -4,6 +4,7 @@
   var KEY = 'vynzo_lang';
   var LANGS = [
     { code: 'en', name: 'English' },
+    { code: 'es', name: 'Español' },
     { code: 'hi', name: 'हिन्दी' },
     { code: 'ar', name: 'العربية', rtl: true },
     { code: 'fr', name: 'Français' },
