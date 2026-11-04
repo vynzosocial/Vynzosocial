@@ -40,7 +40,7 @@ function corsHeaders(origin: string | null): Record<string, string> {
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     'Vary': 'Origin'
   }
-  if (origin && (allowedOrigins.has(origin) || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin))) {
+  if (origin && (allowedOrigins.has(origin))) {
     headers['Access-Control-Allow-Origin'] = origin
   }
   return headers
@@ -708,6 +708,14 @@ async function handleModeration(request: Request, viewerId: string, headers: Rec
       return jsonResponse(400, { error: 'Target type, target ID, and reason are required' }, headers)
     }
     if (reason.length > 2000) return jsonResponse(400, { error: 'Reason must be 2000 characters or fewer.' }, headers)
+    if (!/^[a-z_]{1,30}$/i.test(targetType) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId)) {
+      return jsonResponse(400, { error: 'Invalid report target.' }, headers)
+    }
+    const { count: existingReports, error: existingError } = await admin.from('reports')
+      .select('id', { count: 'exact', head: true })
+      .eq('reporter_id', viewerId).eq('target_type', targetType).eq('target_id', targetId)
+    throwOnError(existingError)
+    if ((existingReports || 0) > 0) return jsonResponse(429, { error: 'You already reported this.' }, headers)
     const { data: report, error } = await admin.from('reports')
       .insert({ reporter_id: viewerId, target_type: targetType, target_id: targetId, reason })
       .select('id,target_type,target_id,status,created_at').single()
