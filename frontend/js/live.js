@@ -1,5 +1,6 @@
-﻿import { apiRequest } from './api.js';
-import { API_ORIGIN, createOfflineSocket } from './config.js';
+import { apiRequest } from './api.js?v=sb2';
+import { API_ORIGIN } from './config.js?v=sb2';
+import { createRealtimeSocket } from './realtime.js?v=sb2';
 
 let socket = null;
 let cameraStream = null;
@@ -21,6 +22,8 @@ let broadcastStartedAt = 0;
 let missedStreamPolls = 0;
 let liveStreamsRefreshInterval = null;
 let renderedStreamIds = null;
+const HD_VIDEO_CONSTRAINTS = { width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 360 }, frameRate: { ideal: 30, max: 30 }, facingMode: 'user' };
+const HD_AUDIO_CONSTRAINTS = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, sampleRate: 48000 };
 const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: ['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' }] };
 
 const LIVE_TITLE_KEY = 'vynzo_live_title';
@@ -89,7 +92,7 @@ export async function initLiveStudio() {
   window.addEventListener('pagehide', () => setScreenSecure(false));
 
   const token = localStorage.getItem('vynzo_token');
-  socket = createOfflineSocket({
+  socket = createRealtimeSocket({
     auth: token ? { token } : {},
     autoConnect: false
   });
@@ -728,7 +731,7 @@ async function enableLocalCamera() {
   if (joiningStage) {
     // Guests join with the camera off; they open it afterwards.
     try {
-      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: HD_AUDIO_CONSTRAINTS });
       stopImageSource();
       if (cameraStream) cameraStream.getTracks().forEach(track => track.stop());
       cameraStream = audioStream;
@@ -748,10 +751,10 @@ async function enableLocalCamera() {
   try {
     let stream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ video: HD_VIDEO_CONSTRAINTS, audio: HD_AUDIO_CONSTRAINTS });
     } catch (audioError) {
       console.warn('Microphone unavailable; trying camera without audio:', audioError.message);
-      stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream = await navigator.mediaDevices.getUserMedia({ video: HD_VIDEO_CONSTRAINTS });
       showLiveError('Camera is on, but microphone access is unavailable.');
     }
     stopImageSource();
@@ -1602,6 +1605,33 @@ async function requestPeerNegotiation(socketId) {
   }
 }
 
+// The upload budget is shared between everyone watching, so quality scales down smoothly as the audience grows.
+const UPLOAD_BUDGET_KBPS = 9000;
+const MAX_VIDEO_KBPS = 3500;
+const MIN_VIDEO_KBPS = 350;
+
+async function tuneSenderQuality() {
+  const active = Object.values(peerSenders).filter(senders => senders.video && localVideoTrack);
+  if (!active.length) return;
+  const perViewer = Math.max(MIN_VIDEO_KBPS, Math.min(MAX_VIDEO_KBPS, Math.floor(UPLOAD_BUDGET_KBPS / active.length)));
+  const scaleDown = perViewer >= 2000 ? 1 : perViewer >= 1000 ? 1.5 : perViewer >= 600 ? 2 : 3;
+  if ('contentHint' in localVideoTrack) localVideoTrack.contentHint = 'motion';
+  await Promise.all(active.map(async ({ video }) => {
+    try {
+      const params = video.getParameters();
+      if (!params.encodings || !params.encodings.length) params.encodings = [{}];
+      params.encodings[0].maxBitrate = perViewer * 1000;
+      params.encodings[0].maxFramerate = perViewer >= 600 ? 30 : 24;
+      params.encodings[0].scaleResolutionDownBy = scaleDown;
+      params.encodings[0].networkPriority = 'high';
+      params.degradationPreference = 'balanced';
+      await video.setParameters(params);
+    } catch (err) {
+      console.warn('Could not tune video quality:', err.message);
+    }
+  }));
+}
+
 async function syncPeerSenders(socketId) {
   const senders = peerSenders[socketId];
   if (!senders) return;
@@ -1609,6 +1639,7 @@ async function syncPeerSenders(socketId) {
     senders.video ? senders.video.replaceTrack(localVideoTrack) : Promise.resolve(),
     senders.audio ? senders.audio.replaceTrack(localAudioTrack) : Promise.resolve()
   ]);
+  await tuneSenderQuality();
 }
 
 function bindPeerSenders(socketId, pc) {
@@ -1633,6 +1664,7 @@ function closePeerConnection(socketId) {
   delete pendingIceCandidates[socketId];
   delete remoteMediaStreams[socketId];
   removeVideoTile(socketId);
+  tuneSenderQuality().catch(() => {});
 }
 
 function closeAllPeerConnections() {

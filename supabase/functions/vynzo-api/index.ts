@@ -1244,6 +1244,7 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
         .find(Boolean)
       return {
         ...conversation,
+        other_user_id: peer?.id || null,
         other_username: peer?.username || null,
         other_display_name: peer?.display_name || null,
         other_avatar_url: peer?.avatar_url || null,
@@ -1402,6 +1403,84 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
     }
   }
 
+  const sendViewOnceMatch = route.match(/^\/messages\/([^/]+)\/view-once$/)
+  if (sendViewOnceMatch && method === 'POST') {
+    const [, conversationId] = sendViewOnceMatch
+    const members = await getConversationMembership(conversationId, viewerId)
+    if (!members) return jsonResponse(403, { error: 'Access denied to this conversation' }, headers)
+    const form = await request.formData()
+    const photo = form.get('photo')
+    if (!(photo instanceof File)) return jsonResponse(400, { error: 'Choose a photo to send' }, headers)
+    const photoExtensions: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' }
+    if (!photoExtensions[photo.type]) return jsonResponse(400, { error: 'View-once photos must be JPEG, PNG, WEBP or GIF.' }, headers)
+    if (photo.size === 0 || photo.size > 10 * 1024 * 1024) return jsonResponse(413, { error: 'View-once photos must be 10 MB or smaller.' }, headers)
+
+    const { data: conversation, error: conversationError } = await admin.from('conversations')
+      .select('is_group').eq('id', conversationId).maybeSingle()
+    throwOnError(conversationError)
+    if (!conversation) return jsonResponse(404, { error: 'Conversation not found' }, headers)
+    for (const member of members) {
+      if (member.user_id === viewerId || conversation.is_group) continue
+      const blockReason = await getMessageBlockReason(viewerId, member.user_id)
+      if (blockReason) return jsonResponse(403, { error: blockReason }, headers)
+    }
+
+    const photoPath = `${viewerId}/${conversationId}/${crypto.randomUUID()}.${photoExtensions[photo.type]}`
+    const { error: photoUploadError } = await admin.storage.from('view-once').upload(photoPath, photo, {
+      contentType: photo.type,
+      upsert: false
+    })
+    throwOnError(photoUploadError)
+    const { data: inserted, error: insertError } = await admin.from('messages')
+      .insert({ conversation_id: conversationId, sender_id: viewerId, content: '', view_once: true, view_once_path: photoPath })
+      .select('id,conversation_id,sender_id,content,media_url,created_at,view_once,viewed_at')
+      .single()
+    if (insertError) {
+      await admin.storage.from('view-once').remove([photoPath])
+      throwOnError(insertError)
+    }
+    const { data: sender, error: senderError } = await admin.from('users')
+      .select('username,display_name,avatar_url').eq('id', viewerId).single()
+    throwOnError(senderError)
+    return jsonResponse(201, {
+      message: { ...inserted, username: sender?.username, display_name: sender?.display_name, avatar_url: sender?.avatar_url, seen: false, can_unsend: false }
+    }, headers)
+  }
+
+  const openViewOnceMatch = route.match(/^\/messages\/([^/]+)\/messages\/([^/]+)\/view-once$/)
+  if (openViewOnceMatch && method === 'POST') {
+    const [, conversationId, messageId] = openViewOnceMatch
+    const members = await getConversationMembership(conversationId, viewerId)
+    const gone = () => jsonResponse(410, { error: 'This photo is no longer available.' }, headers)
+    if (!members) return gone()
+    // The update only matches while the photo is unopened, so only one request can claim it.
+    const { data: claimed, error: claimError } = await admin.from('messages')
+      .update({ viewed_at: new Date().toISOString() })
+      .eq('id', messageId)
+      .eq('conversation_id', conversationId)
+      .eq('view_once', true)
+      .is('viewed_at', null)
+      .neq('sender_id', viewerId)
+      .select('view_once_path')
+      .maybeSingle()
+    throwOnError(claimError)
+    if (!claimed?.view_once_path) return gone()
+    const { data: blob, error: downloadError } = await admin.storage.from('view-once').download(claimed.view_once_path)
+    if (downloadError || !blob) return gone()
+    await admin.from('messages').update({ view_once_path: null }).eq('id', messageId)
+    const { error: removeError } = await admin.storage.from('view-once').remove([claimed.view_once_path])
+    if (removeError) console.error('View-once photo deletion failed:', removeError)
+    return new Response(blob, {
+      status: 200,
+      headers: {
+        ...headers,
+        'Content-Type': blob.type || 'application/octet-stream',
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'X-Content-Type-Options': 'nosniff'
+      }
+    })
+  }
+
   const deleteMessageMatch = route.match(/^\/messages\/([^/]+)\/messages\/([^/]+)$/)
   if (deleteMessageMatch && method === 'DELETE') {
     const [, conversationId, messageId] = deleteMessageMatch
@@ -1544,6 +1623,7 @@ async function handleLive(request: Request, viewerId: string | undefined, header
     const { data: sessions, error } = await admin.from('live_sessions')
       .select('id,host_id,title,category,viewer_count,created_at')
       .eq('is_active', true)
+      .gte('last_heartbeat', new Date(Date.now() - 90_000).toISOString())
       .order('viewer_count', { ascending: false })
       .order('created_at', { ascending: false })
     throwOnError(error)
@@ -1629,6 +1709,19 @@ async function handleLive(request: Request, viewerId: string | undefined, header
     throwOnError(error)
     if (!session) return jsonResponse(404, { error: 'Livestream not found' }, headers)
     return jsonResponse(200, { session }, headers)
+  }
+
+  const heartbeatMatch = route.match(/^\/live\/([^/]+)\/heartbeat$/)
+  if (heartbeatMatch && method === 'POST' && viewerId) {
+    const body = await request.json().catch(() => ({}))
+    const viewerCount = Math.max(0, Math.min(100000, Number.parseInt(body?.viewer_count, 10) || 0))
+    const { error } = await admin.from('live_sessions')
+      .update({ viewer_count: viewerCount, last_heartbeat: new Date().toISOString() })
+      .eq('id', heartbeatMatch[1])
+      .eq('host_id', viewerId)
+      .eq('is_active', true)
+    throwOnError(error)
+    return jsonResponse(200, { ok: true }, headers)
   }
 
   const endMatch = route.match(/^\/live\/([^/]+)\/end$/)

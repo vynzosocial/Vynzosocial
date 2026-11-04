@@ -1,6 +1,6 @@
-import { apiRequest } from './api.js';
+import { apiRequest } from './api.js?v=sb2';
 import { timeAgo } from './time-ago.js';
-import { API_ORIGIN } from './config.js';
+import { API_ORIGIN } from './config.js?v=sb2';
 import { uploadMedia } from './uploads.js';
 import { openCamera } from './camera-capture.js';
 import { attachEmojiPicker } from './emoji-picker.js';

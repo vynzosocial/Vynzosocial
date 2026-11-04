@@ -1,4 +1,5 @@
-﻿import { API_ORIGIN, createOfflineSocket } from './config.js';
+import { API_ORIGIN } from './config.js?v=sb2';
+import { createRealtimeSocket } from './realtime.js?v=sb2';
 
 const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: ['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' }] };
 
@@ -25,14 +26,14 @@ export async function initCalls() {
   initialised = true;
 
   ensureStyles();
-  socket = createOfflineSocket();
+  socket = createRealtimeSocket();
   socket.on('call_incoming', handleIncoming);
   socket.on('call_accepted', handleAccepted);
   socket.on('call_signal', handleSignal);
   socket.on('call_ended', handleEnded);
 }
 
-export async function startCall({ conversationId, name, avatarUrl, video }) {
+export async function startCall({ conversationId, calleeId, name, avatarUrl, video }) {
   await initCalls();
   if (!socket) return showToast('Calls are not available right now.');
   if (call || incoming) return showToast('You are already in a call.');
@@ -44,7 +45,7 @@ export async function startCall({ conversationId, name, avatarUrl, video }) {
     return showToast(mediaErrorMessage(err, video));
   }
 
-  socket.timeout(8000).emit('call_invite', { conversationId, video }, (err, response) => {
+  socket.timeout(8000).emit('call_invite', { conversationId, calleeId, video }, (err, response) => {
     if (err || !response || !response.ok) {
       stopStream(localStream);
       showToast((response && response.error) || 'Could not reach the server. Try again.');

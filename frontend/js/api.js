@@ -1,5 +1,5 @@
 import './supabase-client.js';
-import { API_BASE_URL, API_ORIGIN } from './config.js';
+import { API_BASE_URL, API_ORIGIN } from './config.js?v=sb2';
 import { supabase } from './supabase-client.js';
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabase-config.js';
 
@@ -15,10 +15,10 @@ export async function apiRequest(endpoint, options = {}) {
     || /^\/users\/[^/]+\/profile$/.test(apiPath)
     || /^\/users\/[^/]+\/follow$/.test(apiPath);
   const useSupabaseMessageApi = apiPath === '/messages'
-    || (apiPath.startsWith('/messages/') && !apiPath.includes('/view-once'));
+    || apiPath.startsWith('/messages/');
   const useSupabaseLiveApi = apiPath === '/live'
     || apiPath === '/live/start'
-    || /^\/live\/[^/]+\/(title|end)$/.test(apiPath);
+    || /^\/live\/[^/]+\/(title|end|heartbeat)$/.test(apiPath);
   const useSupabaseApi = Boolean(supabase)
     && (apiPath.startsWith('/posts/')
       || apiPath === '/stories'
@@ -89,4 +89,30 @@ export async function apiRequest(endpoint, options = {}) {
     throw new Error(data.error || 'Something went wrong');
   }
   return data;
+}
+
+// For endpoints that answer with a file instead of JSON (for example view-once photos).
+export async function apiBlobRequest(endpoint, options = {}) {
+  if (!supabase) throw new Error('Supabase is not configured for this site.');
+  const { data } = await supabase.auth.getSession();
+  const token = data?.session?.access_token || localStorage.getItem('vynzo_token');
+  let response;
+  try {
+    response = await fetch(`${SUPABASE_URL}/functions/v1/vynzo-api/api${endpoint}`, {
+      cache: 'no-store',
+      ...options,
+      headers: {
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers
+      }
+    });
+  } catch {
+    throw new Error('Cannot reach Supabase. Check your connection and try again.');
+  }
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error || 'This photo is no longer available.');
+  }
+  return response.blob();
 }

@@ -12,7 +12,15 @@ export function createOfflineSocket() {
     id: 'offline',
     on: () => socket,
     off: () => socket,
+    once: () => socket,
+    removeAllListeners: () => socket,
     emit: () => socket,
+    timeout: () => ({
+      emit: (...args) => {
+        const callback = args[args.length - 1];
+        if (typeof callback === 'function') setTimeout(() => callback(new Error('Realtime is not available')), 0);
+      }
+    }),
     connect: () => socket,
     disconnect: () => socket
   };

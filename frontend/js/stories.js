@@ -1,10 +1,10 @@
-import { apiRequest } from './api.js';
+import { apiRequest } from './api.js?v=sb2';
 import { timeAgo } from './time-ago.js';
 import { protectMedia } from './media-protect.js';
 import { openCamera } from './camera-capture.js';
 import { attachEmojiPicker } from './emoji-picker.js';
 
-import { API_ORIGIN as MEDIA_BASE_URL } from './config.js';
+import { API_ORIGIN as MEDIA_BASE_URL } from './config.js?v=sb2';
 let viewerTimer = null;
 let currentStoryGroup = [];
 let currentStoryIndex = 0;

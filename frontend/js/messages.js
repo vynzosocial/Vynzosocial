@@ -1,7 +1,8 @@
-﻿import { apiRequest } from './api.js';
-import { API_ORIGIN, API_BASE_URL, createOfflineSocket } from './config.js';
+import { apiRequest, apiBlobRequest } from './api.js?v=sb2';
+import { API_ORIGIN } from './config.js?v=sb2';
+import { createRealtimeSocket } from './realtime.js?v=sb2';
 import { attachEmojiPicker } from './emoji-picker.js?v=scope4';
-import { initCalls, startCall } from './calls.js?v=1';
+import { initCalls, startCall } from './calls.js?v=sb2';
 
 let socket = null;
 let currentConversationMeta = null;
@@ -22,11 +23,15 @@ export async function initMessaging() {
 
   const token = localStorage.getItem('vynzo_token');
   initCalls();
-  socket = createOfflineSocket({
+  socket = createRealtimeSocket({
     auth: token ? { token } : {}
   });
   socket.on('connect', () => {
     if (currentConversationId) joinConversation(currentConversationId);
+  });
+  socket.on('conversation_changed', event => {
+    refreshConversations().catch(() => {});
+    if (!event || event.conversation_id === currentConversationId) refreshCurrentConversation().catch(() => {});
   });
   socket.on('connect_error', err => {
     console.error('Message realtime connection failed:', err.message);
@@ -164,8 +169,13 @@ async function loadConversation(conversationId, currentUser, conversationName = 
   }
 }
 
+function notifyPeer(conversationId) {
+  const peerId = currentConversationMeta?.other_user_id;
+  if (peerId && socket) socket.emit('notify_peer', { userId: peerId, conversation_id: conversationId });
+}
+
 function markConversationRead(conversationId) {
-  apiRequest(`/messages/${encodeURIComponent(conversationId)}/read`, { method: 'POST' }).catch(err => {
+  apiRequest(`/messages/${encodeURIComponent(conversationId)}/read`, { method: 'POST' }).then(() => notifyPeer(conversationId)).catch(err => {
     console.error('Could not mark conversation as read:', err);
   });
 }
@@ -221,6 +231,7 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     if (!button || !callMeta) return;
     button.addEventListener('click', () => startCall({
       conversationId: callMeta.id,
+      calleeId: callMeta.other_user_id,
       name: conversationName,
       avatarUrl: avatarUrl,
       video
@@ -242,6 +253,7 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     open.disabled = true;
     try {
       await openViewOnce(currentConversationId, bubble.dataset.messageId);
+      notifyPeer(currentConversationId);
       open.replaceWith(Object.assign(document.createElement('span'), { className: 'view-once-chip opened', textContent: 'ðŸ“· Photo Â· Opened' }));
     } catch (err) {
       status.textContent = err.message || 'This photo is no longer available.';
@@ -382,6 +394,7 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
           input.value = '';
           clearAttachment();
         }
+        notifyPeer(conversationId);
         refreshConversations().catch(() => {});
         return;
       }
@@ -402,6 +415,7 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
         input.value = '';
         clearAttachment();
       }
+      notifyPeer(conversationId);
       refreshConversations().catch(err => {
         console.error('Could not refresh conversation preview:', err);
       });
@@ -507,17 +521,8 @@ function mediaMarkup(message) {
 }
 
 async function openViewOnce(conversationId, messageId) {
-  const token = localStorage.getItem('vynzo_token');
-  const response = await fetch(`${API_BASE_URL}/messages/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/view-once`, {
-    method: 'POST',
-    cache: 'no-store',
-    headers: token ? { Authorization: `Bearer ${token}` } : {}
-  });
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'This photo is no longer available.');
-  }
-  const url = URL.createObjectURL(await response.blob());
+  const blob = await apiBlobRequest(`/messages/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/view-once`, { method: 'POST' });
+  const url = URL.createObjectURL(blob);
   const guard = window.Capacitor?.Plugins?.ScreenGuard;
   guard?.setSecure?.({ enabled: true }).catch?.(() => {});
 

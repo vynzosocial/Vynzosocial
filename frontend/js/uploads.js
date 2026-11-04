@@ -1,4 +1,4 @@
-import { apiRequest } from './api.js';
+import { apiRequest } from './api.js?v=sb2';
 
 export async function uploadMedia(file, caption) {
   const token = localStorage.getItem('vynzo_token');

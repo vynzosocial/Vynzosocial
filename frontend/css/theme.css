@@ -452,3 +452,117 @@ html[data-theme="daylight"] body .nav-item:not(.active),
 html[data-theme="daylight"] body .mobile-nav .nav-item:not(.active) { color: #3a2f66; }
 
 html[data-theme="daylight"] body .post-delete-btn { color: #b3261e; }
+
+/* Daylight v2: home page, blogs and settings stat labels */
+html[data-theme="daylight"] body.home-page #app-container,
+html[data-theme="daylight"] body.home-page .home-content-layout,
+html[data-theme="daylight"] body.home-page .main-content {
+  background:
+    radial-gradient(circle at 10% 8%, rgba(255, 140, 205, 0.38) 0, transparent 42%),
+    radial-gradient(circle at 90% 16%, rgba(120, 210, 255, 0.42) 0, transparent 44%),
+    radial-gradient(circle at 50% 100%, rgba(255, 220, 130, 0.42) 0, transparent 52%),
+    #f7f3ff;
+  background-size: 100% 100%;
+  animation: none;
+  color: #1b1535;
+}
+
+html[data-theme="daylight"] body.home-page .main-content::before { display: none; }
+html[data-theme="daylight"] body.home-page .main-content::after {
+  background: radial-gradient(circle, rgba(255, 190, 80, 0.3), transparent 68%);
+}
+
+html[data-theme="daylight"] body.home-page .sidebar {
+  background: linear-gradient(180deg, #ffffff, #f3eaff);
+  border-right-color: rgba(190, 130, 255, 0.35);
+}
+
+html[data-theme="daylight"] body.home-page .top-bar {
+  background: rgba(255, 255, 255, 0.85);
+  border-bottom-color: rgba(190, 130, 255, 0.35);
+}
+
+html[data-theme="daylight"] body.home-page .home-main-column .home-stories-section,
+html[data-theme="daylight"] body.home-page .home-main-column .home-feed-section,
+html[data-theme="daylight"] body.home-page .home-friends-section,
+html[data-theme="daylight"] body.home-page .home-friend-card,
+html[data-theme="daylight"] body.home-page .home-post-composer {
+  background:
+    linear-gradient(#ffffff, #fbf6ff) padding-box,
+    conic-gradient(from var(--glow-angle), #ff3caa, #ffd76a, #00c3ff, #885cff, #ffd76a, #ff3caa) border-box;
+  box-shadow: 0 6px 26px rgba(150, 100, 255, 0.2), 0 0 18px rgba(255, 60, 170, 0.12);
+  color: #1b1535;
+}
+
+html[data-theme="daylight"] body.home-page .home-section-heading h1,
+html[data-theme="daylight"] body.home-page .home-section-heading h2,
+html[data-theme="daylight"] body.home-page .home-section-heading p,
+html[data-theme="daylight"] body.home-page .home-friend-card,
+html[data-theme="daylight"] body.home-page .home-friend-name,
+html[data-theme="daylight"] body.home-page .account-search-link,
+html[data-theme="daylight"] body.home-page .icon-btn {
+  color: #1b1535;
+  -webkit-text-fill-color: currentColor;
+  background-clip: border-box;
+}
+
+html[data-theme="daylight"] body.home-page .home-section-heading p { color: #4a4470; }
+html[data-theme="daylight"] body.home-page .tab-btn.active { color: #ffffff; background: linear-gradient(100deg, #ff3caa, #7b5cff); }
+html[data-theme="daylight"] body.home-page .account-search-link,
+html[data-theme="daylight"] body.home-page .icon-btn { background: #ffffff; }
+html[data-theme="daylight"] body.home-page .logo h2 { filter: none; }
+
+/* Settings stat labels */
+html[data-theme="daylight"] body .profile-stat span { color: #3a3360 !important; font-weight: 600; opacity: 1; }
+html[data-theme="daylight"] body .profile-stat { background: linear-gradient(160deg, #ffffff, #f1e8ff); }
+
+/* Blogs */
+html[data-theme="daylight"] body .blogs-header p,
+html[data-theme="daylight"] body .bl-label,
+html[data-theme="daylight"] body .bl-empty,
+html[data-theme="daylight"] body .bl-meta,
+html[data-theme="daylight"] body .bl-stats,
+html[data-theme="daylight"] body .bl-held,
+html[data-theme="daylight"] body .bl-comment-actions button,
+html[data-theme="daylight"] body .bl-body,
+html[data-theme="daylight"] body .bl-body p,
+html[data-theme="daylight"] body .bl-body blockquote,
+html[data-theme="daylight"] body .bl-article,
+html[data-theme="daylight"] body .bl-comments,
+html[data-theme="daylight"] body .bl-comments h3,
+html[data-theme="daylight"] body .bl-card h3,
+html[data-theme="daylight"] body .bl-card p,
+html[data-theme="daylight"] body .bl-modal-card h3,
+html[data-theme="daylight"] body .bl-item pre,
+html[data-theme="daylight"] body .bl-notice {
+  color: #2a2350;
+  -webkit-text-fill-color: currentColor;
+  animation: none;
+  text-shadow: none;
+}
+
+html[data-theme="daylight"] body .blogs-tabs a:not(.active),
+html[data-theme="daylight"] body .blogs-tabs a.bl-primary-tab:not(.active),
+html[data-theme="daylight"] body .bl-btn.bl-ghost,
+html[data-theme="daylight"] body .bl-seg button:not(.on),
+html[data-theme="daylight"] body .bl-chips button:not(.on),
+html[data-theme="daylight"] body .bl-tags button,
+html[data-theme="daylight"] body .bl-tags a,
+html[data-theme="daylight"] body .bl-admin-tabs button:not(.on),
+html[data-theme="daylight"] body .bl-toolbar button {
+  color: #3b2a8c;
+  background: #ffffff;
+  border-color: rgba(140, 90, 255, 0.45);
+}
+
+html[data-theme="daylight"] body .bl-body a { color: #0a6fa8; }
+html[data-theme="daylight"] body .bl-chip { color: #0a5f86; background: rgba(0, 166, 214, 0.14); border-color: rgba(0, 166, 214, 0.4); }
+html[data-theme="daylight"] body .bl-reject { color: #b3261e !important; }
+html[data-theme="daylight"] body .bl-btn.bl-ghost.on { color: #d4155f; background: rgba(255, 45, 122, 0.12); }
+html[data-theme="daylight"] body .bl-btn.bl-danger { color: #b3261e; }
+html[data-theme="daylight"] body .bl-input,
+html[data-theme="daylight"] body select.bl-input,
+html[data-theme="daylight"] body .bl-editor { color: #1b1535; background-color: #ffffff; }
+html[data-theme="daylight"] body select.bl-input option { color: #1b1535; background: #ffffff; }
+html[data-theme="daylight"] body .bl-tags strong,
+html[data-theme="daylight"] body .bl-article h1 { color: #1b1535; -webkit-text-fill-color: #1b1535; background: none; }
