@@ -1,4 +1,4 @@
-/* Daylight theme: bright, glowing light palette. Dark remains the default. */
+﻿/* Daylight theme: bright, glowing light palette. Dark remains the default. */
 html[data-theme="daylight"] {
   --primary: #ff2d7a;
   --secondary: #00a6d6;
@@ -354,3 +354,101 @@ html[data-theme="daylight"] .live-sidebar input {
   border-color: var(--primary);
   box-shadow: 0 0 18px rgba(255, 51, 102, 0.45);
 }
+
+/* Daylight contrast: dark text on every light surface (overrides neon-on-dark colours from the *-glow.css files) */
+html[data-theme="daylight"] body .settings-section-heading h2,
+html[data-theme="daylight"] body .settings-heading h1 {
+  color: #1b1535;
+  text-shadow: none;
+}
+
+html[data-theme="daylight"] body .profile-stat span,
+html[data-theme="daylight"] body .settings-card small,
+html[data-theme="daylight"] body .settings-field small,
+html[data-theme="daylight"] body .settings-status,
+html[data-theme="daylight"] body .privacy-toggle-text small,
+html[data-theme="daylight"] body .message-privacy small,
+html[data-theme="daylight"] body .profile-photo-controls input {
+  color: #4a4470;
+}
+
+html[data-theme="daylight"] body .settings-status.is-error { color: #c0173f; }
+
+html[data-theme="daylight"] body .profile-stat strong { color: #1b1535; }
+
+html[data-theme="daylight"] body .profile-vynzo-id {
+  color: #1b1535;
+  background: #ffffff;
+  border-color: rgba(140, 90, 255, 0.45);
+}
+
+html[data-theme="daylight"] body .people-page-header p,
+html[data-theme="daylight"] body .people-page .account-search-message,
+html[data-theme="daylight"] body .account-search-message,
+html[data-theme="daylight"] body .account-profile-identity p,
+html[data-theme="daylight"] body .account-profile-stats,
+html[data-theme="daylight"] body .account-profile-private-note {
+  color: #4a4470;
+  text-shadow: none;
+}
+
+html[data-theme="daylight"] body .people-page .account-search input {
+  background: #ffffff;
+  color: #1b1535;
+}
+
+html[data-theme="daylight"] body .account-search-counts,
+html[data-theme="daylight"] body .account-profile-stats strong {
+  color: #8a4b00;
+  text-shadow: none;
+}
+
+html[data-theme="daylight"] body .people-tab {
+  color: #3a2f66;
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(140, 90, 255, 0.45);
+}
+
+html[data-theme="daylight"] body .people-tab.active { color: #fff; }
+
+html[data-theme="daylight"] body .account-message-button {
+  color: #0b3d5c;
+  background: linear-gradient(120deg, rgba(110, 205, 255, 0.45), rgba(220, 170, 255, 0.45));
+}
+
+html[data-theme="daylight"] body .home-page .home-user-name {
+  color: #1b1535;
+  text-shadow: none;
+}
+
+html[data-theme="daylight"] body .home-page .tab-btn:not(.active) {
+  color: #3a2f66;
+  text-shadow: none;
+  border-color: rgba(140, 90, 255, 0.4);
+}
+
+html[data-theme="daylight"] body .home-friend-status,
+html[data-theme="daylight"] body .home-friends-message,
+html[data-theme="daylight"] body .post-time,
+html[data-theme="daylight"] body .post-caption,
+html[data-theme="daylight"] body .post-action,
+html[data-theme="daylight"] body .post-placeholder {
+  color: #4a4470;
+}
+
+html[data-theme="daylight"] body .home-page .post-action.liked,
+html[data-theme="daylight"] body .home-page .like-btn.liked { color: #d4155f; }
+
+html[data-theme="daylight"] body .messages-page .conversation-item .conversation-name {
+  color: #1b1535;
+  text-shadow: none;
+}
+
+html[data-theme="daylight"] body .messages-page .conversation-item div[style*="text-muted"] {
+  color: #4a4470 !important;
+}
+
+html[data-theme="daylight"] body .nav-item:not(.active),
+html[data-theme="daylight"] body .mobile-nav .nav-item:not(.active) { color: #3a2f66; }
+
+html[data-theme="daylight"] body .post-delete-btn { color: #b3261e; }
