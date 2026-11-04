@@ -1,4 +1,4 @@
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.91.0/+esm';
+import { createClient } from './vendor/supabase-js-2.91.0.js';
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabase-config.js';
 
 const isConfigured = SUPABASE_PUBLISHABLE_KEY !== '__VYNZO_SUPABASE_PUBLISHABLE_KEY__';

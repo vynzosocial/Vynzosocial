@@ -2172,6 +2172,6 @@ Deno.serve(async request => {
     if (code === 'PGRST202' || code === 'PGRST204' || code === 'PGRST205') {
       return jsonResponse(503, { error: 'Supabase Data API schema or permissions are not configured for this operation.' }, headers)
     }
-    return jsonResponse(500, { error: 'Supabase could not complete the request. Check the Edge Function and database logs.' }, headers)
+    return jsonResponse(500, { error: `Supabase could not complete the request. [debug: ${String((error as { message?: string })?.message ?? error).slice(0, 200)} @ ${new URL(request.url).pathname.split('/').slice(-3).join('/')}]` }, headers)
   }
 })
