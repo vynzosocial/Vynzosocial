@@ -40,7 +40,8 @@
         <form id="register-form">
             <div class="form-group">
                 <label for="username">Username</label>
-                <input type="text" id="username" minlength="2" maxlength="30" pattern="[A-Za-z0-9](?:[A-Za-z0-9._]{0,28}[A-Za-z0-9])" autocomplete="username" required>
+                <input type="text" id="username" minlength="2" maxlength="30" autocomplete="username" required aria-describedby="username-hint">
+                <small id="username-hint">Use 2–30 letters, numbers, periods, or underscores, including at least 2 digits.</small>
             </div>
             <div class="form-row">
                 <div class="form-group">

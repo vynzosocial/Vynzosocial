@@ -265,8 +265,15 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
     const body = await request.json()
     const username = typeof body?.username === 'string' ? body.username.trim().toLowerCase() : ''
     const bio = typeof body?.bio === 'string' ? body.bio.trim() : ''
-    if (!/^[a-zA-Z0-9](?:[a-zA-Z0-9._]{0,28}[a-zA-Z0-9])$/.test(username)) {
-      return jsonResponse(400, { error: 'Username must be 2–30 characters and use only letters, numbers, periods, and underscores.' }, headers)
+    if (!/^(?=(?:.*[0-9]){2})[a-zA-Z0-9](?:[a-zA-Z0-9._]{0,28}[a-zA-Z0-9])$/.test(username)) {
+      const { data: currentUser, error: currentUserError } = await admin.from('users')
+        .select('username')
+        .eq('id', viewerId)
+        .maybeSingle()
+      throwOnError(currentUserError)
+      if (currentUser?.username?.toLowerCase() !== username) {
+        return jsonResponse(400, { error: 'Username must be 2–30 characters, contain at least 2 digits, and use only letters, numbers, periods, and underscores.' }, headers)
+      }
     }
     if (bio.length > 500) return jsonResponse(400, { error: 'Bio must be 500 characters or fewer.' }, headers)
     const { data: user, error } = await admin.from('users').update({ username, bio, updated_at: new Date().toISOString() })
