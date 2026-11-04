@@ -32,7 +32,7 @@ const allowedMediaTypes = new Set([
 function corsHeaders(origin: string | null): Record<string, string> {
   const headers: Record<string, string> = {
     'Access-Control-Allow-Headers': 'authorization, apikey, content-type',
-    'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     'Vary': 'Origin'
   }
   if (origin && (allowedOrigins.has(origin) || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin))) {
