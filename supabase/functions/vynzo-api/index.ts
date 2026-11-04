@@ -1790,6 +1790,55 @@ async function handlePhoneLogin(request: Request, headers: Record<string, string
   }, headers)
 }
 
+// Creates an account from a phone number alone. No SMS provider is configured, so the number is not verified.
+async function handlePhoneRegister(request: Request, headers: Record<string, string>): Promise<Response> {
+  const body = await request.json().catch(() => null)
+  const phone = typeof body?.phone === 'string' ? normalizeLoginPhone(body.phone.trim()) : null
+  const password = typeof body?.password === 'string' ? body.password : ''
+  if (!phone) return jsonResponse(400, { error: 'Enter a valid phone number with country code, for example +966501234567.' }, headers)
+  if (password.length < 6 || password.length > 72) {
+    return jsonResponse(400, { error: 'Password must be between 6 and 72 characters.' }, headers)
+  }
+  const { data: taken, error: takenError } = await admin.from('users').select('id').in('phone', [phone, phone.slice(1)]).limit(1)
+  throwOnError(takenError)
+  if (taken?.length) return jsonResponse(409, { error: 'This phone number is already registered. Please log in.' }, headers)
+
+  const profile = {
+    vynzo_profile_version: '1',
+    phone,
+    username: body.username,
+    first_name: body.first_name,
+    last_name: body.last_name,
+    birth_date: body.birth_date,
+    nationality: body.nationality,
+    age_confirmed: body.age_confirmed === true ? 'true' : 'false',
+    terms_accepted: body.terms_accepted === true ? 'true' : 'false'
+  }
+  // The profile trigger requires an email, so phone accounts get an internal placeholder address.
+  const email = `${phone.slice(1)}@phone.vynzosocial.com`
+  const { error: createError } = await admin.auth.admin.createUser({
+    email, password, email_confirm: true, user_metadata: profile
+  })
+  if (createError) {
+    const message = createError.message || ''
+    if (/already|registered|exists|duplicate/i.test(message)) {
+      return jsonResponse(409, { error: 'This phone number or username is already registered.' }, headers)
+    }
+    if (/username/i.test(message)) return jsonResponse(409, { error: 'That username is already taken.' }, headers)
+    if (/18|invalid|database error/i.test(message)) return jsonResponse(400, { error: 'Check your details: username, date of birth (18+), and terms must be valid.' }, headers)
+    throw createError
+  }
+
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
+  if (!anonKey) throw new Error('SUPABASE_ANON_KEY is not available in this Edge Function.')
+  const authClient = createClient(supabaseUrl!, anonKey, { auth: { autoRefreshToken: false, persistSession: false } })
+  const { data: signedIn, error: signInError } = await authClient.auth.signInWithPassword({ email, password })
+  if (signInError || !signedIn.session) throw signInError ?? new Error('Sign-in after registration failed.')
+  return jsonResponse(201, {
+    session: { access_token: signedIn.session.access_token, refresh_token: signedIn.session.refresh_token }
+  }, headers)
+}
+
 Deno.serve(async request => {
   const headers = corsHeaders(request.headers.get('Origin'))
   if (request.method === 'OPTIONS') return new Response('ok', { headers })
@@ -1802,6 +1851,9 @@ Deno.serve(async request => {
     if (endpointSegments[0] === 'api') endpointSegments.shift()
     if (endpointSegments[0] === 'auth' && endpointSegments[1] === 'login' && request.method === 'POST') {
       return await handlePhoneLogin(request, headers)
+    }
+    if (endpointSegments[0] === 'auth' && endpointSegments[1] === 'register' && request.method === 'POST') {
+      return await handlePhoneRegister(request, headers)
     }
     if (endpointSegments[0] === 'live') return await handleLive(request, viewer?.id, headers)
     if (!viewer) return jsonResponse(401, { error: 'Invalid or expired session.' }, headers)

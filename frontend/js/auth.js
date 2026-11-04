@@ -84,8 +84,8 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      if (!email) {
-        if (errorEl) errorEl.textContent = 'Enter your email address.';
+      if (!email && !phoneInput) {
+        if (errorEl) errorEl.textContent = 'Enter your email address or your phone number.';
         return;
       }
 
@@ -106,6 +106,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const birthDate = `${birthYear}-${String(birthMonth).padStart(2, '0')}-${String(birthDay).padStart(2, '0')}`;
         if (phoneInput && !/^\+?\d{8,15}$/.test(phoneInput)) {
           throw new Error('Enter a valid phone number with country code, for example +966501234567.');
+        }
+        if (!email) {
+          const response = await fetch(`${SUPABASE_URL}/functions/v1/vynzo-api/api/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', apikey: SUPABASE_PUBLISHABLE_KEY },
+            body: JSON.stringify({
+              phone: phoneInput, password, username: normalizedUsername, first_name, last_name,
+              birth_date: birthDate, nationality, age_confirmed, terms_accepted
+            })
+          }).catch(() => null);
+          if (!response) throw new Error('Cannot reach Supabase. Check your connection and try again.');
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(result.error || 'Unable to create your account.');
+          const { data: phoneSession, error: phoneError } = await requireSupabase().auth.setSession(result.session);
+          if (phoneError) throw phoneError;
+          syncLegacySession(phoneSession.session);
+          window.location.href = '../index.html';
+          return;
         }
         const { data, error } = await requireSupabase().auth.signUp({
           email,
