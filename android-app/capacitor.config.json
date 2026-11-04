@@ -1,0 +1,17 @@
+{
+  "appId": "com.vynzosocial.app",
+  "appName": "VynzoSocial",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "hostname": "app.vynzosocial.com",
+    "allowNavigation": [
+      "www.vynzosocial.com",
+      "*.supabase.co",
+      "cdn.jsdelivr.net"
+    ]
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}

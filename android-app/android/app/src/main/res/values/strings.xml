@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">VynzoSocial</string>
+    <string name="title_activity_main">VynzoSocial</string>
+    <string name="package_name">com.vynzosocial.app</string>
+    <string name="custom_url_scheme">com.vynzosocial.app</string>
+</resources>

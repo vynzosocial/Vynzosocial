@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ota_manifest_url" translatable="false"></string>
+    <string name="ota_public_key" translatable="false">MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEf+x0g6ZbBlif9uQJn73jNphP+MrU1Kjd3WeYxcAmIsfnmAjf34gnWTGOpPK0yWCe78OkIw7fDx1l+JxGJWyRMw==</string>
+</resources>
