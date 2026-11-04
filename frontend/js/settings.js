@@ -1,5 +1,5 @@
 import { apiRequest } from './api.js?v=sb6';
-import { signOutSupabase } from './supabase-client.js';
+import { requireSupabase, signOutSupabase } from './supabase-client.js';
 
 import { API_ORIGIN as MEDIA_BASE_URL } from './config.js?v=sb4';
 
@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const logoutBtn = document.getElementById('logout-btn');
   const user = readStoredUser();
   let previewUrl = null;
+  setupChangePassword(user);
 
   if (!user.id) {
     userInfoEl.textContent = 'Log in to edit your profile.';
@@ -433,6 +434,49 @@ function storeUpdatedUser(user, token) {
   const currentUser = readStoredUser();
   localStorage.setItem('vynzo_user', JSON.stringify({ ...currentUser, ...user }));
   if (token) localStorage.setItem('vynzo_token', token);
+}
+
+function setupChangePassword(user) {
+  const form = document.getElementById('change-password-form');
+  const statusEl = document.getElementById('change-password-status');
+  if (!form) return;
+  if (!user.id) {
+    form.querySelectorAll('input, button').forEach(control => { control.disabled = true; });
+    return;
+  }
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const current = document.getElementById('current-password').value;
+    const next = document.getElementById('new-password').value;
+    const confirmation = document.getElementById('confirm-new-password').value;
+    const button = form.querySelector('button[type="submit"]');
+
+    if (next.length < 6) return setStatus(statusEl, 'The new password must be at least 6 characters.', 'error');
+    if (next !== confirmation) return setStatus(statusEl, 'The new passwords do not match.', 'error');
+    if (next === current) return setStatus(statusEl, 'The new password must be different from the current one.', 'error');
+
+    button.disabled = true;
+    setStatus(statusEl, 'Updating password...', '');
+    try {
+      const supabase = requireSupabase();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const email = sessionData.session?.user?.email;
+      if (!sessionData.session) throw new Error('Please log in again to change your password.');
+      if (email) {
+        const { error: verifyError } = await supabase.auth.signInWithPassword({ email, password: current });
+        if (verifyError) throw new Error('Your current password is incorrect.');
+      }
+      const { error } = await supabase.auth.updateUser({ password: next });
+      if (error) throw error;
+      form.reset();
+      setStatus(statusEl, 'Your password has been updated.', 'success');
+    } catch (err) {
+      setStatus(statusEl, err.message || 'Could not update your password.', 'error');
+    } finally {
+      button.disabled = false;
+    }
+  });
 }
 
 function setStatus(element, message, type) {
