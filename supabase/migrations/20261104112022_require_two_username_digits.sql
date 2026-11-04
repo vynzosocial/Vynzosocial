@@ -18,7 +18,6 @@ BEGIN
 
   IF username_value IS NULL
      OR username_value !~ '^[a-zA-Z0-9](?:[a-zA-Z0-9._]{0,28}[a-zA-Z0-9])$'
-     OR COALESCE(pg_catalog.length(pg_catalog.regexp_replace(username_value, '[^0-9]', '', 'g')), 0) < 2
      OR NEW.email IS NULL THEN
     RAISE EXCEPTION 'Invalid username' USING ERRCODE = '23514';
   END IF;
