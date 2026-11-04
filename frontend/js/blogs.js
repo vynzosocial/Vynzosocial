@@ -1,6 +1,6 @@
 import { apiRequest } from './api.js?v=sb6';
 import { API_ORIGIN } from './config.js?v=sb4';
-import { t, getLang, applyLang, toggleLang } from './blogs-i18n.js?v=8';
+import { t, getLang, applyLang, toggleLang, setLang } from './blogs-i18n.js?v=9';
 
 if (!localStorage.getItem('vynzo_token')) location.href = '../index.html';
 
@@ -634,6 +634,7 @@ async function init() {
   const langBtn = document.getElementById('lang-btn');
   langBtn.textContent = t('langBtn');
   langBtn.onclick = () => { toggleLang(); langBtn.textContent = t('langBtn'); route(); };
+  window.addEventListener('vynzo-lang', e => { setLang(e.detail); langBtn.textContent = t('langBtn'); route(); });
   try { state.meta = await apiRequest('/blogs/meta'); }
   catch (err) { view.innerHTML = `<p class="bl-empty">${esc(err.message)}</p>`; return; }
   apiRequest('/blogs/admin/stats').then(() => { document.getElementById('admin-link').hidden = false; }).catch(() => {});

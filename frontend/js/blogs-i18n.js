@@ -67,7 +67,12 @@ const DICT = {
   }
 };
 
-let lang = localStorage.getItem('vynzo_blog_lang') === 'ar' ? 'ar' : 'en';
+let lang = localStorage.getItem('vynzo_lang') === 'ar' ? 'ar' : 'en';
+
+export function setLang(l) {
+  lang = l === 'ar' ? 'ar' : 'en';
+  applyLang();
+}
 
 export const getLang = () => lang;
 export const t = key => DICT[lang][key] ?? DICT.en[key] ?? key;
@@ -80,8 +85,8 @@ export function applyLang() {
 }
 
 export function toggleLang() {
-  lang = lang === 'ar' ? 'en' : 'ar';
-  localStorage.setItem('vynzo_blog_lang', lang);
-  applyLang();
+  const next = lang === 'ar' ? 'en' : 'ar';
+  if (window.VynzoI18n) window.VynzoI18n.set(next);
+  setLang(next);
   return lang;
 }
