@@ -177,19 +177,10 @@
                 <div class="settings-section-heading">
                     <div>
                         <h2 id="password-settings-heading">Change password</h2>
-                        <p>Choose a new password for your account.</p>
+                        <p>Change your password on a separate page.</p>
                     </div>
                 </div>
-                <form id="change-password-form">
-                    <label for="current-password">Current password</label>
-                    <input type="password" id="current-password" autocomplete="current-password" required>
-                    <label for="new-password">New password</label>
-                    <input type="password" id="new-password" autocomplete="new-password" minlength="6" required>
-                    <label for="confirm-new-password">Confirm new password</label>
-                    <input type="password" id="confirm-new-password" autocomplete="new-password" minlength="6" required>
-                    <button class="settings-button" type="submit">Update password</button>
-                </form>
-                <p id="change-password-status" class="settings-status" role="status" aria-live="polite"></p>
+                <a id="change-password-link" class="settings-button" href="change-password.html">Change password</a>
             </section>
 
             <section class="settings-card session-settings-card" aria-labelledby="session-settings-heading">

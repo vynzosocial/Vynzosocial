@@ -281,6 +281,13 @@
   color: #ff91ae;
 }
 
+a.settings-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
 .settings-button {
   min-height: 42px;
   padding: 0 18px;
