@@ -32,7 +32,11 @@ export async function apiRequest(endpoint, options = {}) {
     throw new Error('Login is unavailable because this site has no public API configured. The site owner must deploy the Vynzo backend and configure its HTTPS URL.');
   }
 
-  const token = localStorage.getItem('vynzo_token');
+  let token = localStorage.getItem('vynzo_token');
+  if (supabase) {
+    const { data } = await supabase.auth.getSession();
+    if (data?.session?.access_token) token = data.session.access_token;
+  }
   const headers = {
     ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),

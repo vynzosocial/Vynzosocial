@@ -2,6 +2,7 @@ import { restoreSupabaseSession } from './supabase-client.js';
 import { initFeed } from './feed.js?v=prot4';
 import { initStoriesCarousel } from './stories.js?v=prot4';
 import { initHomeFriends } from './home-friends.js';
+import { apiRequest } from './api.js';
 import { API_ORIGIN } from './config.js';
 
 function renderHomeUser() {
@@ -19,6 +20,24 @@ function renderHomeUser() {
     avatarEl.appendChild(img);
   } else {
     avatarEl.textContent = (name || '?').charAt(0).toUpperCase();
+  }
+}
+
+async function refreshHomeUser() {
+  try {
+    const user = JSON.parse(localStorage.getItem('vynzo_user') || '{}');
+    if (!user.id) return;
+    const profile = await apiRequest(`/users/${encodeURIComponent(user.id)}/profile`);
+    const fresh = profile.user || profile;
+    localStorage.setItem('vynzo_user', JSON.stringify({
+      ...user,
+      username: fresh.username || user.username,
+      display_name: fresh.display_name || user.display_name,
+      avatar_url: fresh.avatar_url || user.avatar_url || null
+    }));
+    renderHomeUser();
+  } catch (err) {
+    console.error('Unable to load your profile:', err);
   }
 }
 
@@ -41,6 +60,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   welcomePage.hidden = true;
   feedApp.hidden = false;
   renderHomeUser();
+  refreshHomeUser();
 
   const themeToggleBtn = document.getElementById('theme-toggle');
   const body = document.body;
