@@ -210,8 +210,9 @@ function canViewPost(
   if (post.user_id === viewerId) return true
 
   const isFriend = friends.has(post.user_id)
+  // Private accounts' posts are publicly visible by product decision; only posts_privacy and per-post privacy restrict them.
   const accountAllowsPost = owner.posts_privacy !== 'only_me'
-    && ((owner.posts_privacy !== 'friends' && !owner.is_private) || isFriend)
+    && (owner.posts_privacy !== 'friends' || isFriend)
   if (!accountAllowsPost) return false
 
   const privacy = post.privacy || 'everyone'
