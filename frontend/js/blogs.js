@@ -404,6 +404,10 @@ async function renderEditor(id) {
       <button type="button" data-cmd="insertUnorderedList">&bull; List</button>
       <button type="button" data-cmd="insertOrderedList">1. List</button>
       <button type="button" data-cmd="formatBlock" data-val="blockquote">&ldquo; &rdquo;</button>
+      <button type="button" data-ta="left" title="Align text left">&#8676;</button>
+      <button type="button" data-ta="center" title="Center text">&#8596;</button>
+      <button type="button" data-ta="right" title="Align text right">&#8677;</button>
+      <button type="button" data-ta="justify" title="Justify text">&#9776;</button>
       <button type="button" data-act="link">&#128279; ${t('insertLink')}</button>
       <button type="button" data-act="image">&#128247; ${t('insertImage')}</button>
       <button type="button" data-act="video">&#127916; ${t('insertVideo')}</button>
@@ -461,6 +465,24 @@ async function renderEditor(id) {
     const b = e.target.closest('button'); if (!b) return;
     body.focus();
     if (b.dataset.cmd) return document.execCommand(b.dataset.cmd, false, b.dataset.val || null);
+    if (b.dataset.ta) {
+      const sel = window.getSelection();
+      if (!sel.rangeCount) return;
+      const range = sel.getRangeAt(0);
+      const blocks = new Set();
+      const blockOf = n => { for (; n && n !== body; n = n.parentNode) if (n.nodeType === 1 && /^(P|H2|H3|H4|BLOCKQUOTE|LI)$/.test(n.tagName)) return n; return null; };
+      blocks.add(blockOf(range.startContainer)); blocks.add(blockOf(range.endContainer));
+      body.querySelectorAll('p, h2, h3, h4, blockquote, li').forEach(el => { if (range.intersectsNode(el)) blocks.add(el); });
+      if (!blocks.has(null) || blocks.size > 1) {
+        blocks.delete(null);
+        blocks.forEach(el => el.setAttribute('data-ta', b.dataset.ta));
+      } else {
+        document.execCommand('formatBlock', false, 'p');
+        const el = blockOf(window.getSelection().anchorNode);
+        if (el) el.setAttribute('data-ta', b.dataset.ta);
+      }
+      return snapshot();
+    }
     if (b.dataset.act === 'link') {
       const url = prompt(t('linkPrompt'));
       if (url && /^https?:\/\//i.test(url)) document.execCommand('createLink', false, url);

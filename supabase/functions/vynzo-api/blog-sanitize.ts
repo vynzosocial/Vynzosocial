@@ -149,7 +149,12 @@ export function cleanHtml(input: unknown): string {
           ? `<iframe src="${src}" sandbox="allow-scripts allow-same-origin allow-presentation" allowfullscreen="true" loading="lazy" title="Embedded video"${layout}>`
           : "";
       }
-      return `<${tag}>`;
+      const ta = /^(left|center|right|justify)$/.test(attrs["data-ta"] || "")
+        ? ` data-ta="${attrs["data-ta"]}"`
+        : "";
+      return ["p", "h2", "h3", "h4", "blockquote", "li"].includes(tag)
+        ? `<${tag}${ta}>`
+        : `<${tag}>`;
     },
   ).trim();
 }

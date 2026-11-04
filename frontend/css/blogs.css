@@ -131,3 +131,8 @@ textarea.bl-input { min-height: 80px; resize: vertical; }
 .bl-mediabar span { opacity: .75; margin-inline-end: 2px; }
 .bl-mediabar button { padding: 4px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.06); color: inherit; cursor: pointer; }
 .bl-mediabar button.on { background: #ffd76a; color: #1a1033; border-color: #ffd76a; }
+
+.bl-body [data-ta='left'] { text-align: left; }
+.bl-body [data-ta='center'] { text-align: center; }
+.bl-body [data-ta='right'] { text-align: right; }
+.bl-body [data-ta='justify'] { text-align: justify; }
