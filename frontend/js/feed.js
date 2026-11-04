@@ -150,7 +150,7 @@ function observeReels(container) {
         video.pause();
       }
     });
-  }, { root: container, threshold: [0, 0.6, 1] });
+  }, { root: null, threshold: [0, 0.6, 1] });
   container.querySelectorAll('.post-card').forEach(card => reelObserver.observe(card));
 }
 
@@ -239,7 +239,20 @@ function createPostCard(post, reel = false) {
     <button class="post-action comment-count" type="button" aria-label="View comments">💬 <span class="action-count">${post.comments_count}</span></button>
   `;
 
-  card.append(mediaButton, details, actions);
+  if (reel) {
+    // Instagram-style post: author on top, media, actions, then caption.
+    card.classList.add('insta-card');
+    const header = document.createElement('div');
+    header.className = 'post-header';
+    header.append(details.querySelector('.post-author-row'));
+    const caption = details.querySelector('.post-caption');
+    details.textContent = '';
+    if (caption) details.append(caption);
+    card.append(header, mediaButton, actions);
+    if (caption) card.append(details);
+  } else {
+    card.append(mediaButton, details, actions);
+  }
 
   if (post.is_protected) {
     protectMedia(mediaButton);
