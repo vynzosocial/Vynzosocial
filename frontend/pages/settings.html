@@ -71,9 +71,9 @@
                         <span>Username</span>
                         <span class="username-input-wrap">
                             <span aria-hidden="true">@</span>
-                            <input id="profile-username" name="username" type="text" minlength="2" maxlength="30" pattern="[A-Za-z0-9][A-Za-z0-9._]{0,28}[A-Za-z0-9]" autocomplete="username" required>
+                            <input id="profile-username" name="username" type="text" maxlength="60" autocomplete="username" required>
                         </span>
-                        <small>2–30 characters; letters, numbers, periods, and underscores, with at least 2 digits.</small>
+                        <small>2–30 characters; letters, numbers, emoji, periods, underscores, and hyphens.</small>
                     </label>
 
                     <label class="settings-field" for="profile-bio">
@@ -226,7 +226,7 @@
         })();
     </script>
     <script src="../js/password-toggle.js?v=1"></script>
-    <script type="module" src="../js/settings.js?v=up2"></script>
+    <script type="module" src="../js/settings.js?v=user3"></script>
     <script type="module">import { initCalls } from '../js/calls.js?v=sb4'; initCalls();</script>
     <script type="module" src="../js/notifications.js?v=n1"></script>
 </body>

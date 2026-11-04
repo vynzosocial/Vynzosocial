@@ -2,6 +2,7 @@ import { apiRequest } from './api.js?v=sb6';
 import { requireSupabase, signOutSupabase } from './supabase-client.js';
 
 import { API_ORIGIN as MEDIA_BASE_URL } from './config.js?v=sb4';
+import { isValidUsername, USERNAME_MESSAGE } from './username-rules.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   const userInfoEl = document.getElementById('user-info-display');
@@ -89,9 +90,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const nextUsername = usernameInput.value.trim().toLowerCase();
     const currentUsername = String(user.username || '').toLowerCase();
-    if (nextUsername !== currentUsername
-      && !/^(?=(?:.*[0-9]){2})[a-zA-Z0-9](?:[a-zA-Z0-9._]{0,28}[a-zA-Z0-9])$/.test(nextUsername)) {
-      usernameInput.setCustomValidity('Username must contain at least 2 digits and use 2–30 allowed characters.');
+    if (nextUsername !== currentUsername && !isValidUsername(nextUsername)) {
+      usernameInput.setCustomValidity(USERNAME_MESSAGE);
       usernameInput.reportValidity();
       return;
     }

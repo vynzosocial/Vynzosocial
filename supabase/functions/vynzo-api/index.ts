@@ -74,6 +74,14 @@ function getErrorMetadata(error: unknown): { code?: string; name?: string; statu
   return metadata
 }
 
+const USERNAME_ALLOWED = /^[\p{L}\p{N}\p{M}\p{Extended_Pictographic}\p{Emoji_Modifier}\p{Regional_Indicator}\u200d\ufe0f._-]+$/u
+const USERNAME_HAS_CONTENT = /[\p{L}\p{N}\p{Extended_Pictographic}\p{Regional_Indicator}]/u
+function isValidUsername(value: string): boolean {
+  const name = value.normalize('NFC')
+  const length = [...name].length
+  return length >= 2 && length <= 30 && USERNAME_ALLOWED.test(name) && USERNAME_HAS_CONTENT.test(name)
+}
+
 async function getViewer(request: Request): Promise<{ id: string } | null> {
   const authorization = request.headers.get('Authorization')
   const token = authorization?.match(/^Bearer\s+(.+)$/i)?.[1]
@@ -294,14 +302,14 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
     const body = await request.json()
     const username = typeof body?.username === 'string' ? body.username.trim().toLowerCase() : ''
     const bio = typeof body?.bio === 'string' ? body.bio.trim() : ''
-    if (!/^(?=(?:.*[0-9]){2})[a-zA-Z0-9](?:[a-zA-Z0-9._]{0,28}[a-zA-Z0-9])$/.test(username)) {
+    if (!isValidUsername(username)) {
       const { data: currentUser, error: currentUserError } = await admin.from('users')
         .select('username')
         .eq('id', viewerId)
         .maybeSingle()
       throwOnError(currentUserError)
       if (currentUser?.username?.toLowerCase() !== username) {
-        return jsonResponse(400, { error: 'Username must be 2–30 characters, contain at least 2 digits, and use only letters, numbers, periods, and underscores.' }, headers)
+        return jsonResponse(400, { error: 'Username must be 2–30 characters and use only letters, numbers, emoji, periods, underscores, and hyphens.' }, headers)
       }
     }
     if (bio.length > 500) return jsonResponse(400, { error: 'Bio must be 500 characters or fewer.' }, headers)

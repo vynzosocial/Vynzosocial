@@ -40,8 +40,8 @@
         <form id="register-form">
             <div class="form-group">
                 <label for="username">Username</label>
-                <input type="text" id="username" minlength="2" maxlength="30" autocomplete="username" required aria-describedby="username-hint">
-                <small id="username-hint">Use 2–30 letters, numbers, periods, or underscores.</small>
+                <input type="text" id="username" maxlength="60" autocomplete="username" required aria-describedby="username-hint">
+                <small id="username-hint">Use 2–30 characters: letters, numbers, emoji, periods, underscores, or hyphens.</small>
             </div>
             <div class="form-row">
                 <div class="form-group">
@@ -95,6 +95,6 @@
         </div>
     </div>
     <script src="../js/password-toggle.js?v=1"></script>
-    <script type="module" src="../js/auth.js?v=country2"></script>
+    <script type="module" src="../js/auth.js?v=user3"></script>
 </body>
 </html>
