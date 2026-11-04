@@ -108,6 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
         })
       });
       storeUpdatedUser(result.user, result.token);
+      requireSupabase().auth.updateUser({ data: { username: result.user.username } }).catch(() => {});
       Object.assign(user, result.user);
       userInfoEl.textContent = `Logged in as @${user.username}${user.email ? ` (${user.email})` : ''}`;
       heading.textContent = `@${user.username}`;

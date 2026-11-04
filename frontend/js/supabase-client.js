@@ -34,12 +34,16 @@ export function syncLegacySession(session) {
 
   const metadata = session.user.user_metadata || {};
   localStorage.setItem('vynzo_token', session.access_token);
+  let stored = {};
+  try { stored = JSON.parse(localStorage.getItem('vynzo_user') || '{}'); } catch { stored = {}; }
+  if (stored.id !== session.user.id) stored = {};
   localStorage.setItem('vynzo_user', JSON.stringify({
+    ...stored,
     id: session.user.id,
-    username: metadata.username || '',
+    username: stored.username || metadata.username || '',
     email: session.user.email || '',
-    display_name: metadata.display_name || metadata.username || '',
-    avatar_url: metadata.avatar_url || null
+    display_name: stored.display_name || metadata.display_name || metadata.username || '',
+    avatar_url: stored.avatar_url || metadata.avatar_url || null
   }));
 }
 
