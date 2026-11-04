@@ -40,14 +40,15 @@ function initConnections() {
     renderSearchMessage(list, 'Loading...');
     try {
       const data = await apiRequest(`/users/connections?type=${type}`);
+      const users = type === 'followers' ? data.users.filter(user => !user.is_following) : data.users;
       list.replaceChildren();
-      if (!data.users.length) {
+      if (!users.length) {
         renderSearchMessage(list, type === 'friends'
           ? 'No friends yet. Friends are people you follow who follow you back.'
-          : 'No followers yet. People who follow you will appear here.');
+          : 'No followers waiting for a follow back.');
         return;
       }
-      data.users.forEach(user => list.appendChild(createAccountResult(user)));
+      users.forEach(user => list.appendChild(createAccountResult(user)));
     } catch (err) {
       console.error('Could not load connections:', err);
       renderSearchMessage(list, err.message || 'Log in to see your friends and followers.');
