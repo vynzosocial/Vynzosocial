@@ -1051,7 +1051,8 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
       .order('created_at', { ascending: false })
       .range(scope === 'me' ? offset : 0, scope === 'me' ? offset + limit - 1 : 999)
     if (scope === 'me') query = query.eq('user_id', viewerId)
-    else if (scope !== 'all') {
+    else if (scope === 'all') query = query.neq('user_id', viewerId)
+    else {
       if (!followedIds.size) return jsonResponse(200, { posts: [], limit, offset }, headers)
       query = query.in('user_id', [...followedIds])
     }
