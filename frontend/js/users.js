@@ -44,7 +44,7 @@ function initConnections() {
       if (!data.users.length) {
         renderSearchMessage(list, type === 'friends'
           ? 'No friends yet. Friends are people you follow who follow you back.'
-          : 'No followers waiting for a follow back.');
+          : 'No followers yet. People who follow you will appear here.');
         return;
       }
       data.users.forEach(user => list.appendChild(createAccountResult(user)));
