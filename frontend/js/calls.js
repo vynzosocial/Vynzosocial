@@ -1,4 +1,4 @@
-import { API_ORIGIN } from './config.js';
+﻿import { API_ORIGIN, createOfflineSocket } from './config.js';
 
 const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: ['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' }] };
 
@@ -18,17 +18,6 @@ function ensureStyles() {
   document.head.appendChild(link);
 }
 
-function loadSocketLibrary() {
-  if (window.io) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = `${API_ORIGIN}/socket.io/socket.io.js`;
-    script.onload = resolve;
-    script.onerror = () => reject(new Error('Could not load realtime library'));
-    document.head.appendChild(script);
-  });
-}
-
 export async function initCalls() {
   if (initialised) return;
   const token = localStorage.getItem('vynzo_token');
@@ -36,15 +25,7 @@ export async function initCalls() {
   initialised = true;
 
   ensureStyles();
-  try {
-    await loadSocketLibrary();
-  } catch (err) {
-    console.error(err.message);
-    initialised = false;
-    return;
-  }
-
-  socket = window.io(API_ORIGIN, { auth: { token } });
+  socket = createOfflineSocket();
   socket.on('call_incoming', handleIncoming);
   socket.on('call_accepted', handleAccepted);
   socket.on('call_signal', handleSignal);
@@ -80,7 +61,7 @@ export async function startCall({ conversationId, name, avatarUrl, video }) {
       timerId: null,
       seconds: 0
     };
-    renderCall('Calling…');
+    renderCall('Callingâ€¦');
   });
 }
 
@@ -144,7 +125,7 @@ async function acceptIncoming() {
   };
   incoming = null;
   createPeerConnection();
-  renderCall('Connecting…');
+  renderCall('Connectingâ€¦');
   socket.emit('call_accept', { callId: data.callId });
 }
 
@@ -183,7 +164,7 @@ function createPeerConnection() {
 
 async function handleAccepted(data) {
   if (!call || call.callId !== data.callId || !call.isCaller) return;
-  setStatus('Connecting…');
+  setStatus('Connectingâ€¦');
   const pc = createPeerConnection();
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
@@ -289,10 +270,10 @@ function renderIncoming() {
     <div class="call-panel call-incoming">
       ${avatarHtml(from.avatar_url, name)}
       <h2>${escapeHtml(name)}</h2>
-      <p>Incoming ${incoming.video ? 'video' : 'voice'} call…</p>
+      <p>Incoming ${incoming.video ? 'video' : 'voice'} callâ€¦</p>
       <div class="call-actions">
-        <button type="button" class="call-btn call-decline" id="call-decline" aria-label="Decline">✕<span>Decline</span></button>
-        <button type="button" class="call-btn call-accept" id="call-accept" aria-label="Accept">${incoming.video ? '🎥' : '📞'}<span>Accept</span></button>
+        <button type="button" class="call-btn call-decline" id="call-decline" aria-label="Decline">âœ•<span>Decline</span></button>
+        <button type="button" class="call-btn call-accept" id="call-accept" aria-label="Accept">${incoming.video ? 'ðŸŽ¥' : 'ðŸ“ž'}<span>Accept</span></button>
       </div>
     </div>
   `);
@@ -313,9 +294,9 @@ function renderCall(status) {
       </header>
       ${call.video ? '<video id="call-local" class="call-local" autoplay playsinline muted></video>' : ''}
       <div class="call-actions">
-        <button type="button" class="call-btn call-toggle" id="call-mute" aria-label="Mute microphone">🎤<span>Mute</span></button>
-        ${call.video ? '<button type="button" class="call-btn call-toggle" id="call-camera" aria-label="Turn camera off">📷<span>Camera</span></button>' : ''}
-        <button type="button" class="call-btn call-decline" id="call-end" aria-label="End call">✕<span>End</span></button>
+        <button type="button" class="call-btn call-toggle" id="call-mute" aria-label="Mute microphone">ðŸŽ¤<span>Mute</span></button>
+        ${call.video ? '<button type="button" class="call-btn call-toggle" id="call-camera" aria-label="Turn camera off">ðŸ“·<span>Camera</span></button>' : ''}
+        <button type="button" class="call-btn call-decline" id="call-end" aria-label="End call">âœ•<span>End</span></button>
       </div>
     </div>
   `);

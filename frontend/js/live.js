@@ -1,5 +1,5 @@
-import { apiRequest } from './api.js';
-import { API_ORIGIN } from './config.js';
+﻿import { apiRequest } from './api.js';
+import { API_ORIGIN, createOfflineSocket } from './config.js';
 
 let socket = null;
 let cameraStream = null;
@@ -24,7 +24,7 @@ let renderedStreamIds = null;
 const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: ['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' }] };
 
 const LIVE_TITLE_KEY = 'vynzo_live_title';
-const TITLE_EMOJIS = ['😀','😂','😍','🔥','🎉','🎶','🎮','💬','❤️','👏','✨','🌟','🙏','😎','🤝','📣'];
+const TITLE_EMOJIS = ['ðŸ˜€','ðŸ˜‚','ðŸ˜','ðŸ”¥','ðŸŽ‰','ðŸŽ¶','ðŸŽ®','ðŸ’¬','â¤ï¸','ðŸ‘','âœ¨','ðŸŒŸ','ðŸ™','ðŸ˜Ž','ðŸ¤','ðŸ“£'];
 
 export function getSavedLiveTitle() {
   return localStorage.getItem(LIVE_TITLE_KEY) || '';
@@ -89,7 +89,7 @@ export async function initLiveStudio() {
   window.addEventListener('pagehide', () => setScreenSecure(false));
 
   const token = localStorage.getItem('vynzo_token');
-  socket = io(API_ORIGIN, {
+  socket = createOfflineSocket({
     auth: token ? { token } : {},
     autoConnect: false
   });
@@ -519,12 +519,12 @@ function createLiveStage(placeholder, isHost, hostUsername = '', title = '', hos
         <form class="live-controls-bar" id="live-chat-form">
           <div class="live-chat-composer">
             <div class="live-chat-emoji-picker" id="live-chat-emoji-picker" role="group" aria-label="Choose an emoji" hidden>
-              ${['😀', '😂', '😍', '🥰', '😎', '😭', '🔥', '❤️', '👏', '🎉', '👍', '🙏'].map(emoji => `
+              ${['ðŸ˜€', 'ðŸ˜‚', 'ðŸ˜', 'ðŸ¥°', 'ðŸ˜Ž', 'ðŸ˜­', 'ðŸ”¥', 'â¤ï¸', 'ðŸ‘', 'ðŸŽ‰', 'ðŸ‘', 'ðŸ™'].map(emoji => `
                 <button type="button" class="live-chat-emoji" aria-label="${emoji}" data-emoji="${emoji}">${emoji}</button>
               `).join('')}
             </div>
             <div class="live-chat-input-row">
-              <button type="button" class="live-chat-emoji-toggle" aria-label="Add emoji" aria-expanded="false" aria-controls="live-chat-emoji-picker">☺</button>
+              <button type="button" class="live-chat-emoji-toggle" aria-label="Add emoji" aria-expanded="false" aria-controls="live-chat-emoji-picker">â˜º</button>
               <input type="text" class="chat-input" id="live-chat-input" placeholder="${placeholder}" maxlength="500" required autocomplete="off">
               <button type="submit" class="btn-live">Send</button>
             </div>
@@ -540,7 +540,7 @@ function createLiveStage(placeholder, isHost, hostUsername = '', title = '', hos
             <span id="live-media-status">${isHost ? 'Your camera is off. Choose an option to share with everyone.' : 'Tap "Request to Join" to ask the host to put you on camera. You can keep chatting meanwhile (up to 10 guests on camera).'}</span>
           </div>
           <div class="live-media-actions">
-            <button type="button" class="live-media-button" id="live-enable-camera-btn">${isHost ? 'Open camera' : '🎤 Request to Join'}</button>
+            <button type="button" class="live-media-button" id="live-enable-camera-btn">${isHost ? 'Open camera' : 'ðŸŽ¤ Request to Join'}</button>
             <button type="button" class="live-media-button live-media-image-button" id="live-select-image-btn">${isHost ? 'Choose image' : 'Use image'}</button>
             <input id="live-image-file" type="file" accept="image/*" hidden>
             <button type="button" class="live-media-button live-media-off-button" id="live-turn-media-off-btn" hidden>${isHost ? 'Turn media off' : 'Leave stage'}</button>
@@ -549,7 +549,7 @@ function createLiveStage(placeholder, isHost, hostUsername = '', title = '', hos
         </div>
         <div class="live-video-grid" id="live-video-grid">
           <div class="live-video-empty" id="live-video-empty">
-            <span aria-hidden="true">◉</span>
+            <span aria-hidden="true">â—‰</span>
           </div>
         </div>
       </div>
@@ -740,7 +740,7 @@ async function enableLocalCamera() {
       showLiveError('The host accepted you, but microphone access was blocked. Allow the microphone in your browser settings to talk.');
     }
     const cameraBtn = document.getElementById('live-enable-camera-btn');
-    if (cameraBtn) cameraBtn.textContent = '📷 Turn camera on';
+    if (cameraBtn) cameraBtn.textContent = 'ðŸ“· Turn camera on';
     updateLocalMediaControls('You are on stage with your camera off. Tap "Turn camera on" when you are ready.');
     return;
   }
@@ -942,7 +942,7 @@ async function stopLocalMedia() {
     await publishLocalMedia();
     const isGuest = !!document.querySelector('.live-role-badge.is-guest');
     const cameraBtn = document.getElementById('live-enable-camera-btn');
-    if (isGuest && cameraBtn) cameraBtn.textContent = '🎤 Request to Join';
+    if (isGuest && cameraBtn) cameraBtn.textContent = 'ðŸŽ¤ Request to Join';
     updateLocalMediaControls(isGuest
       ? 'You are back in the chat. Tap "Request to Join" to ask the host again.'
       : 'Your camera is off. Choose an option to share with everyone.');
@@ -1552,7 +1552,7 @@ function createPeerConnection(socketId, addSendTransceivers = true) {
       setTileVisible(tile.frame, true);
       tile.video.play().catch((err) => {
         console.error('Unable to play participant video:', err);
-        tile.status.textContent = 'Video ready — press play to view.';
+        tile.status.textContent = 'Video ready â€” press play to view.';
         tile.status.hidden = false;
       });
     };

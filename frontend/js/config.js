@@ -1,8 +1,20 @@
-﻿// All data goes through Supabase (see api.js). A separate backend is used only
-// when one is explicitly set with localStorage "vynzo_backend_url".
-const configuredBackendOrigin = localStorage.getItem('vynzo_backend_url')?.trim().replace(/\/+$/, '') || '';
-const isRenderOrigin = /onrender\.com/i.test(configuredBackendOrigin);
-if (isRenderOrigin) localStorage.removeItem('vynzo_backend_url');
+﻿// The app uses Supabase only. There is no separate backend server.
+export const API_ORIGIN = '';
+export const API_BASE_URL = '';
 
-export const API_ORIGIN = isRenderOrigin ? '' : configuredBackendOrigin;
-export const API_BASE_URL = API_ORIGIN ? `${API_ORIGIN}/api` : '';
+// Realtime (live rooms, calls, instant message push) was served by the removed
+// backend. This inert socket keeps those screens from crashing until they are
+// rebuilt on Supabase Realtime.
+export function createOfflineSocket() {
+  const socket = {
+    connected: false,
+    active: false,
+    id: 'offline',
+    on: () => socket,
+    off: () => socket,
+    emit: () => socket,
+    connect: () => socket,
+    disconnect: () => socket
+  };
+  return socket;
+}

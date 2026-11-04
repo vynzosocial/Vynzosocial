@@ -40,7 +40,7 @@ async function loadFeed(container) {
 
   } catch (err) {
     console.error('Failed to load feed:', err);
-    container.innerHTML = '<div class="post-placeholder"><p>Error loading feed. Please check backend connection.</p></div>';
+    container.innerHTML = '<div class="post-placeholder"><p>Error loading feed. Please try again.</p></div>';
   }
 }
 

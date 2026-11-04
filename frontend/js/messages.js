@@ -1,5 +1,5 @@
-import { apiRequest } from './api.js';
-import { API_ORIGIN, API_BASE_URL } from './config.js';
+﻿import { apiRequest } from './api.js';
+import { API_ORIGIN, API_BASE_URL, createOfflineSocket } from './config.js';
 import { attachEmojiPicker } from './emoji-picker.js?v=scope4';
 import { initCalls, startCall } from './calls.js?v=1';
 
@@ -22,7 +22,7 @@ export async function initMessaging() {
 
   const token = localStorage.getItem('vynzo_token');
   initCalls();
-  socket = io(API_ORIGIN, {
+  socket = createOfflineSocket({
     auth: token ? { token } : {}
   });
   socket.on('connect', () => {
@@ -127,7 +127,7 @@ function renderConversations(conversations, currentUser) {
       ${avatarMarkup(conv.other_avatar_url, conversationName, 'author-avatar')}
       <div>
         <div style="font-weight:600;">${escapeHtml(conversationName)}</div>
-        <div style="font-size:12px; color:var(--text-muted);">${escapeHtml(conv.last_message ? (conv.last_message.content || (conv.last_message.view_once ? '📷 View-once photo' : conv.last_message.media_url ? '📎 Photo / video' : 'No messages')) : 'No messages')}</div>
+        <div style="font-size:12px; color:var(--text-muted);">${escapeHtml(conv.last_message ? (conv.last_message.content || (conv.last_message.view_once ? 'ðŸ“· View-once photo' : conv.last_message.media_url ? 'ðŸ“Ž Photo / video' : 'No messages')) : 'No messages')}</div>
       </div>
     `;
     item.classList.toggle('active', conv.id === currentConversationId);
@@ -180,13 +180,13 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
       </div>
       ${currentConversationMeta && !currentConversationMeta.is_group ? `
         <div class="chat-call-actions">
-          <button type="button" class="chat-call-btn" id="voice-call-btn" aria-label="Voice call" title="Voice call">📞</button>
-          <button type="button" class="chat-call-btn" id="video-call-btn" aria-label="Video call" title="Video call">🎥</button>
-          <button type="button" class="chat-call-btn" id="clear-chat-btn" aria-label="Clear chat" title="Clear chat">🗑</button>
+          <button type="button" class="chat-call-btn" id="voice-call-btn" aria-label="Voice call" title="Voice call">ðŸ“ž</button>
+          <button type="button" class="chat-call-btn" id="video-call-btn" aria-label="Video call" title="Video call">ðŸŽ¥</button>
+          <button type="button" class="chat-call-btn" id="clear-chat-btn" aria-label="Clear chat" title="Clear chat">ðŸ—‘</button>
         </div>
       ` : `
         <div class="chat-call-actions">
-          <button type="button" class="chat-call-btn" id="clear-chat-btn" aria-label="Clear chat" title="Clear chat">🗑</button>
+          <button type="button" class="chat-call-btn" id="clear-chat-btn" aria-label="Clear chat" title="Clear chat">ðŸ—‘</button>
         </div>
       `}
     </div>
@@ -195,10 +195,10 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     </div>
     <form class="chat-input-form" id="chat-form">
       <div class="chat-attachment-preview" id="chat-attachment-preview" hidden></div>
-      <button class="attach-btn" type="button" id="attach-btn" aria-label="Attach photo or video" title="Photo or video (video up to 60 seconds)">📎</button>
+      <button class="attach-btn" type="button" id="attach-btn" aria-label="Attach photo or video" title="Photo or video (video up to 60 seconds)">ðŸ“Ž</button>
       <input type="file" id="chat-file-input" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" hidden>
       <input type="text" class="chat-input" id="chat-input-field" placeholder="Type a message..." autocomplete="off">
-      <button type="submit" class="send-btn"><span>Send</span><span aria-hidden="true">➤</span></button>
+      <button type="submit" class="send-btn"><span>Send</span><span aria-hidden="true">âž¤</span></button>
     </form>
     <p class="chat-send-status" id="chat-send-status" role="status" aria-live="polite" hidden></p>
   `;
@@ -242,11 +242,11 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     open.disabled = true;
     try {
       await openViewOnce(currentConversationId, bubble.dataset.messageId);
-      open.replaceWith(Object.assign(document.createElement('span'), { className: 'view-once-chip opened', textContent: '📷 Photo · Opened' }));
+      open.replaceWith(Object.assign(document.createElement('span'), { className: 'view-once-chip opened', textContent: 'ðŸ“· Photo Â· Opened' }));
     } catch (err) {
       status.textContent = err.message || 'This photo is no longer available.';
       status.hidden = false;
-      open.replaceWith(Object.assign(document.createElement('span'), { className: 'view-once-chip opened', textContent: '📷 Photo · Opened' }));
+      open.replaceWith(Object.assign(document.createElement('span'), { className: 'view-once-chip opened', textContent: 'ðŸ“· Photo Â· Opened' }));
     }
   });
 
@@ -256,8 +256,8 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     const chip = msgContainer.querySelector(`[data-message-id="${event.message_id}"] .view-once-chip`);
     if (chip) {
       chip.classList.add('opened');
-      chip.textContent = '📷 Photo · Opened';
-      if (chip.tagName === 'BUTTON') chip.replaceWith(Object.assign(document.createElement('span'), { className: 'view-once-chip opened', textContent: '📷 Photo · Opened' }));
+      chip.textContent = 'ðŸ“· Photo Â· Opened';
+      if (chip.tagName === 'BUTTON') chip.replaceWith(Object.assign(document.createElement('span'), { className: 'view-once-chip opened', textContent: 'ðŸ“· Photo Â· Opened' }));
     }
   });
 
@@ -283,7 +283,7 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
       if (media.tagName === 'VIDEO') media.muted = true;
       const remove = document.createElement('button');
       remove.type = 'button';
-      remove.textContent = '×';
+      remove.textContent = 'Ã—';
       remove.setAttribute('aria-label', 'Remove attachment');
       remove.addEventListener('click', clearAttachment);
       preview.append(media, remove);
@@ -293,7 +293,7 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
         const box = document.createElement('input');
         box.type = 'checkbox';
         box.addEventListener('change', () => { viewOnce = box.checked; });
-        label.append(box, document.createTextNode(' 👁 View once'));
+        label.append(box, document.createTextNode(' ðŸ‘ View once'));
         preview.append(label);
       }
       preview.hidden = false;
@@ -483,7 +483,7 @@ function messageMarkup(message, currentUser) {
         ${mediaMarkup(message)}
         ${message.view_once ? viewOnceMarkup(message, isOutgoing) : ''}
         ${message.content ? `<span class="message-content">${escapeHtml(message.content)}</span>` : ''}
-        ${isOutgoing && message.can_unsend !== false ? '<button class="message-delete-button" type="button" aria-label="Delete message" title="Delete for everyone (only until it is seen)">×</button>' : ''}
+        ${isOutgoing && message.can_unsend !== false ? '<button class="message-delete-button" type="button" aria-label="Delete message" title="Delete for everyone (only until it is seen)">Ã—</button>' : ''}
         ${isOutgoing && readReceiptsEnabled ? `<span class="message-status ${message.seen ? 'seen' : ''}">${message.seen ? 'Seen' : 'Sent'}</span>` : ''}
       </div>
     </div>
@@ -491,9 +491,9 @@ function messageMarkup(message, currentUser) {
 }
 
 function viewOnceMarkup(message, isOutgoing) {
-  if (message.viewed_at) return '<span class="view-once-chip opened">📷 Photo · Opened</span>';
-  if (isOutgoing) return '<span class="view-once-chip">📷 Photo · view once</span>';
-  return '<button type="button" class="view-once-chip view-once-open">📷 Photo · tap to view once</button>';
+  if (message.viewed_at) return '<span class="view-once-chip opened">ðŸ“· Photo Â· Opened</span>';
+  if (isOutgoing) return '<span class="view-once-chip">ðŸ“· Photo Â· view once</span>';
+  return '<button type="button" class="view-once-chip view-once-open">ðŸ“· Photo Â· tap to view once</button>';
 }
 
 function mediaMarkup(message) {
@@ -525,7 +525,7 @@ async function openViewOnce(conversationId, messageId) {
   overlay.className = 'view-once-viewer';
   overlay.innerHTML = `
     <div class="view-once-stage"><img alt="View-once photo" draggable="false"><div class="view-once-mark"></div></div>
-    <p class="view-once-note">View once · this photo disappears when you close it</p>
+    <p class="view-once-note">View once Â· this photo disappears when you close it</p>
     <button type="button" class="view-once-close">Close</button>`;
   const img = overlay.querySelector('img');
   img.src = url;
