@@ -29,7 +29,9 @@ export async function apiRequest(endpoint, options = {}) {
       || apiPath.startsWith('/moderation/'))
     && !apiPath.endsWith('/moderate');
   if (!API_ORIGIN && !useSupabaseApi) {
-    throw new Error('Login is unavailable because this site has no public API configured. The site owner must deploy the Vynzo backend and configure its HTTPS URL.');
+    throw new Error(supabase
+      ? 'This feature is not available on Supabase yet.'
+      : 'Supabase is not configured for this site. Set the VYNZO_SUPABASE_PUBLISHABLE_KEY build secret and redeploy.');
   }
 
   let token = localStorage.getItem('vynzo_token');
