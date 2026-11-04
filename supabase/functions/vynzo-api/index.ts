@@ -1298,7 +1298,7 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
 
   if (route === '/messages' && method === 'GET') {
     const { data: memberships, error: membershipsError } = await admin.from('conversation_members')
-      .select('conversation_id,cleared_at,joined_at,deleted_at')
+      .select('conversation_id,cleared_at,joined_at,deleted_at,last_read_at')
       .eq('user_id', viewerId)
       .order('joined_at', { ascending: false })
       .limit(100)
@@ -1344,6 +1344,20 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
       }
     }
 
+    const unreadByConversation = new Map<string, number>()
+    const readAtByConversation = new Map((memberships || []).map(member => [
+      member.conversation_id,
+      Math.max(
+        member.last_read_at ? new Date(member.last_read_at).getTime() : Number.NEGATIVE_INFINITY,
+        member.cleared_at ? new Date(member.cleared_at).getTime() : Number.NEGATIVE_INFINITY
+      )
+    ]))
+    for (const message of messagesResult.data || []) {
+      if (message.sender_id === viewerId) continue
+      if (new Date(message.created_at).getTime() <= (readAtByConversation.get(message.conversation_id) ?? Number.NEGATIVE_INFINITY)) continue
+      unreadByConversation.set(message.conversation_id, (unreadByConversation.get(message.conversation_id) || 0) + 1)
+    }
+
     const membersByConversation = new Map<string, typeof membersResult.data>()
     for (const member of membersResult.data || []) {
       const current = membersByConversation.get(member.conversation_id) || []
@@ -1366,7 +1380,8 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
         other_username: peer?.username || null,
         other_display_name: peer?.display_name || null,
         other_avatar_url: peer?.avatar_url || null,
-        last_message: latestMessageByConversation.get(conversation.id) || null
+        last_message: latestMessageByConversation.get(conversation.id) || null,
+        unread_count: unreadByConversation.get(conversation.id) || 0
       }
     }).sort((a, b) => {
       const aTime = a.last_message ? new Date(a.last_message.created_at).getTime() : new Date(a.created_at).getTime()

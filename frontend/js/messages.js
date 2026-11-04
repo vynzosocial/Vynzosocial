@@ -141,6 +141,14 @@ function renderConversations(conversations, currentUser) {
   const container = document.getElementById('conversations-list');
   if (!container) return;
 
+  const unreadOf = conv => (conv.id === currentConversationId ? 0 : (conv.unread_count || 0));
+  const total = conversations.reduce((sum, conv) => sum + unreadOf(conv), 0);
+  const totalBadge = document.getElementById('unread-total');
+  if (totalBadge) {
+    totalBadge.textContent = total > 99 ? '99+' : String(total);
+    totalBadge.hidden = total === 0;
+  }
+
   if (conversations.length === 0) {
     container.innerHTML = '<p style="padding:16px; color:var(--text-muted);">No messages yet.</p>';
     return;
@@ -152,12 +160,14 @@ function renderConversations(conversations, currentUser) {
     item.className = 'conversation-item';
     item.dataset.conversationId = conv.id;
     const conversationName = getConversationName(conv);
+    const unread = unreadOf(conv);
     item.innerHTML = `
       ${avatarMarkup(conv.other_avatar_url, conversationName, 'author-avatar')}
       <div>
-        <div style="font-weight:600;">${escapeHtml(conversationName)}</div>
+        <div style="font-weight:${unread ? 800 : 600};">${escapeHtml(conversationName)}</div>
         <div style="font-size:12px; color:var(--text-muted);">${escapeHtml(conv.last_message ? (conv.last_message.content || (conv.last_message.view_once ? '📷 View-once photo' : conv.last_message.media_url ? (VOICE_PATTERN.test(conv.last_message.media_url) ? '🎤 Voice message' : '📎 Photo / video') : 'No messages')) : 'No messages')}</div>
       </div>
+      ${unread ? `<span class="unread-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
     `;
     item.classList.toggle('active', conv.id === currentConversationId);
 
@@ -202,7 +212,7 @@ function notifyPeer(conversationId) {
 }
 
 function markConversationRead(conversationId) {
-  apiRequest(`/messages/${encodeURIComponent(conversationId)}/read`, { method: 'POST' }).then(() => notifyPeer(conversationId)).catch(err => {
+  apiRequest(`/messages/${encodeURIComponent(conversationId)}/read`, { method: 'POST' }).then(() => { notifyPeer(conversationId); refreshConversations().catch(() => {}); }).catch(err => {
     console.error('Could not mark conversation as read:', err);
   });
 }
@@ -726,6 +736,7 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
   // Listen for live incoming messages if not already attached
   socket.off('receive_message');
   socket.on('receive_message', (msg) => {
+    refreshConversations().catch(() => {});
     if (msg.conversation_id === currentConversationId) {
       appendMessage(msgContainer, msg, currentUser);
       if (msg.sender_id !== currentUser.id && document.visibilityState === 'visible') {

@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="../css/variables.css">
     <link rel="stylesheet" href="../css/reset.css">
     <link rel="stylesheet" href="../css/layout.css?v=20261031-prof">
-    <link rel="stylesheet" href="../css/messages.css?v=voice1">
+    <link rel="stylesheet" href="../css/messages.css?v=unread1">
     <link rel="stylesheet" href="../css/messages-glow.css?v=2">
     <link rel="stylesheet" href="../css/responsive.css">
     <link rel="stylesheet" href="../css/mobile.css?v=2">
@@ -37,7 +37,7 @@
         <main class="messaging-container">
             <div class="conversations-sidebar">
                 <div class="sidebar-header">
-                    <span>Messages</span>
+                    <span>Messages <span id="unread-total" class="unread-badge" hidden>0</span></span>
                     <span class="messages-header-sparkle" aria-hidden="true">&#10024;</span>
                 </div>
                 <div id="conversations-list" class="conversations-list">
@@ -63,7 +63,7 @@
     </div>
 
     <script type="module">
-        import { initMessaging } from '../js/messages.js?v=voice1';
+        import { initMessaging } from '../js/messages.js?v=unread1';
         document.addEventListener('DOMContentLoaded', () => {
             initMessaging();
         });
