@@ -328,6 +328,7 @@ function toStoredHtml(root) {
     const s = el.getAttribute('src') || '';
     if (s.startsWith(API_ORIGIN + '/uploads/')) el.setAttribute('src', s.slice(API_ORIGIN.length));
   });
+  clone.querySelectorAll('[data-sel]').forEach(el => el.removeAttribute('data-sel'));
   return clone.innerHTML;
 }
 
@@ -485,6 +486,46 @@ async function renderEditor(id) {
     toast(t('uploading'));
     try { const r = await uploadMedia(f, 'video'); insertAtCaret(videoHtml(r.url)); snapshot(); toast(t('videoUploaded')); } catch { /* shown */ }
   };
+  // Size / position controls for the selected image or video.
+  const mediaBar = document.createElement('div');
+  mediaBar.className = 'bl-mediabar';
+  mediaBar.hidden = true;
+  mediaBar.innerHTML = `
+    <span>Size</span>
+    ${[25, 33, 50, 75, 100].map(w => `<button type="button" data-w="${w}">${w}%</button>`).join('')}
+    <span>Position</span>
+    <button type="button" data-align="left">&#11013; Left</button>
+    <button type="button" data-align="center">&#9726; Center</button>
+    <button type="button" data-align="right">Right &#10145;</button>
+    <button type="button" data-del="1">&#128465; Remove</button>`;
+  body.before(mediaBar);
+  let selectedMedia = null;
+  const markBar = () => {
+    mediaBar.querySelectorAll('button').forEach(b => {
+      const on = selectedMedia && ((b.dataset.w && (selectedMedia.dataset.w || '100') === b.dataset.w)
+        || (b.dataset.align && (selectedMedia.dataset.align || 'center') === b.dataset.align));
+      b.classList.toggle('on', !!on);
+    });
+  };
+  const selectMedia = el => {
+    if (selectedMedia) selectedMedia.removeAttribute('data-sel');
+    selectedMedia = el;
+    if (el) el.setAttribute('data-sel', '1');
+    mediaBar.hidden = !el;
+    markBar();
+  };
+  body.addEventListener('click', e => selectMedia(e.target.closest('img, video, iframe') && body.contains(e.target) ? e.target.closest('img, video, iframe') : null));
+  mediaBar.addEventListener('mousedown', e => e.preventDefault());
+  mediaBar.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b || !selectedMedia) return;
+    if (b.dataset.w) selectedMedia.setAttribute('data-w', b.dataset.w);
+    if (b.dataset.align) selectedMedia.setAttribute('data-align', b.dataset.align);
+    if (b.dataset.del) { const el = selectedMedia; selectMedia(null); el.remove(); }
+    markBar();
+    snapshot();
+  });
+
   const coverImg = view.querySelector('#ed-cover-img');
   view.querySelector('#ed-cover-btn').onclick = () => view.querySelector('#ed-cover-file').click();
   view.querySelector('#ed-cover-file').onchange = async e => {

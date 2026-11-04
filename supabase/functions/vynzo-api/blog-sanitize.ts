@@ -124,20 +124,29 @@ export function cleanHtml(input: unknown): string {
           }" rel="noopener noreferrer nofollow ugc" target="_blank">`
           : "<a>";
       }
+      const layout = (
+        /^(25|33|50|75|100)$/.test(attrs["data-w"] || "")
+          ? ` data-w="${attrs["data-w"]}"`
+          : ""
+      ) + (
+        /^(left|right|center)$/.test(attrs["data-align"] || "")
+          ? ` data-align="${attrs["data-align"]}"`
+          : ""
+      );
       if (tag === "img" || tag === "video") {
         const src = mediaSrc(attrs.src || "", tag === "video");
         if (!src) return "";
         return tag === "img"
           ? `<img src="${escAttr(src)}" alt="${
             escAttr(String(attrs.alt || "").slice(0, 200))
-          }">`
+          }"${layout}>`
           : '<video src="' + escAttr(src) +
-            '" controls="controls" preload="metadata" playsinline="playsinline">';
+            `" controls="controls" preload="metadata" playsinline="playsinline"${layout}>`;
       }
       if (tag === "iframe") {
         const src = toEmbedUrl(attrs.src);
         return src
-          ? `<iframe src="${src}" sandbox="allow-scripts allow-same-origin allow-presentation" allowfullscreen="true" loading="lazy" title="Embedded video">`
+          ? `<iframe src="${src}" sandbox="allow-scripts allow-same-origin allow-presentation" allowfullscreen="true" loading="lazy" title="Embedded video"${layout}>`
           : "";
       }
       return `<${tag}>`;
