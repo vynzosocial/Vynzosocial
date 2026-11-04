@@ -28,7 +28,7 @@ async function refreshHomeUser() {
     const user = JSON.parse(localStorage.getItem('vynzo_user') || '{}');
     if (!user.id) return;
     const profile = await apiRequest(`/users/${encodeURIComponent(user.id)}/profile`);
-    const fresh = profile.user || profile;
+    const fresh = profile.profile || profile.user || profile;
     localStorage.setItem('vynzo_user', JSON.stringify({
       ...user,
       username: fresh.username || user.username,

@@ -71,6 +71,19 @@ export async function apiRequest(endpoint, options = {}) {
   }
 
   if (!response.ok) {
+    if (useSupabaseApi && response.status === 401) {
+      const { data: refreshed } = await supabase.auth.refreshSession();
+      if (!refreshed?.session && !options._retried) {
+        await supabase.auth.signOut().catch(() => {});
+        localStorage.removeItem('vynzo_token');
+        localStorage.removeItem('vynzo_user');
+        if (!window.location.pathname.endsWith('login.html')) {
+          window.location.href = window.location.pathname.includes('/pages/') ? './login.html' : './pages/login.html';
+        }
+      } else if (refreshed?.session && !options._retried) {
+        return apiRequest(endpoint, { ...options, _retried: true });
+      }
+    }
     throw new Error(data.error || 'Something went wrong');
   }
   return data;
