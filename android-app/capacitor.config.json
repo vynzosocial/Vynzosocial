@@ -4,7 +4,6 @@
   "webDir": "www",
   "server": {
     "androidScheme": "https",
-    "hostname": "app.vynzosocial.com",
     "allowNavigation": [
       "www.vynzosocial.com",
       "*.supabase.co",
