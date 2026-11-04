@@ -1262,9 +1262,24 @@ async function getMessageBlockReason(senderId: string, recipientId: string): Pro
   return null
 }
 
+function replyPreview(
+  target: { id: string; sender_id: string; content: string | null; media_url: string | null; view_once: boolean } | null | undefined,
+  usersById: Map<string, { display_name?: string; username?: string }>
+) {
+  if (!target) return { id: null, unavailable: true }
+  const sender = usersById.get(target.sender_id)
+  const text = target.view_once ? '📷 View-once photo' : (target.content || (target.media_url ? '📎 Photo / video' : ''))
+  return {
+    id: target.id,
+    sender_id: target.sender_id,
+    sender_name: sender?.display_name || sender?.username || 'Unknown',
+    text: text.length > 140 ? `${text.slice(0, 137)}…` : text
+  }
+}
+
 async function getConversationMembership(conversationId: string, viewerId: string) {
   const { data, error } = await admin.from('conversation_members')
-    .select('conversation_id,user_id,role,joined_at,cleared_at,last_read_at')
+    .select('conversation_id,user_id,role,joined_at,cleared_at,last_read_at,hidden_senders')
     .eq('conversation_id', conversationId)
   throwOnError(error)
   const members = data || []
@@ -1369,7 +1384,7 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
     const otherMembers = members.filter(member => member.user_id !== viewerId)
     const senderIds = [...new Set([...members.map(member => member.user_id), viewerId])]
     let messageQuery = admin.from('messages')
-      .select('id,conversation_id,sender_id,content,media_url,created_at,view_once,viewed_at,edited_at')
+      .select('id,conversation_id,sender_id,content,media_url,created_at,view_once,viewed_at,edited_at,reply_to_id')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true })
       .limit(500)
@@ -1385,8 +1400,22 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
     if (!viewer) throw new Error('The authenticated user profile is unavailable.')
 
     const usersById = new Map((users || []).map(user => [user.id, user]))
-    const messagesWithUsers = (messages || []).map(message => {
+    const hiddenSenders = (viewerMembership.hidden_senders || {}) as Record<string, string>
+    const visibleMessages = (messages || []).filter(message => {
+      const hiddenAt = hiddenSenders[message.sender_id]
+      return !hiddenAt || new Date(message.created_at).getTime() > new Date(hiddenAt).getTime()
+    })
+    const replyIds = [...new Set(visibleMessages.map(message => message.reply_to_id).filter(Boolean))]
+    const replyTargets = replyIds.length
+      ? (await admin.from('messages')
+        .select('id,sender_id,content,media_url,view_once')
+        .eq('conversation_id', conversationId)
+        .in('id', replyIds)).data || []
+      : []
+    const replyById = new Map(replyTargets.map(target => [target.id, target]))
+    const messagesWithUsers = visibleMessages.map(message => {
       const sender = usersById.get(message.sender_id)
+      const target = message.reply_to_id ? replyById.get(message.reply_to_id) : null
       const readers = otherMembers.filter(member => member.user_id !== message.sender_id)
       const readAtOrAfterMessage = (member: (typeof members)[number]) =>
         Boolean(member.last_read_at && new Date(member.last_read_at).getTime() >= new Date(message.created_at).getTime())
@@ -1400,10 +1429,18 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
         sender_display_name: sender?.display_name,
         sender_avatar_url: sender?.avatar_url,
         seen,
-        can_unsend: message.sender_id === viewerId && !wasRead
+        can_unsend: message.sender_id === viewerId && !wasRead,
+        reply_to: message.reply_to_id ? replyPreview(target, usersById) : null
       }
     })
-    return jsonResponse(200, { messages: messagesWithUsers, read_receipts: viewer.read_receipts !== false }, headers)
+    return jsonResponse(200, {
+      messages: messagesWithUsers,
+      read_receipts: viewer.read_receipts !== false,
+      members: members.map(member => {
+        const user = usersById.get(member.user_id)
+        return { id: member.user_id, username: user?.username, display_name: user?.display_name, is_me: member.user_id === viewerId }
+      })
+    }, headers)
   }
 
   const readMatch = route.match(/^\/messages\/([^/]+)\/read$/)
@@ -1432,15 +1469,28 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
     if (!conversationResult.data) return jsonResponse(404, { error: 'Conversation not found' }, headers)
 
     let content = ''
+    let replyToId: string | null = null
     let file: File | null = null
     if (request.headers.get('content-type')?.toLowerCase().includes('multipart/form-data')) {
       const form = await request.formData()
       content = typeof form.get('content') === 'string' ? String(form.get('content')).trim() : ''
       const uploaded = form.get('media')
       if (uploaded instanceof File) file = uploaded
+      if (typeof form.get('reply_to_id') === 'string') replyToId = String(form.get('reply_to_id')) || null
     } else {
       const body = await request.json()
       content = typeof body?.content === 'string' ? body.content.trim() : ''
+      if (typeof body?.reply_to_id === 'string') replyToId = body.reply_to_id || null
+    }
+    let replyTarget: { id: string; sender_id: string; content: string | null; media_url: string | null; view_once: boolean } | null = null
+    if (replyToId) {
+      const { data: target, error: targetError } = await admin.from('messages')
+        .select('id,sender_id,content,media_url,view_once')
+        .eq('id', replyToId)
+        .eq('conversation_id', conversationId)
+        .maybeSingle()
+      if (targetError || !target) return jsonResponse(400, { error: 'The message you are replying to is no longer available.' }, headers)
+      replyTarget = target
     }
     if (!content && !file) return jsonResponse(400, { error: 'Message cannot be empty' }, headers)
     if (content.length > 2000) return jsonResponse(400, { error: 'Message must be 2000 characters or fewer.' }, headers)
@@ -1476,8 +1526,8 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
 
     try {
       const { data: inserted, error } = await admin.from('messages')
-        .insert({ conversation_id: conversationId, sender_id: viewerId, content, media_url: mediaUrl })
-        .select('id,conversation_id,sender_id,content,media_url,created_at,view_once,viewed_at')
+        .insert({ conversation_id: conversationId, sender_id: viewerId, content, media_url: mediaUrl, reply_to_id: replyTarget?.id ?? null })
+        .select('id,conversation_id,sender_id,content,media_url,created_at,view_once,viewed_at,reply_to_id')
         .single()
       throwOnError(error)
       const { data: sender, error: senderError } = await admin.from('users')
@@ -1486,6 +1536,12 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
         .single()
       throwOnError(senderError)
       if (!sender) throw new Error('The sender profile is unavailable.')
+      let reply_to = null
+      if (replyTarget) {
+        const { data: targetUser } = await admin.from('users')
+          .select('id,username,display_name').eq('id', replyTarget.sender_id).maybeSingle()
+        reply_to = replyPreview(replyTarget, new Map(targetUser ? [[targetUser.id, targetUser]] : []))
+      }
       return jsonResponse(201, {
         message: {
           ...inserted,
@@ -1493,7 +1549,8 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
           display_name: sender.display_name,
           avatar_url: sender.avatar_url,
           seen: false,
-          can_unsend: true
+          can_unsend: true,
+          reply_to
         }
       }, headers)
     } catch (error) {
@@ -1661,6 +1718,24 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
       if (storageError) console.error('Deleted view-once message media cleanup error:', storageError)
     }
     return jsonResponse(200, { messageId }, headers)
+  }
+
+  const hideSenderMatch = route.match(/^\/messages\/([^/]+)\/senders\/([^/]+)$/)
+  if (hideSenderMatch && method === 'DELETE') {
+    const [, conversationId, senderId] = hideSenderMatch
+    const members = await getConversationMembership(conversationId, viewerId)
+    if (!members) return jsonResponse(403, { error: 'Access denied to this conversation' }, headers)
+    if (!members.some(member => member.user_id === senderId)) {
+      return jsonResponse(404, { error: 'That person is not in this conversation.' }, headers)
+    }
+    const mine = members.find(member => member.user_id === viewerId)!
+    const hidden = { ...((mine.hidden_senders || {}) as Record<string, string>), [senderId]: new Date().toISOString() }
+    const { error } = await admin.from('conversation_members')
+      .update({ hidden_senders: hidden })
+      .eq('conversation_id', conversationId)
+      .eq('user_id', viewerId)
+    throwOnError(error)
+    return jsonResponse(200, { user_id: senderId }, headers)
   }
 
   const clearMatch = route.match(/^\/messages\/([^/]+)\/messages$/)

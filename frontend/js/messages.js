@@ -7,6 +7,8 @@ import { initCalls, startCall } from './calls.js?v=sb4';
 let socket = null;
 let currentConversationMeta = null;
 let currentConversationId = null;
+let conversationMembers = [];
+let replyingTo = null;
 let conversationRefreshInterval = null;
 let backgroundRefreshInProgress = false;
 let readReceiptsEnabled = true;
@@ -112,6 +114,7 @@ async function refreshCurrentConversation() {
   );
   const wasAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
   readReceiptsEnabled = data.read_receipts !== false;
+  conversationMembers = data.members || conversationMembers;
 
   const fragment = document.createDocumentFragment();
   for (const message of data.messages) {
@@ -173,12 +176,15 @@ function selectConversation(conversation, currentUser) {
 
 async function loadConversation(conversationId, currentUser, conversationName = 'Conversation', avatarUrl = '') {
   currentConversationId = conversationId;
+  window.__vynzoOpenConversation = conversationId;
+  replyingTo = null;
   if (socket.connected) joinConversation(conversationId);
 
   const chatArea = document.getElementById('chat-area');
   try {
     const data = await apiRequest(`/messages/${conversationId}/messages`);
     readReceiptsEnabled = data.read_receipts !== false;
+    conversationMembers = data.members || [];
     renderChatWindow(chatArea, data.messages, currentUser, conversationName, avatarUrl);
     markConversationRead(conversationId);
   } catch (err) {
@@ -210,11 +216,13 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
         <div class="chat-call-actions">
           <button type="button" class="chat-call-btn" id="voice-call-btn" aria-label="Voice call" title="Voice call">📞</button>
           <button type="button" class="chat-call-btn" id="video-call-btn" aria-label="Video call" title="Video call">🎥</button>
+          <button type="button" class="chat-call-btn" id="hide-sender-btn" aria-label="Delete a person's messages" title="Delete a person's messages (for you)">🙈</button>
           <button type="button" class="chat-call-btn" id="clear-chat-btn" aria-label="Clear chat" title="Clear chat">🧹</button>
           <button type="button" class="chat-call-btn" id="delete-chat-btn" aria-label="Delete conversation" title="Delete conversation">🗑</button>
         </div>
       ` : `
         <div class="chat-call-actions">
+          <button type="button" class="chat-call-btn" id="hide-sender-btn" aria-label="Delete a person's messages" title="Delete a person's messages (for you)">🙈</button>
           <button type="button" class="chat-call-btn" id="clear-chat-btn" aria-label="Clear chat" title="Clear chat">🧹</button>
           <button type="button" class="chat-call-btn" id="delete-chat-btn" aria-label="Delete conversation" title="Delete conversation">🗑</button>
         </div>
@@ -224,7 +232,7 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
       ${messages.map(m => messageMarkup(m, currentUser)).join('')}
     </div>
     <form class="chat-input-form" id="chat-form">
-      <div class="chat-attachment-preview" id="chat-attachment-preview" hidden></div>
+      <div class="reply-bar" id="reply-bar" hidden></div>      <div class="chat-attachment-preview" id="chat-attachment-preview" hidden></div>
       <button class="attach-btn" type="button" id="attach-btn" aria-label="Attach photo or video" title="Photo or video (video up to 60 seconds)">📎</button>
       <button class="attach-btn" type="button" id="camera-btn" aria-label="Take a photo" title="Take a photo with the camera">📷</button>
       <input type="file" id="chat-camera-input" accept="image/*" capture="environment" hidden>
@@ -395,6 +403,93 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     status.hidden = true;
   });
 
+  const replyBar = document.getElementById('reply-bar');
+  const renderReplyBar = () => {
+    replyBar.replaceChildren();
+    replyBar.hidden = !replyingTo;
+    if (!replyingTo) return;
+    const label = document.createElement('span');
+    label.className = 'reply-bar-text';
+    const name = document.createElement('strong');
+    name.textContent = `Replying to ${replyingTo.name}`;
+    const text = document.createElement('span');
+    text.textContent = replyingTo.text;
+    label.append(name, text);
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.textContent = '×';
+    cancel.setAttribute('aria-label', 'Cancel reply');
+    cancel.addEventListener('click', () => { replyingTo = null; renderReplyBar(); });
+    replyBar.append(label, cancel);
+  };
+  renderReplyBar();
+
+  msgContainer.addEventListener('click', event => {
+    const replyButton = event.target.closest('.message-reply-button');
+    if (replyButton) {
+      const bubble = replyButton.closest('.message-bubble');
+      const row = bubble.closest('.message-row');
+      replyingTo = {
+        id: bubble.dataset.messageId,
+        name: row.querySelector('.message-sender-name')?.textContent || 'message',
+        text: bubble.dataset.replyText || '📎 Photo / video'
+      };
+      renderReplyBar();
+      input.focus();
+      return;
+    }
+    const quote = event.target.closest('.reply-quote[data-reply-id]');
+    if (quote) {
+      const target = msgContainer.querySelector(`[data-message-id="${CSS.escape(quote.dataset.replyId)}"]`);
+      if (!target) return;
+      target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      target.classList.add('reply-highlight');
+      setTimeout(() => target.classList.remove('reply-highlight'), 1500);
+    }
+  });
+
+  document.getElementById('hide-sender-btn').addEventListener('click', () => {
+    const conversationId = currentConversationId;
+    const overlay = document.createElement('div');
+    overlay.className = 'hide-sender-overlay';
+    const dialog = document.createElement('div');
+    dialog.className = 'hide-sender-dialog';
+    const heading = document.createElement('strong');
+    heading.textContent = 'Delete all messages from…';
+    const note = document.createElement('p');
+    note.textContent = 'Removed for you only. Others keep their copy, and new messages still arrive.';
+    dialog.append(heading, note);
+    conversationMembers.forEach(member => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = member.is_me ? 'Me (my own messages)' : (member.display_name || member.username || 'Unknown');
+      button.addEventListener('click', async () => {
+        if (!window.confirm(`Delete all messages from ${button.textContent} in this chat? This only affects your view.`)) return;
+        button.disabled = true;
+        try {
+          await apiRequest(`/messages/${encodeURIComponent(conversationId)}/senders/${encodeURIComponent(member.id)}`, { method: 'DELETE' });
+          overlay.remove();
+          if (currentConversationId === conversationId) await refreshCurrentConversation();
+        } catch (err) {
+          button.disabled = false;
+          status.textContent = err.message || 'Could not delete these messages.';
+          status.hidden = false;
+          overlay.remove();
+        }
+      });
+      dialog.append(button);
+    });
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'hide-sender-cancel';
+    close.textContent = 'Cancel';
+    close.addEventListener('click', () => overlay.remove());
+    dialog.append(close);
+    overlay.append(dialog);
+    overlay.addEventListener('click', event => { if (event.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+  });
+
   msgContainer.addEventListener('click', async event => {
     const editButton = event.target.closest('.message-edit-button');
     if (editButton) {
@@ -483,12 +578,14 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
         return;
       }
       let body;
+      const replyId = replyingTo?.id;
       if (attachment) {
         body = new FormData();
         body.append('media', attachment);
         body.append('content', content);
+        if (replyId) body.append('reply_to_id', replyId);
       } else {
-        body = JSON.stringify({ content });
+        body = JSON.stringify({ content, reply_to_id: replyId });
       }
       const result = await apiRequest(`/messages/${encodeURIComponent(conversationId)}/messages`, {
         method: 'POST',
@@ -498,6 +595,8 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
         appendMessage(msgContainer, result.message, currentUser);
         input.value = '';
         clearAttachment();
+        replyingTo = null;
+        renderReplyBar();
       }
       notifyPeer(conversationId);
       refreshConversations().catch(err => {
@@ -624,17 +723,31 @@ function messageMarkup(message, currentUser) {
         ${avatarMarkup(message.sender_avatar_url || message.avatar_url || (isOutgoing ? currentUser.avatar_url : ''), senderName, 'message-avatar')}
         <span class="message-sender-name">${escapeHtml(senderName)}</span>
       </span>
-      <div class="message-bubble ${isOutgoing ? 'outgoing' : 'incoming'}" data-message-id="${escapeHtml(message.id)}" data-created-at="${escapeHtml(String(message.created_at || ''))}">
+      <div class="message-bubble ${isOutgoing ? 'outgoing' : 'incoming'}" data-message-id="${escapeHtml(message.id)}" data-reply-text="${escapeHtml(replyText(message))}" data-created-at="${escapeHtml(String(message.created_at || ''))}">
+        ${replyQuoteMarkup(message.reply_to)}
         ${mediaMarkup(message)}
         ${message.view_once ? viewOnceMarkup(message, isOutgoing) : ''}
         ${message.content ? `<span class="message-content">${escapeHtml(message.content)}</span>` : ''}
         ${message.edited_at ? '<span class="message-edited">(edited)</span>' : ''}
+        <button class="message-reply-button" type="button" aria-label="Reply to this message" title="Reply">↩</button>
         ${isOutgoing && message.content && !message.view_once ? '<button class="message-edit-button" type="button" aria-label="Edit message" title="Edit message">✎</button>' : ''}
         ${isOutgoing && message.can_unsend !== false ? '<button class="message-delete-button" type="button" aria-label="Delete message" title="Delete for everyone (only until it is seen)">×</button>' : ''}
         ${isOutgoing && readReceiptsEnabled ? `<span class="message-status ${message.seen ? 'seen' : ''}">${message.seen ? 'Seen' : 'Sent'}</span>` : ''}
       </div>
     </div>
   `;
+}
+
+function replyText(message) {
+  if (message.view_once) return '📷 View-once photo';
+  const text = message.content || (message.media_url ? '📎 Photo / video' : '');
+  return text.length > 140 ? `${text.slice(0, 137)}…` : text;
+}
+
+function replyQuoteMarkup(reply) {
+  if (!reply) return '';
+  if (reply.unavailable) return '<div class="reply-quote unavailable">Original message unavailable</div>';
+  return `<div class="reply-quote" data-reply-id="${escapeHtml(reply.id)}"><strong>${escapeHtml(reply.sender_name)}</strong><span>${escapeHtml(reply.text)}</span></div>`;
 }
 
 function viewOnceMarkup(message, isOutgoing) {
