@@ -164,6 +164,7 @@ async function getUserSummaries(userIds: string[], withCounts = true) {
     .select('id,host_id,title,viewer_count')
     .in('host_id', userIds)
     .eq('is_active', true)
+    .gte('last_heartbeat', new Date(Date.now() - 90_000).toISOString())
     .order('created_at', { ascending: false })
   throwOnError(liveError)
   const liveByHost = new Map<string, NonNullable<typeof liveSessions>[number]>()
@@ -602,7 +603,7 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
         .map(post => ({ ...post, is_owner: post.user_id === viewerId, is_liked: likedIds.has(post.id) }))
     }
     const { data: live, error: liveError } = await admin.from('live_sessions')
-      .select('id,title').eq('host_id', targetId).eq('is_active', true).order('created_at', { ascending: false }).limit(1).maybeSingle()
+      .select('id,title').eq('host_id', targetId).eq('is_active', true).gte('last_heartbeat', new Date(Date.now() - 90_000).toISOString()).order('created_at', { ascending: false }).limit(1).maybeSingle()
     throwOnError(liveError)
     let likeStats: Record<string, number> | undefined
     if (isOwner) {
