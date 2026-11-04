@@ -107,6 +107,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (phoneInput && !/^\+?\d{8,15}$/.test(phoneInput)) {
           throw new Error('Enter a valid phone number with country code, for example +966501234567.');
         }
+        const { data: available, error: availableError } = await requireSupabase().rpc('is_username_available', { candidate: normalizedUsername });
+        if (!availableError && available === false) {
+          throw new Error('That username is already taken. Please choose another one.');
+        }
         if (!email) {
           const response = await fetch(`${SUPABASE_URL}/functions/v1/vynzo-api/api/auth/register`, {
             method: 'POST',
@@ -142,7 +146,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
           }
         });
-        if (error) throw error;
+        if (error) {
+          if (/database error|username/i.test(error.message || '')) {
+            throw new Error('That username is already taken, or some details are invalid. Please choose another username and check your details.');
+          }
+          throw error;
+        }
         if (data.session) {
           window.location.href = '../index.html';
           return;
