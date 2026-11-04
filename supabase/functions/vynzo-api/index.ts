@@ -1770,12 +1770,10 @@ async function handlePhoneLogin(request: Request, headers: Record<string, string
   } else {
     const phone = normalizeLoginPhone(identifier)
     const byUsername = () => admin.from('users').select('email').ilike('username', identifier.replace(/[%_\\]/g, '\\$&')).limit(2)
-    let found = phone
-      ? await admin.from('users').select('email').in('phone', [phone, phone.slice(1)]).limit(2)
-      : await byUsername()
+    let found = await byUsername()
     throwOnError(found.error)
-    if (phone && !found.data?.length) {
-      found = await byUsername()
+    if (!found.data?.length && phone) {
+      found = await admin.from('users').select('email').in('phone', [phone, phone.slice(1)]).limit(2)
       throwOnError(found.error)
     }
     const data = found.data
