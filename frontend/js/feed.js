@@ -13,9 +13,64 @@ export async function initFeed() {
   initPostComposer();
   if (!container.dataset.scopeBound) {
     container.dataset.scopeBound = 'true';
-    document.addEventListener('vynzo:scope', () => loadFeed(container));
+    document.addEventListener('vynzo:scope', () => { loadFeed(container); loadLiveStrip(); });
+    setInterval(() => { if (document.visibilityState === 'visible') loadLiveStrip(); }, 30000);
   }
+  loadLiveStrip();
   await loadFeed(container);
+}
+
+async function loadLiveStrip() {
+  const strip = document.getElementById('feed-live-strip');
+  if (!strip) return;
+  if (window.vynzoFeedScope !== 'all' || !localStorage.getItem('vynzo_token')) {
+    strip.hidden = true;
+    return;
+  }
+  try {
+    const data = await apiRequest('/live');
+    const streams = data.liveStreams || [];
+    if (!streams.length) {
+      strip.hidden = true;
+      strip.replaceChildren();
+      return;
+    }
+    strip.replaceChildren();
+    const heading = document.createElement('div');
+    heading.className = 'feed-live-heading';
+    heading.textContent = '🔴 Live now';
+    strip.appendChild(heading);
+    const row = document.createElement('div');
+    row.className = 'feed-live-row';
+    streams.forEach(stream => {
+      const card = document.createElement('a');
+      card.className = 'feed-live-card';
+      card.href = `./pages/live.html?sessionId=${encodeURIComponent(stream.id)}`;
+      const avatar = document.createElement('span');
+      avatar.className = 'feed-live-avatar';
+      if (stream.host_avatar_url) {
+        const img = document.createElement('img');
+        img.alt = '';
+        img.src = /^https?:/i.test(stream.host_avatar_url) ? stream.host_avatar_url : `${API_ORIGIN}${stream.host_avatar_url}`;
+        avatar.appendChild(img);
+      } else {
+        avatar.textContent = (stream.host_display_name || stream.host_username || '?').charAt(0).toUpperCase();
+      }
+      const badge = document.createElement('span');
+      badge.className = 'feed-live-badge';
+      badge.textContent = 'LIVE';
+      const name = document.createElement('strong');
+      name.textContent = stream.host_display_name || stream.host_username || 'user';
+      const title = document.createElement('small');
+      title.textContent = `${stream.visibility === 'friends' ? '👥 ' : ''}${stream.title} · 👁 ${stream.viewer_count}`;
+      card.append(avatar, badge, name, title);
+      row.appendChild(card);
+    });
+    strip.appendChild(row);
+    strip.hidden = false;
+  } catch (err) {
+    console.error('Failed to load live strip:', err);
+  }
 }
 
 const FEED_PAGE = 20;

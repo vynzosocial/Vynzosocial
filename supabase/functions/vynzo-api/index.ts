@@ -162,19 +162,35 @@ async function getFriendCounts(userIds: string[]) {
   return counts
 }
 
-async function getUserSummaries(userIds: string[], withCounts = true) {
+async function getLiveFriendIds(viewerId: string, hostIds: string[]): Promise<Set<string>> {
+  const [following, followedBy] = await Promise.all([
+    admin.from('follows').select('following_id').eq('follower_id', viewerId).eq('status', 'accepted').in('following_id', hostIds),
+    admin.from('follows').select('follower_id').eq('following_id', viewerId).eq('status', 'accepted').in('follower_id', hostIds)
+  ])
+  throwOnError(following.error)
+  throwOnError(followedBy.error)
+  return new Set([
+    ...(following.data || []).map(row => row.following_id),
+    ...(followedBy.data || []).map(row => row.follower_id)
+  ])
+}
+
+async function getUserSummaries(userIds: string[], withCounts = true, viewerId?: string) {
   if (!userIds.length) return new Map()
   const { data: users, error } = await admin.from('users')
     .select('id,username,display_name,avatar_url,is_private')
     .in('id', userIds)
   throwOnError(error)
-  const { data: liveSessions, error: liveError } = await admin.from('live_sessions')
-    .select('id,host_id,title,viewer_count')
+  const { data: rawLiveSessions, error: liveError } = await admin.from('live_sessions')
+    .select('id,host_id,title,viewer_count,visibility')
     .in('host_id', userIds)
     .eq('is_active', true)
     .gte('last_heartbeat', new Date(Date.now() - 90_000).toISOString())
     .order('created_at', { ascending: false })
   throwOnError(liveError)
+  const friendsOnlyHosts = [...new Set((rawLiveSessions || []).filter(s => s.visibility === 'friends' && s.host_id !== viewerId).map(s => s.host_id))]
+  const allowedFriendHosts = viewerId && friendsOnlyHosts.length ? await getLiveFriendIds(viewerId, friendsOnlyHosts) : new Set<string>()
+  const liveSessions = (rawLiveSessions || []).filter(s => s.visibility !== 'friends' || s.host_id === viewerId || allowedFriendHosts.has(s.host_id))
   const liveByHost = new Map<string, NonNullable<typeof liveSessions>[number]>()
   for (const session of liveSessions || []) {
     if (!liveByHost.has(session.host_id)) liveByHost.set(session.host_id, session)
@@ -395,7 +411,7 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
       outgoingIds.length
         ? admin.from('follows').select('follower_id').eq('following_id', viewerId).eq('status', 'accepted').in('follower_id', outgoingIds)
         : Promise.resolve({ data: [], error: null }),
-      getUserSummaries(outgoingIds, false)
+      getUserSummaries(outgoingIds, false, viewerId)
     ])
     throwOnError(incomingError)
     const friendIds = new Set((incoming || []).map(row => row.follower_id))
@@ -412,7 +428,7 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
     const candidateIds = (incoming || []).map(row => row.follower_id)
     const [status, summaries] = await Promise.all([
       getFollowStatus(viewerId, candidateIds),
-      getUserSummaries(candidateIds)
+      getUserSummaries(candidateIds, true, viewerId)
     ])
     const users = candidateIds.filter(id => type === 'followers' || status.get(id)?.following)
       .map(id => ({
@@ -436,7 +452,7 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
       candidateIds.length
         ? admin.from('follows').select('following_id').eq('follower_id', viewerId).eq('status', 'accepted').in('following_id', candidateIds)
         : Promise.resolve({ data: [], error: null }),
-      getUserSummaries(candidateIds)
+      getUserSummaries(candidateIds, true, viewerId)
     ])
     throwOnError(outgoingError)
     const mutual = new Set((outgoing || []).map(row => row.following_id))
@@ -470,7 +486,7 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
       ...(displayNameResults.data || [])
     ].filter(user => !blockedIds.has(user.id)).map(user => [user.id, user])).values()].slice(0, 20)
     const ids = (users || []).map(user => user.id)
-    const [followStatus, summaries] = await Promise.all([getFollowStatus(viewerId, ids), getUserSummaries(ids)])
+    const [followStatus, summaries] = await Promise.all([getFollowStatus(viewerId, ids), getUserSummaries(ids, true, viewerId)])
     const results = ids.map(id => {
       const user = summaries.get(id)
       const relation = followStatus.get(id)
@@ -611,9 +627,10 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
         || (post.privacy !== 'only_me' && (post.privacy !== 'friends' || isFriend)))
         .map(post => ({ ...post, is_owner: post.user_id === viewerId, is_liked: likedIds.has(post.id) }))
     }
-    const { data: live, error: liveError } = await admin.from('live_sessions')
-      .select('id,title').eq('host_id', targetId).eq('is_active', true).gte('last_heartbeat', new Date(Date.now() - 90_000).toISOString()).order('created_at', { ascending: false }).limit(1).maybeSingle()
+    const { data: liveRaw, error: liveError } = await admin.from('live_sessions')
+      .select('id,title,visibility').eq('host_id', targetId).eq('is_active', true).gte('last_heartbeat', new Date(Date.now() - 90_000).toISOString()).order('created_at', { ascending: false }).limit(1).maybeSingle()
     throwOnError(liveError)
+    const live = liveRaw && (liveRaw.visibility !== 'friends' || isOwner || isFriend) ? liveRaw : null
     let likeStats: Record<string, number> | undefined
     {
       const [storiesResult, imagePostsResult, videoPostsResult, blogsResult] = await Promise.all([
@@ -752,7 +769,7 @@ async function handleModeration(request: Request, viewerId: string, headers: Rec
     const { data, error } = await admin.from('blocks').select('blocked_id').eq('blocker_id', viewerId)
     throwOnError(error)
     const ids = (data || []).map(row => row.blocked_id)
-    const summaries = await getUserSummaries(ids, false)
+    const summaries = await getUserSummaries(ids, false, viewerId)
     return jsonResponse(200, { users: ids.map(id => summaries.get(id)).filter(Boolean) }, headers)
   }
   return jsonResponse(404, { error: 'Endpoint not found' }, headers)
@@ -1927,7 +1944,7 @@ async function handleLive(request: Request, viewerId: string | undefined, header
 
   if (route === '/live' && method === 'GET') {
     const { data: sessions, error } = await admin.from('live_sessions')
-      .select('id,host_id,title,category,viewer_count,created_at')
+      .select('id,host_id,title,category,viewer_count,created_at,visibility')
       .eq('is_active', true)
       .gte('last_heartbeat', new Date(Date.now() - 90_000).toISOString())
       .order('viewer_count', { ascending: false })
@@ -1954,12 +1971,14 @@ async function handleLive(request: Request, viewerId: string | undefined, header
       ...(followedByResult.data || []).map(row => row.follower_id)
     ])
     const blockedForLive = viewerId ? await getBlockedIds(viewerId) : new Set<string>()
-    const liveStreams = sessions.filter(session => !blockedForLive.has(session.host_id)).map(session => {
+    const liveStreams = sessions.filter(session => !blockedForLive.has(session.host_id)
+      && (session.visibility !== 'friends' || session.host_id === viewerId || friendIds.has(session.host_id))).map(session => {
       const host = usersById.get(session.host_id)
       return {
         id: session.id,
         title: session.title,
         category: session.category,
+        visibility: session.visibility,
         viewer_count: session.viewer_count,
         created_at: session.created_at,
         host_id: session.host_id,
@@ -1980,10 +1999,11 @@ async function handleLive(request: Request, viewerId: string | undefined, header
       : 'General'
     if (!title) return jsonResponse(400, { error: 'Livestream title is required' }, headers)
     if (violatesGuidelines(title, category)) return jsonResponse(422, { error: GUIDELINES_MESSAGE, code: 'guidelines' }, headers)
+    const visibility = body?.visibility === 'friends' ? 'friends' : 'public'
 
     const { data: session, error: insertError } = await admin.from('live_sessions')
-      .insert({ host_id: viewerId, title, category, is_active: true })
-      .select('id,title,category,viewer_count,created_at')
+      .insert({ host_id: viewerId, title, category, visibility, is_active: true })
+      .select('id,title,category,viewer_count,created_at,visibility')
       .single()
     throwOnError(insertError)
     if (!session) throw new Error('Supabase did not return the new livestream session.')

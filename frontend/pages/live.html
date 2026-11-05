@@ -42,7 +42,7 @@
                 </div>
                 <div style="padding: 10px 16px; border-bottom: 1px solid var(--border-color);">
                     <div style="font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px;">Your live title</div>
-                    <div id="live-title-editor"></div>
+                    <div id="live-title-editor"></div><div style="font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); margin:10px 0 6px;">Who can watch</div><select id="live-audience" aria-label="Who can watch your live" style="width:100%;padding:9px 10px;border-radius:10px;border:1px solid var(--border-color);background:transparent;color:inherit;font:inherit;"><option value="public">&#127757; Public - everyone</option><option value="friends">&#128101; Friends only</option></select>
                 </div>
                 <div id="live-streams-list" style="flex: 1; overflow-y: auto;">
                     <p style="padding: 16px; color: var(--text-muted);">Loading livestreams...</p>
@@ -66,7 +66,7 @@
     </div>
 
     <script type="module">
-        import { initLiveStudio, startBroadcasting, exitBroadcasting, createTitleEditor, getSavedLiveTitle } from '../js/live.js?v=you2';
+        import { initLiveStudio, startBroadcasting, exitBroadcasting, createTitleEditor, getSavedLiveTitle } from '../js/live.js?v=vis1';
         document.addEventListener('DOMContentLoaded', () => {
             initLiveStudio();
 
@@ -80,7 +80,7 @@
                     input.style.borderColor = '#e5334b';
                     return;
                 }
-                startBroadcasting(title, 'General');
+                startBroadcasting(title, 'General', document.getElementById('live-audience').value);
             });
         });
     </script>

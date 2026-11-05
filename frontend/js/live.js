@@ -1671,7 +1671,7 @@ function closeAllPeerConnections() {
   Object.keys(peerConnections).forEach(closePeerConnection);
 }
 
-export async function startBroadcasting(title, category) {
+export async function startBroadcasting(title, category, visibility = 'public') {
   if (activeBroadcastSessionId) return;
   if (!localStorage.getItem('vynzo_token')) {
     alert('Please log in to your Vynzo account before starting a livestream.');
@@ -1681,7 +1681,7 @@ export async function startBroadcasting(title, category) {
   try {
     const res = await apiRequest('/live/start', {
       method: 'POST',
-      body: JSON.stringify({ title, category })
+      body: JSON.stringify({ title, category, visibility })
     });
 
     const sessionId = res.session.id;
