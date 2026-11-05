@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(ScreenGuardPlugin.class);
+        registerPlugin(ShareTargetPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

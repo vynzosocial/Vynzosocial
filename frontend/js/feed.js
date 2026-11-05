@@ -2,7 +2,7 @@ import { apiRequest } from './api.js?v=sb6';
 import { timeAgo } from './time-ago.js';
 import { API_ORIGIN } from './config.js?v=sb4';
 import { uploadMedia } from './uploads.js?v=up1';
-import { openCamera } from './camera-capture.js';
+import { openVideoOptions, initSharedVideoReceiver } from './video-create.js?v=vc1';
 import { attachEmojiPicker } from './emoji-picker.js';
 import { protectMedia } from './media-protect.js';
 
@@ -124,14 +124,14 @@ function initPostComposer() {
   photoButton.dataset.initialized = 'true';
   videoButton.dataset.initialized = 'true';
   photoButton.addEventListener('click', () => openPostPicker(photoInput));
-  videoButton.addEventListener('click', () => openPostPicker(videoInput));
-  document.getElementById('camera-post-btn')?.addEventListener('click', () => {
+  videoButton.addEventListener('click', () => {
     if (!localStorage.getItem('vynzo_token')) {
       window.location.href = './pages/login.html';
       return;
     }
-    openCamera(createPost);
+    openVideoOptions({ onFile: createPost, fileInput: videoInput });
   });
+  initSharedVideoReceiver({ onPost: createPost, captionInput: document.getElementById('post-caption') });
   [photoInput, videoInput].forEach(input => input.addEventListener('change', async () => {
     const file = input.files?.[0];
     input.value = '';
@@ -151,17 +151,16 @@ async function createPost(file) {
   const status = document.getElementById('post-upload-status');
   const buttons = [
     document.getElementById('add-photo-post-btn'),
-    document.getElementById('add-video-post-btn'),
-    document.getElementById('camera-post-btn')
+    document.getElementById('add-video-post-btn')
   ].filter(Boolean);
 
   if (file.size > 50 * 1024 * 1024) {
     status.textContent = 'Media must be 50 MB or smaller.';
-    return;
+    return false;
   }
   if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
     status.textContent = 'Choose a supported photo or video file.';
-    return;
+    return false;
   }
 
   buttons.forEach(button => { button.disabled = true; });
@@ -172,9 +171,11 @@ async function createPost(file) {
     document.getElementById('post-caption').value = '';
     status.textContent = 'Post added to the home feed.';
     await initFeed();
+    return true;
   } catch (err) {
     console.error('Post upload failed:', err);
     status.textContent = err.message || 'Could not upload post. Please try again.';
+    return false;
   } finally {
     buttons.forEach(button => { button.disabled = false; });
   }

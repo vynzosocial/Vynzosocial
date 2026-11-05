@@ -61,11 +61,6 @@ html body .home-create-button.photo-create-button {
   animation: none;
 }
 
-html body .home-create-button.photo-create-button#camera-post-btn {
-  --btn-glow: rgba(255, 140, 60, 0.5);
-  background: linear-gradient(110deg, #ff8a3c, #ff3c7a);
-}
-
 html body .home-create-button.video-create-button {
   --btn-glow: rgba(255, 70, 90, 0.5);
   background: linear-gradient(110deg, #ff4b5c, #c23bff);

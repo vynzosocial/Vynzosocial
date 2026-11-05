@@ -36,7 +36,7 @@
     if (code === 'en') { DICT = {}; done(); return; }
     if (DICTS[code]) { DICT = DICTS[code]; done(); return; }
     var s = document.createElement('script');
-    s.src = baseUrl + 'i18n-' + code + '.js?v=1';
+    s.src = baseUrl + 'i18n-' + code + '.js?v=2';
     s.onload = function () { DICT = DICTS[code] || {}; done(); };
     s.onerror = function () { DICT = {}; done(); };
     document.head.appendChild(s);
@@ -49,7 +49,7 @@
 
   // Parser-blocking load so the saved language is translated before first paint.
   if (lang !== 'en' && document.readyState === 'loading') {
-    document.write('<script src="' + baseUrl + 'i18n-' + lang + '.js?v=1"><\/script>');
+    document.write('<script src="' + baseUrl + 'i18n-' + lang + '.js?v=2"><\/script>');
   }
   if (DICTS[lang]) DICT = DICTS[lang];
 

@@ -424,6 +424,7 @@
     'Could not access the camera. Allow camera permission and try again': 'Не удалось получить доступ к камере. Разрешите доступ и попробуйте снова',
     'Video recording is not supported in this browser': 'Запись видео не поддерживается в этом браузере',
     'Photo': 'Фото',
+    'Image': 'Изображение',
     'Video': 'Видео',
     'Retake': 'Переснять',
     'Use this': 'Использовать',

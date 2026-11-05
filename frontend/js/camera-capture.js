@@ -6,7 +6,7 @@ const DURATIONS = [
 ];
 const MAX_SECONDS = 60;
 
-export function openCamera(onCapture) {
+export function openCamera(onCapture, options = {}) {
   if (!navigator.mediaDevices?.getUserMedia) {
     alert('Camera is not supported in this browser.');
     return;
@@ -18,7 +18,8 @@ export function openCamera(onCapture) {
   let timer = null;
   let elapsed = 0;
   let limit = 15;
-  let mode = 'photo';
+  const videoOnly = options.videoOnly === true;
+  let mode = videoOnly ? 'video' : 'photo';
   let facing = 'user';
   let result = null;
 
@@ -85,7 +86,7 @@ export function openCamera(onCapture) {
       live.srcObject = stream;
       message.textContent = '';
     } catch (err) {
-      message.textContent = 'Could not access the camera. Allow camera permission and try again.';
+      message.textContent = 'Could not access the camera or microphone. Allow permission in your browser, or in Settings > Apps > Vynzo > Permissions, then try again.';
     }
   }
 
@@ -137,7 +138,7 @@ export function openCamera(onCapture) {
     live.hidden = false;
     shutter.hidden = false;
     flipButton.hidden = false;
-    modesBox.hidden = false;
+    modesBox.hidden = videoOnly;
     durationsBox.hidden = mode !== 'video';
     $('.camera-retake').hidden = true;
     $('.camera-use').hidden = true;
@@ -228,5 +229,10 @@ export function openCamera(onCapture) {
     if (event.target === overlay) close();
   });
 
+  if (videoOnly) {
+    modesBox.hidden = true;
+    durationsBox.hidden = false;
+    shutter.classList.add('video-mode');
+  }
   startStream();
 }

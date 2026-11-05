@@ -424,6 +424,7 @@
     'Could not access the camera. Allow camera permission and try again': 'تعذّر الوصول إلى الكاميرا. اسمح بإذن الكاميرا ثم حاول مرة أخرى',
     'Video recording is not supported in this browser': 'تسجيل الفيديو غير مدعوم في هذا المتصفح',
     'Photo': 'صورة',
+    'Image': 'صورة',
     'Video': 'فيديو',
     'Retake': 'إعادة الالتقاط',
     'Use this': 'استخدام هذه',

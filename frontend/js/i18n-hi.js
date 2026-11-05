@@ -408,6 +408,7 @@
     'Could not access the camera. Allow camera permission and try again': 'कैमरे तक नहीं पहुंच सका. कैमरे की अनुमति दें और पुनः प्रयास करें',
     'Video recording is not supported in this browser': 'इस ब्राउज़र में वीडियो रिकॉर्डिंग समर्थित नहीं है',
     'Photo': 'तस्वीर',
+    'Image': 'छवि',
     'Video': 'वीडियो',
     'Retake': 'फिर से लेना',
     'Use this': 'इस का उपयोग करें',

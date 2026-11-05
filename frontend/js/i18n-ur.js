@@ -421,6 +421,7 @@
     'Could not access the camera. Allow camera permission and try again': 'کیمرے تک رسائی نہیں ہو سکی۔ کیمرے کی اجازت دیں اور دوبارہ کوشش کریں',
     'Video recording is not supported in this browser': 'اس براؤزر میں ویڈیو ریکارڈنگ تعاون یافتہ نہیں',
     'Photo': 'تصویر',
+    'Image': 'تصویر',
     'Video': 'ویڈیو',
     'Retake': 'دوبارہ کھینچیں',
     'Use this': 'یہ استعمال کریں',

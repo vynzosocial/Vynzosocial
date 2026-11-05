@@ -422,6 +422,7 @@
     'Could not access the camera. Allow camera permission and try again': 'Impossible d\'accéder à la caméra. Autorisez l\'accès à la caméra et réessayez',
     'Video recording is not supported in this browser': 'L\'enregistrement vidéo n\'est pas pris en charge par ce navigateur',
     'Photo': 'Photo',
+    'Image': 'Image',
     'Video': 'Vidéo',
     'Retake': 'Reprendre',
     'Use this': 'Utiliser',

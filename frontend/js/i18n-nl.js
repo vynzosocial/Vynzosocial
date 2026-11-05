@@ -422,6 +422,7 @@
     'Could not access the camera. Allow camera permission and try again': 'Kon geen toegang krijgen tot de camera. Geef cameratoestemming en probeer het opnieuw',
     'Video recording is not supported in this browser': 'Video-opname wordt in deze browser niet ondersteund',
     'Photo': 'Foto',
+    'Image': 'Afbeelding',
     'Video': 'Video',
     'Retake': 'Opnieuw maken',
     'Use this': 'Gebruiken',
