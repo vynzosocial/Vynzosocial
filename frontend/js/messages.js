@@ -1025,13 +1025,16 @@ function openStickerPicker(userId, onSelect) {
   };
   document.addEventListener('keydown', escape);
 
-  const send = async sticker => {
+  const send = async (sticker, options = {}) => {
     status.textContent = '';
     createButton.disabled = true;
     for (const button of grid.querySelectorAll('button')) button.disabled = true;
     try {
       await onSelect(sticker);
-      close();
+      createButton.disabled = false;
+      for (const button of grid.querySelectorAll('button')) button.disabled = false;
+      if (options.keepOpen) status.textContent = 'Sticker saved and sent.';
+      else close();
     } catch (err) {
       console.error('Could not send sticker:', err);
       status.textContent = err.message || 'Could not send the sticker. Please try again.';
@@ -1125,20 +1128,8 @@ function openStickerPicker(userId, onSelect) {
         editor.hidden = true;
         picker.hidden = false;
         disposeEditor = null;
-        status.textContent = 'Sticker saved. Tap it to send.';
         await renderGrid();
-      }, async blob => {
-        const stickerName = file.name.replace(/\.[^.]+$/, '').slice(0, 60) || 'Custom sticker';
-        await saveSticker(userId, blob, stickerName);
-        editor.hidden = true;
-        picker.hidden = false;
-        disposeEditor = null;
-        await renderGrid();
-        try {
-          await send({ file: new File([blob], 'sticker.png', { type: blob.type || 'image/png' }), name: stickerName });
-        } catch {
-          status.textContent = 'Sticker saved, but it could not be sent. Tap it in your sticker tray to try again.';
-        }
+        await send({ file: new File([blob], 'sticker.png', { type: blob.type || 'image/png' }), name: stickerName }, { keepOpen: true });
       });
     } catch (err) {
       console.error('Could not open sticker editor:', err);
@@ -1149,7 +1140,7 @@ function openStickerPicker(userId, onSelect) {
   renderGrid();
 }
 
-async function showStickerEditor(editor, picker, file, onSave, onSaveAndSend) {
+async function showStickerEditor(editor, picker, file, onSave) {
   picker.hidden = true;
   editor.hidden = false;
   editor.replaceChildren();
@@ -1197,14 +1188,23 @@ async function showStickerEditor(editor, picker, file, onSave, onSaveAndSend) {
   textInput.placeholder = 'Write on your sticker';
   textInput.setAttribute('aria-label', 'Write on your sticker');
 
+  const textColorLabel = document.createElement('label');
+  textColorLabel.className = 'sticker-text-color-label';
+  textColorLabel.textContent = 'Text color';
+  const textColorInput = document.createElement('input');
+  textColorInput.type = 'color';
+  textColorInput.value = '#ffffff';
+  textColorInput.setAttribute('aria-label', 'Text color');
+  textColorLabel.appendChild(textColorInput);
+
   const selectionTools = document.createElement('div');
   selectionTools.className = 'sticker-selection-tools';
   const selectionHint = document.createElement('span');
-  selectionHint.textContent = 'Draw an area to keep. Everything outside it will be transparent.';
+  selectionHint.textContent = 'Draw an area to keep, or choose Move text and drag your text on the image.';
   const selectionModes = document.createElement('div');
   selectionModes.className = 'sticker-selection-modes';
   const selectionModeButtons = new Map();
-  [['free', 'Free selection'], ['circle', 'Circle'], ['square', 'Square']].forEach(([mode, label]) => {
+  [['free', 'Free selection'], ['circle', 'Circle'], ['square', 'Square'], ['text', 'Move text']].forEach(([mode, label]) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'sticker-secondary-button';
@@ -1212,10 +1212,14 @@ async function showStickerEditor(editor, picker, file, onSave, onSaveAndSend) {
     button.setAttribute('aria-pressed', String(mode === 'free'));
     button.addEventListener('click', () => {
       selectionMode = mode;
+      selectionHint.textContent = mode === 'text'
+        ? 'Drag the text on the image to position it.'
+        : 'Draw an area to keep. Everything outside it will be transparent.';
       selectionModeButtons.forEach((modeButton, modeName) => {
         modeButton.classList.toggle('is-active', modeName === mode);
         modeButton.setAttribute('aria-pressed', String(modeName === mode));
       });
+      canvas.classList.toggle('is-moving-text', mode === 'text');
     });
     selectionModeButtons.set(mode, button);
     if (mode === 'free') button.classList.add('is-active');
@@ -1228,6 +1232,12 @@ async function showStickerEditor(editor, picker, file, onSave, onSaveAndSend) {
   clearSelection.disabled = true;
   selectionTools.append(selectionHint, selectionModes, clearSelection);
 
+  const undoButton = document.createElement('button');
+  undoButton.type = 'button';
+  undoButton.className = 'sticker-secondary-button sticker-undo-button';
+  undoButton.textContent = 'Undo';
+  undoButton.disabled = true;
+
   const emojiRow = document.createElement('div');
   emojiRow.className = 'sticker-emoji-controls';
   const emojiHint = document.createElement('span');
@@ -1237,14 +1247,9 @@ async function showStickerEditor(editor, picker, file, onSave, onSaveAndSend) {
   const selectedEmojis = document.createElement('div');
   selectedEmojis.className = 'sticker-selected-emojis';
   const emojis = [];
-  STICKER_EMOJIS.forEach(emoji => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = emoji;
-    button.setAttribute('aria-label', `Add ${emoji}`);
-    button.addEventListener('click', () => {
-      if (emojis.length >= 6) return;
-      emojis.push(emoji);
+  function renderSelectedEmojis() {
+    selectedEmojis.replaceChildren();
+    emojis.forEach((emoji, index) => {
       const chip = document.createElement('button');
       chip.type = 'button';
       chip.className = 'sticker-emoji-chip';
@@ -1252,12 +1257,24 @@ async function showStickerEditor(editor, picker, file, onSave, onSaveAndSend) {
       chip.title = 'Remove emoji';
       chip.setAttribute('aria-label', `Remove ${emoji}`);
       chip.addEventListener('click', () => {
-        const index = [...selectedEmojis.children].indexOf(chip);
-        if (index >= 0) emojis.splice(index, 1);
-        chip.remove();
+        pushUndo();
+        emojis.splice(index, 1);
+        renderSelectedEmojis();
         render();
       });
       selectedEmojis.appendChild(chip);
+    });
+  }
+  STICKER_EMOJIS.forEach(emoji => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = emoji;
+    button.setAttribute('aria-label', `Add ${emoji}`);
+    button.addEventListener('click', () => {
+      if (emojis.length >= 6) return;
+      pushUndo();
+      emojis.push(emoji);
+      renderSelectedEmojis();
       render();
     });
     emojiPicker.appendChild(button);
@@ -1274,20 +1291,22 @@ async function showStickerEditor(editor, picker, file, onSave, onSaveAndSend) {
   saveButton.type = 'button';
   saveButton.className = 'sticker-save-button';
   saveButton.textContent = 'Save sticker';
-  const saveAndSendButton = document.createElement('button');
-  saveAndSendButton.type = 'button';
-  saveAndSendButton.className = 'sticker-save-send-button';
-  saveAndSendButton.textContent = 'Save & Send';
   const editorStatus = document.createElement('p');
   editorStatus.className = 'sticker-status';
   editorStatus.setAttribute('role', 'status');
-  actions.append(backButton, saveButton, saveAndSendButton);
-  controls.append(textInput, selectionTools, emojiRow, actions, editorStatus);
+  actions.append(undoButton, backButton, saveButton);
+  controls.append(textInput, textColorLabel, selectionTools, emojiRow, actions, editorStatus);
   editor.append(note, canvasWrap, controls);
 
   let selectionMode = 'free';
   let currentSelection = null;
   let activeSelection = null;
+  let activeTextDrag = null;
+  let textX = width / 2;
+  let textY = height * 0.84;
+  let textColor = textColorInput.value;
+  const undoStack = [];
+  let lastState = null;
   let disposed = false;
   const dispose = () => {
     disposed = true;
@@ -1296,35 +1315,73 @@ async function showStickerEditor(editor, picker, file, onSave, onSaveAndSend) {
   };
   const edited = () => Boolean(currentSelection || textInput.value.trim() || emojis.length);
 
+  function snapshot() {
+    return {
+      selection: currentSelection ? {
+        ...currentSelection,
+        start: { ...currentSelection.start },
+        end: { ...currentSelection.end },
+        points: currentSelection.points.map(point => ({ ...point }))
+      } : null,
+      text: textInput.value,
+      textColor,
+      textX,
+      textY,
+      emojis: [...emojis]
+    };
+  }
+
+  function pushUndo(state = snapshot()) {
+    state = lastState || state;
+    undoStack.push(state);
+    if (undoStack.length > 30) undoStack.shift();
+    undoButton.disabled = false;
+  }
+
+  function restore(state) {
+    currentSelection = state.selection;
+    textInput.value = state.text;
+    textColor = state.textColor;
+    textColorInput.value = textColor;
+    textX = state.textX;
+    textY = state.textY;
+    emojis.splice(0, emojis.length, ...state.emojis);
+    renderSelectedEmojis();
+    render();
+  }
+
   function drawSticker(targetContext, showSelection = false) {
     targetContext.clearRect(0, 0, width, height);
     targetContext.globalCompositeOperation = 'source-over';
     targetContext.drawImage(source, 0, 0, width, height);
-    if (currentSelection && !activeSelection) {
-      targetContext.globalCompositeOperation = 'destination-in';
-      targetContext.beginPath();
-      traceStickerSelection(targetContext, currentSelection, width, height);
-      targetContext.fill();
-      targetContext.globalCompositeOperation = 'source-over';
-    }
     const text = textInput.value.trim();
     if (text) {
       const fontSize = Math.max(20, Math.round(width / 13));
       targetContext.font = `800 ${fontSize}px system-ui, sans-serif`;
       targetContext.textAlign = 'center';
-      targetContext.textBaseline = 'bottom';
+      targetContext.textBaseline = 'middle';
       targetContext.lineJoin = 'round';
       targetContext.lineWidth = Math.max(3, fontSize / 8);
       targetContext.strokeStyle = 'rgba(0,0,0,.8)';
-      targetContext.fillStyle = '#fff';
+      targetContext.fillStyle = textColor;
       targetContext.shadowColor = 'rgba(0,0,0,.7)';
       targetContext.shadowBlur = 5;
       const maxWidth = width - 24;
       let output = text;
       while (targetContext.measureText(output).width > maxWidth && output.length > 1) output = `${output.slice(0, -2)}…`;
-      targetContext.strokeText(output, width / 2, height - 12, maxWidth);
-      targetContext.fillText(output, width / 2, height - 12, maxWidth);
+      targetContext.strokeText(output, textX, textY, maxWidth);
+      targetContext.fillText(output, textX, textY, maxWidth);
       targetContext.shadowBlur = 0;
+      if (showSelection || activeTextDrag) {
+        const textWidth = Math.min(maxWidth, targetContext.measureText(output).width) + 14;
+        const textHeight = fontSize * 1.4;
+        targetContext.save();
+        targetContext.setLineDash([5, 4]);
+        targetContext.lineWidth = Math.max(1, width / 300);
+        targetContext.strokeStyle = 'rgba(255,255,255,.8)';
+        targetContext.strokeRect(textX - textWidth / 2, textY - textHeight / 2, textWidth, textHeight);
+        targetContext.restore();
+      }
     }
     emojis.forEach((emoji, index) => {
       targetContext.font = `${Math.max(28, Math.round(Math.min(width, height) / 4))}px system-ui, sans-serif`;
@@ -1333,6 +1390,13 @@ async function showStickerEditor(editor, picker, file, onSave, onSaveAndSend) {
       const positions = [[.78, .25], [.25, .25], [.75, .7], [.25, .72], [.5, .15], [.5, .78]];
       targetContext.fillText(emoji, width * positions[index][0], height * positions[index][1]);
     });
+    if (currentSelection && !activeSelection) {
+      targetContext.globalCompositeOperation = 'destination-in';
+      targetContext.beginPath();
+      traceStickerSelection(targetContext, currentSelection, width, height);
+      targetContext.fill();
+      targetContext.globalCompositeOperation = 'source-over';
+    }
     const previewSelection = activeSelection || currentSelection;
     if (showSelection && previewSelection) {
       targetContext.save();
@@ -1352,6 +1416,8 @@ async function showStickerEditor(editor, picker, file, onSave, onSaveAndSend) {
     if (disposed) return;
     drawSticker(context, true);
     clearSelection.disabled = !currentSelection && !activeSelection;
+    undoButton.disabled = undoStack.length === 0;
+    lastState = snapshot();
   }
   render();
 
@@ -1365,13 +1431,30 @@ async function showStickerEditor(editor, picker, file, onSave, onSaveAndSend) {
   canvas.addEventListener('pointerdown', event => {
     if (event.button !== 0) return;
     event.preventDefault();
-    canvas.setPointerCapture(event.pointerId);
     const point = selectionPoint(event);
+    if (selectionMode === 'text') {
+      if (!textInput.value.trim()) {
+        editorStatus.textContent = 'Write text first, then drag it to position it.';
+        return;
+      }
+      canvas.setPointerCapture(event.pointerId);
+      pushUndo();
+      activeTextDrag = { start: point, textX, textY };
+      render();
+      return;
+    }
+    canvas.setPointerCapture(event.pointerId);
     activeSelection = { mode: selectionMode, start: point, end: point, points: [point] };
-    currentSelection = null;
     render();
   });
   canvas.addEventListener('pointermove', event => {
+    if (activeTextDrag) {
+      const point = selectionPoint(event);
+      textX = Math.max(0, Math.min(width, activeTextDrag.textX + point.x - activeTextDrag.start.x));
+      textY = Math.max(0, Math.min(height, activeTextDrag.textY + point.y - activeTextDrag.start.y));
+      render();
+      return;
+    }
     if (!activeSelection) return;
     const point = selectionPoint(event);
     activeSelection.end = point;
@@ -1382,6 +1465,12 @@ async function showStickerEditor(editor, picker, file, onSave, onSaveAndSend) {
     render();
   });
   const finishSelection = event => {
+    if (activeTextDrag) {
+      if (event && canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      activeTextDrag = null;
+      render();
+      return;
+    }
     if (!activeSelection) return;
     if (event && canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
     const selection = activeSelection;
@@ -1393,41 +1482,56 @@ async function showStickerEditor(editor, picker, file, onSave, onSaveAndSend) {
     }
     activeSelection = null;
     if (selection.mode === 'free' && selection.points.length < 3) {
-      currentSelection = null;
       render();
       return;
     }
     if (selection.mode !== 'free' && Math.hypot(selection.end.x - selection.start.x, selection.end.y - selection.start.y) < 3) {
-      currentSelection = null;
       render();
       return;
     }
+    pushUndo();
     currentSelection = selection;
     render();
   };
   canvas.addEventListener('pointerup', finishSelection);
-  canvas.addEventListener('pointercancel', finishSelection);
+  canvas.addEventListener('pointercancel', event => {
+    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+    if (activeTextDrag) {
+      textX = activeTextDrag.textX;
+      textY = activeTextDrag.textY;
+      activeTextDrag = null;
+    }
+    activeSelection = null;
+    render();
+  });
   clearSelection.addEventListener('click', () => {
+    if (!currentSelection) return;
+    pushUndo();
     currentSelection = null;
     render();
   });
-  textInput.addEventListener('input', render);
+  textInput.addEventListener('input', () => {
+    pushUndo();
+    editorStatus.textContent = '';
+    render();
+  });
+  textColorInput.addEventListener('input', () => {
+    pushUndo();
+    textColor = textColorInput.value;
+    render();
+  });
+  undoButton.addEventListener('click', () => {
+    const previous = undoStack.pop();
+    if (previous) restore(previous);
+  });
   backButton.addEventListener('click', () => {
     dispose();
     editor.hidden = true;
     picker.hidden = false;
   });
   saveButton.addEventListener('click', async () => {
-    await saveEditedSticker(false);
-  });
-  saveAndSendButton.addEventListener('click', async () => {
-    await saveEditedSticker(true);
-  });
-
-  async function saveEditedSticker(sendAfterSave) {
     saveButton.disabled = true;
-    saveAndSendButton.disabled = true;
-    editorStatus.textContent = sendAfterSave ? 'Saving and sending sticker…' : 'Saving sticker…';
+    editorStatus.textContent = 'Saving sticker…';
     try {
       let blob;
       if (!edited()) blob = file;
@@ -1441,16 +1545,14 @@ async function showStickerEditor(editor, picker, file, onSave, onSaveAndSend) {
         blob = await canvasToBlob(exportCanvas);
       }
       if (blob.size > 10 * 1024 * 1024) throw new Error('The finished sticker must be 10 MB or smaller.');
-      if (sendAfterSave) await onSaveAndSend(blob);
-      else await onSave(blob);
+      await onSave(blob);
       dispose();
     } catch (err) {
-      console.error(sendAfterSave ? 'Could not save and send sticker:' : 'Could not save sticker:', err);
-      editorStatus.textContent = err.message || (sendAfterSave ? 'Could not save and send this sticker.' : 'Could not save this sticker.');
+      console.error('Could not save sticker:', err);
+      editorStatus.textContent = err.message || 'Could not save this sticker.';
       saveButton.disabled = false;
-      saveAndSendButton.disabled = false;
     }
-  }
+  });
   return dispose;
 }
 
