@@ -1,6 +1,6 @@
-import { apiRequest } from './api.js?v=sb6';
+﻿import { apiRequest } from './api.js?v=sb6';
 import { API_ORIGIN } from './config.js?v=sb4';
-import { createRealtimeSocket } from './realtime.js?v=sb5';
+import { createRealtimeSocket } from './realtime.js?v=sb6';
 
 let socket = null;
 let cameraStream = null;

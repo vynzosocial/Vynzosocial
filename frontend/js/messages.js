@@ -1,7 +1,7 @@
-import { apiRequest, apiBlobRequest } from './api.js?v=sb6';
+﻿import { apiRequest, apiBlobRequest } from './api.js?v=sb6';
 import { API_ORIGIN } from './config.js?v=sb4';
 import { supabase } from './supabase-client.js';
-import { createRealtimeSocket } from './realtime.js?v=sb5';
+import { createRealtimeSocket } from './realtime.js?v=sb6';
 import { attachEmojiPicker } from './emoji-picker.js?v=scope4';
 import { initCalls, startCall } from './calls.js?v=sb5';
 

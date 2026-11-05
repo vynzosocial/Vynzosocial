@@ -15,6 +15,13 @@ const currentUser = () => {
 };
 const displayName = user => user.display_name || user.username || 'Guest';
 
+// Private channels are authorised by RLS, so the socket must carry the user's JWT before joining.
+async function ensureRealtimeAuth() {
+  const { data } = await supabase.auth.getSession();
+  if (!data?.session?.access_token) throw new Error('Please log in again to use live features.');
+  await supabase.realtime.setAuth(data.session.access_token);
+}
+
 function subscribe(channel) {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -47,8 +54,9 @@ function dispatchAll(event, data) {
 
 async function outboundChannel(userId) {
   if (!hub.outbound.has(userId)) {
-    const channel = supabase.channel(`user:${userId}`, { config: { private: true } });
-    hub.outbound.set(userId, subscribe(channel).catch(err => {
+    hub.outbound.set(userId, ensureRealtimeAuth().then(() => subscribe(
+      supabase.channel(`user:${userId}`, { config: { private: true } })
+    )).catch(err => {
       hub.outbound.delete(userId);
       throw err;
     }));
@@ -113,6 +121,7 @@ async function startHub() {
   if (hub.starting) return hub.starting;
   hub.userId = user.id;
   hub.starting = (async () => {
+    await ensureRealtimeAuth();
     const inbox = supabase.channel(`user:${user.id}`, { config: { broadcast: { self: false }, private: true } });
     inbox.on('broadcast', { event: 'sig' }, ({ payload }) => onUserSignal(payload));
     const online = supabase.channel('vynzo:online', { config: { presence: { key: user.id }, private: true } });
@@ -439,6 +448,7 @@ export function createRealtimeSocket(options = {}) {
     channel.on('presence', { event: 'leave' }, ({ key, leftPresences }) => onPresenceLeave(key, leftPresences || []));
 
     try {
+      await ensureRealtimeAuth();
       await subscribe(channel);
       await channel.track({
         userId: me.id,
