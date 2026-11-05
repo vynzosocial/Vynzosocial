@@ -184,8 +184,38 @@ function renderConversations(conversations, currentUser) {
   });
 }
 
+const mobileChatQuery = window.matchMedia('(max-width: 700px)');
+
+function openChatView() {
+  const container = document.querySelector('.messaging-container');
+  if (!container || !mobileChatQuery.matches || container.classList.contains('chat-open')) return;
+  container.classList.add('chat-open');
+  history.pushState({ vynzoChat: true }, '');
+}
+
+function closeChatView() {
+  document.querySelector('.messaging-container')?.classList.remove('chat-open');
+  if (currentConversationId) {
+    currentConversationId = null;
+    window.__vynzoOpenConversation = null;
+    currentConversationMeta = null;
+    document.querySelectorAll('.conversation-item.active').forEach(item => item.classList.remove('active'));
+    refreshConversations().catch(() => {});
+  }
+}
+
+function goBackToList() {
+  if (history.state && history.state.vynzoChat) history.back();
+  else closeChatView();
+}
+
+window.addEventListener('popstate', () => {
+  if (document.querySelector('.messaging-container')?.classList.contains('chat-open')) closeChatView();
+});
+
 function selectConversation(conversation, currentUser) {
   currentConversationMeta = conversation;
+  openChatView();
   document.querySelectorAll('.conversation-item').forEach(item => {
     item.classList.toggle('active', item.dataset.conversationId === conversation.id);
   });
@@ -225,6 +255,7 @@ function markConversationRead(conversationId) {
 function renderChatWindow(chatArea, messages, currentUser, conversationName, avatarUrl = '') {
   chatArea.innerHTML = `
     <div class="chat-header">
+      <button type="button" class="chat-back-btn" id="chat-back-btn" aria-label="Back to messages" title="Back">←</button>
       ${avatarMarkup(avatarUrl, conversationName, 'chat-header-avatar')}
       <div>
         <strong>${escapeHtml(conversationName)}</strong>
@@ -469,6 +500,8 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     }
   }
 
+  document.getElementById('chat-back-btn').addEventListener('click', goBackToList);
+
   document.getElementById('delete-chat-btn').addEventListener('click', async () => {
     const conversationId = currentConversationId;
     if (!window.confirm('Delete this whole conversation? It will be removed for you only; the other person keeps their copy.')) return;
@@ -484,6 +517,7 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
         window.__vynzoOpenConversation = null;
         currentConversationMeta = null;
         showChatError('Select a conversation to start chatting.');
+        goBackToList();
       }
       refreshConversations().catch(err => {
         console.error('Could not refresh conversations:', err);
