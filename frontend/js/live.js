@@ -494,7 +494,7 @@ function createLiveStage(placeholder, isHost, hostUsername = '', title = '', hos
         <span class="live-role-badge ${isHost ? 'is-host' : 'is-guest'}" style="display:none" aria-hidden="true"></span>
         <button type="button" class="live-host-chip" id="live-host-chip" data-user-id="${escapeHtml(hostInfo.id || '')}" aria-label="View ${escapeHtml(hostName)}'s profile">
           ${liveAvatarHtml(hostInfo.avatar, hostName, 'live-avatar live-avatar-host')}
-          <span class="live-host-text"><strong>${escapeHtml(hostName)}</strong><small id="live-title-text">${escapeHtml(title)}</small></span>
+          <span class="live-host-text"><strong>${escapeHtml(hostName)}${isHost ? '<span class="live-you-badge">You live</span>' : ''}</strong><small id="live-title-text">${escapeHtml(title)}</small></span>
         </button>
         ${isHost
           ? '<button type="button" class="live-media-button live-header-btn" id="live-edit-title-btn" aria-label="Edit title">&#9998;</button>'

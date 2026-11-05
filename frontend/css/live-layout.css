@@ -506,3 +506,20 @@
     width: 100%;
   }
 }
+
+.live-you-badge {
+  display: inline-block;
+  margin-left: 8px;
+  color: #ff5a7a;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  text-shadow: 0 0 6px #ff3366, 0 0 14px #ff3366, 0 0 24px #ff0044;
+  animation: live-you-glow 1.6s ease-in-out infinite;
+}
+
+@keyframes live-you-glow {
+  0%, 100% { opacity: 1; text-shadow: 0 0 6px #ff3366, 0 0 14px #ff3366, 0 0 24px #ff0044; }
+  50% { opacity: .7; text-shadow: 0 0 3px #ff3366, 0 0 8px #ff3366; }
+}
