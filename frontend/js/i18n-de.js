@@ -467,7 +467,7 @@
     'Choose an emoji': 'Emoji auswählen',
     'Camera and image sharing': 'Kamera- und Bildfreigabe',
     'Your camera is off. Choose an option to share with everyone': 'Deine Kamera ist aus. Wähle eine Option, um mit allen zu teilen',
-    'Tap "Request to Join" to ask the host to put you on camera. You can keep chatting meanwhile (up to 10 guests on camera)': 'Tippe auf „Beitritt anfragen“, um den Host zu bitten, dich auf die Kamera zu holen. Du kannst in der Zwischenzeit weiter chatten (bis zu 10 Gäste vor der Kamera)',
+    'Tap "Request to Join" to ask the host to put you on camera. You can keep chatting meanwhile (up to 11 guests on camera)': 'Tippe auf „Beitritt anfragen“, um den Host zu bitten, dich auf die Kamera zu holen. Du kannst in der Zwischenzeit weiter chatten (bis zu 11 Gäste vor der Kamera)',
     'Open camera': 'Kamera öffnen',
     'Request to Join': 'Beitritt anfragen',
     'Choose image': 'Bild auswählen',

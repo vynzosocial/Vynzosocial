@@ -467,7 +467,7 @@
     'Choose an emoji': 'Kies een emoji',
     'Camera and image sharing': 'Camera en afbeeldingen delen',
     'Your camera is off. Choose an option to share with everyone': 'Je camera staat uit. Kies een optie om met iedereen te delen',
-    'Tap "Request to Join" to ask the host to put you on camera. You can keep chatting meanwhile (up to 10 guests on camera)': 'Tik op "Deelname aanvragen" om de host te vragen je in beeld te brengen. Ondertussen kun je blijven chatten (maximaal 10 gasten in beeld)',
+    'Tap "Request to Join" to ask the host to put you on camera. You can keep chatting meanwhile (up to 11 guests on camera)': 'Tik op "Deelname aanvragen" om de host te vragen je in beeld te brengen. Ondertussen kun je blijven chatten (maximaal 11 gasten in beeld)',
     'Open camera': 'Camera openen',
     'Request to Join': 'Deelname aanvragen',
     'Choose image': 'Afbeelding kiezen',

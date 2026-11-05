@@ -469,7 +469,7 @@
     'Choose an emoji': 'Выберите эмодзи',
     'Camera and image sharing': 'Показ камеры и изображений',
     'Your camera is off. Choose an option to share with everyone': 'Камера выключена. Выберите, чем поделиться со всеми',
-    'Tap "Request to Join" to ask the host to put you on camera. You can keep chatting meanwhile (up to 10 guests on camera)': 'Нажмите «Попроситься в эфир», чтобы ведущий вывел вас в кадр. Пока можно общаться в чате (до 10 гостей в кадре)',
+    'Tap "Request to Join" to ask the host to put you on camera. You can keep chatting meanwhile (up to 11 guests on camera)': 'Нажмите «Попроситься в эфир», чтобы ведущий вывел вас в кадр. Пока можно общаться в чате (до 11 гостей в кадре)',
     'Open camera': 'Открыть камеру',
     'Request to Join': 'Попроситься в эфир',
     'Choose image': 'Выбрать изображение',

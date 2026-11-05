@@ -466,7 +466,7 @@
     'Choose an emoji': 'ایموجی منتخب کریں',
     'Camera and image sharing': 'کیمرا اور تصویر شیئرنگ',
     'Your camera is off. Choose an option to share with everyone': 'آپ کا کیمرا بند ہے۔ سب کے ساتھ شیئر کرنے کے لیے کوئی آپشن منتخب کریں',
-    'Tap "Request to Join" to ask the host to put you on camera. You can keep chatting meanwhile (up to 10 guests on camera)': 'میزبان سے کیمرے پر آنے کی درخواست کے لیے "شامل ہونے کی درخواست" پر ٹیپ کریں۔ اس دوران آپ چیٹ جاری رکھ سکتے ہیں (کیمرے پر زیادہ سے زیادہ 10 مہمان)',
+    'Tap "Request to Join" to ask the host to put you on camera. You can keep chatting meanwhile (up to 11 guests on camera)': 'میزبان سے کیمرے پر آنے کی درخواست کے لیے "شامل ہونے کی درخواست" پر ٹیپ کریں۔ اس دوران آپ چیٹ جاری رکھ سکتے ہیں (کیمرے پر زیادہ سے زیادہ 11 مہمان)',
     'Open camera': 'کیمرا کھولیں',
     'Request to Join': 'شامل ہونے کی درخواست',
     'Choose image': 'تصویر منتخب کریں',

@@ -469,7 +469,7 @@
     'Choose an emoji': 'اختر إيموجي',
     'Camera and image sharing': 'مشاركة الكاميرا والصور',
     'Your camera is off. Choose an option to share with everyone': 'الكاميرا متوقفة. اختر خيارًا للمشاركة مع الجميع',
-    'Tap "Request to Join" to ask the host to put you on camera. You can keep chatting meanwhile (up to 10 guests on camera)': 'اضغط "طلب الانضمام" لتطلب من المضيف إظهارك على الكاميرا. يمكنك متابعة الدردشة في الأثناء (حتى 10 ضيوف على الكاميرا)',
+    'Tap "Request to Join" to ask the host to put you on camera. You can keep chatting meanwhile (up to 11 guests on camera)': 'اضغط "طلب الانضمام" لتطلب من المضيف إظهارك على الكاميرا. يمكنك متابعة الدردشة في الأثناء (حتى 11 ضيوف على الكاميرا)',
     'Open camera': 'فتح الكاميرا',
     'Request to Join': 'طلب الانضمام',
     'Choose image': 'اختيار صورة',

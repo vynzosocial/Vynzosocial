@@ -4,7 +4,7 @@ import { supabase } from './supabase-client.js';
 import { apiRequest } from './api.js?v=sb6';
 import { createOfflineSocket } from './config.js?v=sb4';
 
-const MAX_LIVE_GUESTS = 10;
+const MAX_LIVE_GUESTS = 11;
 const LAYOUTS = ['auto', 'full', 'panel', 'fixed', 'sidebar', 'side', 'spotlight', 'round1', 'round2'];
 const CALL_RING_MS = 45000;
 const HOST_GRACE_MS = 30000;

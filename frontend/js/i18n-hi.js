@@ -451,7 +451,7 @@
     'Choose an emoji': 'एक इमोजी चुनें',
     'Camera and image sharing': 'कैमरा और छवि साझाकरण',
     'Your camera is off. Choose an option to share with everyone': 'आपका कैमरा बंद है. सभी के साथ साझा करने के लिए एक विकल्प चुनें',
-    'Tap "Request to Join" to ask the host to put you on camera. You can keep chatting meanwhile (up to 10 guests on camera)': 'होस्ट से आपको कैमरे पर दिखाने के लिए कहने के लिए "जुड़ने का अनुरोध" पर टैप करें। आप इस बीच चैट करना जारी रख सकते हैं (कैमरे पर अधिकतम 10 मेहमान)',
+    'Tap "Request to Join" to ask the host to put you on camera. You can keep chatting meanwhile (up to 11 guests on camera)': 'होस्ट से आपको कैमरे पर दिखाने के लिए कहने के लिए "जुड़ने का अनुरोध" पर टैप करें। आप इस बीच चैट करना जारी रख सकते हैं (कैमरे पर अधिकतम 11 मेहमान)',
     'Open camera': 'कैमरा खोलें',
     'Request to Join': 'शामिल होने का अनुरोध',
     'Choose image': 'छवि चुनें',

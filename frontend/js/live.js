@@ -1,6 +1,6 @@
 ﻿import { apiRequest } from './api.js?v=sb6';
 import { API_ORIGIN } from './config.js?v=sb4';
-import { createRealtimeSocket } from './realtime.js?v=sb7';
+import { createRealtimeSocket } from './realtime.js?v=sb9';
 
 let socket = null;
 let cameraStream = null;
@@ -552,7 +552,7 @@ function createLiveStage(placeholder, isHost, hostUsername = '', title = '', hos
         </div>` : ''}        <div class="live-media-controls" aria-label="Camera and image sharing">
           <div class="live-media-description">
             <strong></strong>
-            <span id="live-media-status">${isHost ? 'Your camera is off. Choose an option to share with everyone.' : 'Tap "Request to Join" to ask the host to put you on camera. You can keep chatting meanwhile (up to 10 guests on camera).'}</span>
+            <span id="live-media-status">${isHost ? 'Your camera is off. Choose an option to share with everyone.' : 'Tap "Request to Join" to ask the host to put you on camera. You can keep chatting meanwhile (up to 11 guests on camera).'}</span>
           </div>
           <div class="live-media-actions">
             <button type="button" class="live-media-button" id="live-enable-camera-btn">${isHost ? 'Open camera' : '🎤 Request to Join'}</button>
@@ -1206,13 +1206,11 @@ function updateVideoGridLayout() {
     frame.classList.remove('live-tile-off');
   });
 
-  // Fixed equal slots by guest count: 0 guests = 1, 1 = 2, 2-4 = 4, 5-8 = 8, 9-10 = 10 (maximum).
+  // Equal slots by tile count: 1, 2, 2x2, 3x3, then 4 across x 3 rows (12 tiles maximum, host included).
   const count = frames.length;
-  const guests = hostFrame ? count - 1 : count;
-  let slots = guests <= 0 ? 1 : guests === 1 ? 2 : guests <= 4 ? 4 : guests <= 8 ? 8 : 10;
-  slots = Math.min(Math.max(slots, Math.min(count, 10)), 10);
+  const slots = count <= 1 ? 1 : count === 2 ? 2 : count <= 4 ? 4 : count <= 9 ? 9 : 12;
   const narrow = window.innerWidth < 700;
-  const cols = slots === 1 ? 1 : (narrow && slots === 2 ? 1 : 2);
+  const cols = slots === 1 ? 1 : slots === 2 ? (narrow ? 1 : 2) : slots === 4 ? 2 : slots === 9 ? 3 : 4;
   const rows = Math.ceil(slots / cols);
   grid.dataset.layout = 'equal';
   grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
