@@ -972,10 +972,26 @@ function openStickerPicker(userId, onSelect) {
 
   const picker = document.createElement('div');
   picker.className = 'sticker-picker';
+  const pickerActions = document.createElement('div');
+  pickerActions.className = 'sticker-picker-actions';
   const createButton = document.createElement('button');
   createButton.type = 'button';
   createButton.className = 'sticker-create-button';
   createButton.textContent = '＋ Create sticker';
+  const deleteModeButton = document.createElement('button');
+  deleteModeButton.type = 'button';
+  deleteModeButton.className = 'sticker-secondary-button';
+  deleteModeButton.textContent = 'Delete stickers';
+  deleteModeButton.setAttribute('aria-pressed', 'false');
+  let deleteMode = false;
+  deleteModeButton.addEventListener('click', () => {
+    deleteMode = !deleteMode;
+    deleteModeButton.setAttribute('aria-pressed', String(deleteMode));
+    deleteModeButton.classList.toggle('is-active', deleteMode);
+    deleteModeButton.textContent = deleteMode ? 'Done deleting' : 'Delete stickers';
+    grid.classList.toggle('is-delete-mode', deleteMode);
+  });
+  pickerActions.append(createButton, deleteModeButton);
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
   fileInput.accept = 'image/jpeg,image/png,image/gif';
@@ -985,7 +1001,7 @@ function openStickerPicker(userId, onSelect) {
   const status = document.createElement('p');
   status.className = 'sticker-status';
   status.setAttribute('role', 'status');
-  picker.append(createButton, fileInput, grid, status);
+  picker.append(pickerActions, fileInput, grid, status);
 
   const editor = document.createElement('div');
   editor.className = 'sticker-editor';
@@ -1047,17 +1063,41 @@ function openStickerPicker(userId, onSelect) {
     try {
       const stickers = await getSavedStickers(userId);
       stickers.forEach(sticker => {
+        const tile = document.createElement('div');
+        tile.className = 'sticker-image-tile';
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = 'sticker-image-tile';
+        button.className = 'sticker-image-send';
         button.title = `Send ${sticker.name || 'custom sticker'}`;
         const image = document.createElement('img');
         image.src = URL.createObjectURL(sticker.blob);
         image.alt = sticker.name || 'Custom sticker';
         image.addEventListener('load', () => URL.revokeObjectURL(image.src), { once: true });
         button.appendChild(image);
-        button.addEventListener('click', () => send({ file: new File([sticker.blob], 'sticker.png', { type: sticker.blob.type || 'image/png' }), name: sticker.name || 'Custom sticker' }));
-        grid.appendChild(button);
+        button.addEventListener('click', () => {
+          if (deleteMode) return;
+          send({ file: new File([sticker.blob], 'sticker.png', { type: sticker.blob.type || 'image/png' }), name: sticker.name || 'Custom sticker' });
+        });
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.className = 'sticker-delete-button';
+        deleteButton.textContent = '×';
+        deleteButton.title = `Delete ${sticker.name || 'sticker'}`;
+        deleteButton.setAttribute('aria-label', `Delete ${sticker.name || 'sticker'}`);
+        deleteButton.addEventListener('click', async () => {
+          deleteButton.disabled = true;
+          try {
+            await deleteSavedSticker(userId, sticker.id);
+            tile.remove();
+            status.textContent = 'Sticker deleted.';
+          } catch (err) {
+            console.error('Could not delete saved sticker:', err);
+            status.textContent = err.message || 'Could not delete this sticker.';
+            deleteButton.disabled = false;
+          }
+        });
+        tile.append(button, deleteButton);
+        grid.appendChild(tile);
       });
     } catch (err) {
       console.error('Could not load saved stickers:', err);
@@ -1147,7 +1187,7 @@ async function showStickerEditor(editor, picker, file, onSave) {
   const selectionTools = document.createElement('div');
   selectionTools.className = 'sticker-selection-tools';
   const selectionHint = document.createElement('span');
-  selectionHint.textContent = 'Select an area to make transparent:';
+  selectionHint.textContent = 'Draw an area to keep. Everything outside it will be transparent.';
   const selectionModes = document.createElement('div');
   selectionModes.className = 'sticker-selection-modes';
   const selectionModeButtons = new Map();
@@ -1168,20 +1208,12 @@ async function showStickerEditor(editor, picker, file, onSave) {
     if (mode === 'free') button.classList.add('is-active');
     selectionModes.appendChild(button);
   });
-  const selectionActions = document.createElement('div');
-  selectionActions.className = 'sticker-selection-actions';
-  const removeSelected = document.createElement('button');
-  removeSelected.type = 'button';
-  removeSelected.className = 'sticker-secondary-button';
-  removeSelected.textContent = 'Remove selected area';
-  removeSelected.disabled = true;
-  const undoCutout = document.createElement('button');
-  undoCutout.type = 'button';
-  undoCutout.className = 'sticker-secondary-button';
-  undoCutout.textContent = 'Undo last cutout';
-  undoCutout.disabled = true;
-  selectionActions.append(removeSelected, undoCutout);
-  selectionTools.append(selectionHint, selectionModes, selectionActions);
+  const clearSelection = document.createElement('button');
+  clearSelection.type = 'button';
+  clearSelection.className = 'sticker-secondary-button';
+  clearSelection.textContent = 'Clear selection';
+  clearSelection.disabled = true;
+  selectionTools.append(selectionHint, selectionModes, clearSelection);
 
   const emojiRow = document.createElement('div');
   emojiRow.className = 'sticker-emoji-controls';
@@ -1239,41 +1271,18 @@ async function showStickerEditor(editor, picker, file, onSave) {
   let selectionMode = 'free';
   let currentSelection = null;
   let activeSelection = null;
-  const cutouts = [];
   let disposed = false;
   const dispose = () => {
     disposed = true;
     if (source.close) source.close();
     if (sourceUrl) URL.revokeObjectURL(sourceUrl);
   };
-  const edited = () => Boolean(cutouts.length || textInput.value.trim() || emojis.length);
+  const edited = () => Boolean(currentSelection || textInput.value.trim() || emojis.length);
 
   function drawSticker(targetContext, showSelection = false) {
     targetContext.clearRect(0, 0, width, height);
     targetContext.globalCompositeOperation = 'source-over';
     targetContext.drawImage(source, 0, 0, width, height);
-    if (cutouts.length) {
-      targetContext.globalCompositeOperation = 'destination-out';
-      cutouts.forEach(selection => {
-        targetContext.beginPath();
-        traceStickerSelection(targetContext, selection, width, height);
-        targetContext.fill();
-      });
-      targetContext.globalCompositeOperation = 'source-over';
-    }
-    const previewSelection = currentSelection || activeSelection;
-    if (showSelection && previewSelection) {
-      targetContext.save();
-      targetContext.beginPath();
-      traceStickerSelection(targetContext, previewSelection, width, height);
-      targetContext.fillStyle = 'rgba(255, 60, 170, .22)';
-      targetContext.fill();
-      targetContext.setLineDash([6, 4]);
-      targetContext.lineWidth = Math.max(2, width / 180);
-      targetContext.strokeStyle = '#ff3caa';
-      targetContext.stroke();
-      targetContext.restore();
-    }
     const text = textInput.value.trim();
     if (text) {
       const fontSize = Math.max(20, Math.round(width / 13));
@@ -1300,13 +1309,32 @@ async function showStickerEditor(editor, picker, file, onSave) {
       const positions = [[.78, .25], [.25, .25], [.75, .7], [.25, .72], [.5, .15], [.5, .78]];
       targetContext.fillText(emoji, width * positions[index][0], height * positions[index][1]);
     });
+    const previewSelection = activeSelection || currentSelection;
+    if (previewSelection) {
+      targetContext.globalCompositeOperation = 'destination-in';
+      targetContext.beginPath();
+      traceStickerSelection(targetContext, previewSelection, width, height);
+      targetContext.fill();
+      targetContext.globalCompositeOperation = 'source-over';
+    }
+    if (showSelection && previewSelection) {
+      targetContext.save();
+      targetContext.beginPath();
+      traceStickerSelection(targetContext, previewSelection, width, height);
+      targetContext.fillStyle = 'rgba(255, 60, 170, .22)';
+      targetContext.fill();
+      targetContext.setLineDash([6, 4]);
+      targetContext.lineWidth = Math.max(2, width / 180);
+      targetContext.strokeStyle = '#ff3caa';
+      targetContext.stroke();
+      targetContext.restore();
+    }
   }
 
   function render() {
     if (disposed) return;
     drawSticker(context, true);
-    removeSelected.disabled = !currentSelection;
-    undoCutout.disabled = cutouts.length === 0;
+    clearSelection.disabled = !currentSelection && !activeSelection;
   }
   render();
 
@@ -1362,14 +1390,8 @@ async function showStickerEditor(editor, picker, file, onSave) {
   };
   canvas.addEventListener('pointerup', finishSelection);
   canvas.addEventListener('pointercancel', finishSelection);
-  removeSelected.addEventListener('click', () => {
-    if (!currentSelection) return;
-    cutouts.push(currentSelection);
+  clearSelection.addEventListener('click', () => {
     currentSelection = null;
-    render();
-  });
-  undoCutout.addEventListener('click', () => {
-    cutouts.pop();
     render();
   });
   textInput.addEventListener('input', render);
@@ -1394,8 +1416,8 @@ async function showStickerEditor(editor, picker, file, onSave) {
         blob = await canvasToBlob(exportCanvas);
       }
       if (blob.size > 10 * 1024 * 1024) throw new Error('The finished sticker must be 10 MB or smaller.');
-      dispose();
       await onSave(blob);
+      dispose();
     } catch (err) {
       console.error('Could not save sticker:', err);
       editorStatus.textContent = err.message || 'Could not save this sticker.';
@@ -1511,6 +1533,25 @@ async function saveSticker(userId, blob, name) {
     transaction.onabort = () => reject(new Error('Could not save the sticker.'));
   });
   database.close();
+}
+
+async function deleteSavedSticker(userId, stickerId) {
+  const database = await openStickerDatabase();
+  await new Promise((resolve, reject) => {
+    const transaction = database.transaction('stickers', 'readwrite');
+    const store = transaction.objectStore('stickers');
+    const request = store.get(stickerId);
+    request.onsuccess = () => {
+      if (!request.result || request.result.user_id !== userId) {
+        transaction.abort();
+        return;
+      }
+      store.delete(stickerId);
+    };
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(new Error('Could not delete the sticker.'));
+    transaction.onabort = () => reject(new Error('Sticker not found or could not be deleted.'));
+  }).finally(() => database.close());
 }
 
 async function sendSticker(sticker, conversationId, currentUser, status) {
