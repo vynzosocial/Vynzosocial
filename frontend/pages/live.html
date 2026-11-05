@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="../css/reset.css">
     <link rel="stylesheet" href="../css/layout.css?v=20261031-prof">
     <link rel="stylesheet" href="../css/components.css">
-    <link rel="stylesheet" href="../css/live.css?v=4">
+    <link rel="stylesheet" href="../css/live.css?v=5">
     <link rel="stylesheet" href="../css/live-layout.css?v=12">
     <link rel="stylesheet" href="../css/responsive.css">
     <link rel="stylesheet" href="../css/mobile.css?v=2">
@@ -46,23 +46,23 @@
                     <div class="live-audience-heading">Who can watch</div>
                     <div class="live-audience-picker">
                         <button id="live-audience-trigger" class="live-audience-trigger" type="button" aria-label="Who can watch your live" aria-haspopup="menu" aria-expanded="false" aria-controls="live-audience-menu">
-                            <span id="live-audience-icon" class="live-audience-choice-icon" aria-hidden="true">&#127757;</span>
+                            <span id="live-audience-icon" class="live-audience-choice-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.9 5.6 3.9 9s-1.3 6.4-3.9 9c-2.6-2.6-3.9-5.6-3.9-9S9.4 5.6 12 3z"/></svg></span>
                             <span class="live-audience-choice-copy"><strong id="live-audience-label">Public</strong><small id="live-audience-summary">Anyone can watch your live</small></span>
                             <span class="live-audience-chevron" aria-hidden="true">&#9662;</span>
                         </button>
                         <div id="live-audience-menu" class="live-audience-menu" role="menu" aria-label="Choose who can watch" hidden>
-                            <button type="button" class="live-audience-option is-active" role="menuitemradio" aria-checked="true" data-value="public" data-icon="&#127757;" data-label="Public" data-summary="Anyone can watch your live">
-                                <span class="live-audience-option-icon" aria-hidden="true">&#127757;</span>
+                            <button type="button" class="live-audience-option is-active" role="menuitemradio" aria-checked="true" data-value="public" data-label="Public" data-summary="Anyone can watch your live">
+                                <span class="live-audience-option-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.9 5.6 3.9 9s-1.3 6.4-3.9 9c-2.6-2.6-3.9-5.6-3.9-9S9.4 5.6 12 3z"/></svg></span>
                                 <span class="live-audience-option-copy"><strong>Public</strong><small>Anyone can watch your live</small></span>
                                 <span class="live-audience-option-check" aria-hidden="true">&#10003;</span>
                             </button>
-                            <button type="button" class="live-audience-option" role="menuitemradio" aria-checked="false" data-value="friends" data-icon="&#128101;" data-label="Friends only" data-summary="Your friends can watch">
-                                <span class="live-audience-option-icon" aria-hidden="true">&#128101;</span>
+                            <button type="button" class="live-audience-option" role="menuitemradio" aria-checked="false" data-value="friends" data-label="Friends only" data-summary="Your friends can watch">
+                                <span class="live-audience-option-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.400 6.5 6"/><path d="M16 4.7a3.5 3.5 0 010 6.6M18 14.3c2.100.8 3.5 2.7 3.5 5.7"/></svg></span>
                                 <span class="live-audience-option-copy"><strong>Friends only</strong><small>Your friends can watch</small></span>
                                 <span class="live-audience-option-check" aria-hidden="true">&#10003;</span>
                             </button>
-                            <button type="button" class="live-audience-option" role="menuitemradio" aria-checked="false" data-value="selected" data-icon="&#128100;" data-label="Selected friends" data-summary="Only people you choose can watch">
-                                <span class="live-audience-option-icon" aria-hidden="true">&#128100;</span>
+                            <button type="button" class="live-audience-option" role="menuitemradio" aria-checked="false" data-value="selected" data-label="Selected friends" data-summary="Only people you choose can watch">
+                                <span class="live-audience-option-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.400 6.5 6"/><path d="M16 11.5l2 2 3.5-4"/></svg></span>
                                 <span class="live-audience-option-copy"><strong>Selected friends</strong><small>Only people you choose can watch</small></span>
                                 <span class="live-audience-option-check" aria-hidden="true">&#10003;</span>
                             </button>
@@ -80,8 +80,21 @@
                 </div>
             </div>
             <div class="live-main-view" id="live-main-view">
-                <div style="display: flex; justify-content: center; align-items: center; height: 100%; color: var(--text-muted);">
-                    Select an active livestream or click "Go Live" to broadcast.
+                <div class="live-empty-state">
+                    <div class="live-empty-card">
+                        <div class="live-empty-emblem" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.500" y="6" width="13" height="12" rx="3"/><path d="M15.500 10.500l6-3.500v10l-6-3.500"/></svg>
+                        </div>
+                        <div class="live-empty-eyebrow">Vynzo Live Studio</div>
+                        <h1 class="live-empty-title">Go live with your <span>people</span></h1>
+                        <div class="live-empty-divider" aria-hidden="true"><span></span><i></i><span></span></div>
+                        <p class="live-empty-text">Select an active livestream or click "Go Live" to broadcast.</p>
+                        <ul class="live-empty-features">
+                            <li><b>1</b>Name your live</li>
+                            <li><b>2</b>Choose who can watch</li>
+                            <li><b>3</b>Go Live</li>
+                        </ul>
+                    </div>
                 </div>
             </div>
         </main>
@@ -119,7 +132,7 @@
             const syncAudiencePicker = () => {
                 const selectedOption = audienceOptions.find(option => option.dataset.value === audience.value);
                 if (!selectedOption) return;
-                audienceIcon.textContent = selectedOption.dataset.icon;
+                audienceIcon.innerHTML = selectedOption.querySelector('.live-audience-option-icon').innerHTML;
                 audienceLabel.textContent = selectedOption.dataset.label;
                 audienceSummary.textContent = selectedOption.dataset.summary;
                 audienceOptions.forEach(option => {
