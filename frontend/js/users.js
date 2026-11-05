@@ -1,5 +1,5 @@
 import { apiRequest } from './api.js?v=sb6';
-import { openPostViewer } from './feed.js?v=insta3';
+import { openPostViewer } from './feed.js?v=likes1';
 import { protectMedia } from './media-protect.js';
 import { openUserStories } from './stories.js?v=up1';
 
@@ -360,6 +360,21 @@ function renderUserProfile(container, profile, posts) {
   `;
   container.appendChild(stats);
 
+  if (!profile.is_owner && profile.like_stats) {
+    const ls = profile.like_stats;
+    const likesBox = document.createElement('div');
+    likesBox.className = 'account-profile-likes';
+    likesBox.style.cssText = 'margin:10px 0;padding:10px 14px;border-radius:14px;background:rgba(255,80,130,.1);border:1px solid rgba(255,80,130,.28);text-align:center;';
+    likesBox.innerHTML = `
+      <div class="account-likes-total">❤️ <strong>${(ls.images || 0) + (ls.videos || 0) + (ls.blogs || 0)}</strong> total likes</div>
+      <div class="account-likes-breakdown" style="display:flex;justify-content:center;gap:14px;flex-wrap:wrap;margin-top:4px;font-size:13px;opacity:.85;">
+        <span>🖼️ ${ls.images || 0} images</span>
+        <span>🎬 ${ls.videos || 0} videos</span>
+        <span>📝 ${ls.blogs || 0} blogs</span>
+      </div>
+    `;
+    container.appendChild(likesBox);
+  }
   if (profile.bio) {
     const bio = document.createElement('p');
     bio.className = 'account-profile-bio';

@@ -615,9 +615,9 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
       .select('id,title').eq('host_id', targetId).eq('is_active', true).gte('last_heartbeat', new Date(Date.now() - 90_000).toISOString()).order('created_at', { ascending: false }).limit(1).maybeSingle()
     throwOnError(liveError)
     let likeStats: Record<string, number> | undefined
-    if (isOwner) {
+    {
       const [storiesResult, imagePostsResult, videoPostsResult, blogsResult] = await Promise.all([
-        admin.from('stories').select('id').eq('user_id', targetId),
+        isOwner ? admin.from('stories').select('id').eq('user_id', targetId) : Promise.resolve({ data: [], error: null }),
         admin.from('posts').select('id').eq('user_id', targetId).eq('media_type', 'image'),
         admin.from('posts').select('id').eq('user_id', targetId).eq('media_type', 'video'),
         admin.from('blog_articles').select('id').eq('author_id', targetId)
