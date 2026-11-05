@@ -227,8 +227,7 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     <div class="chat-header">
       ${avatarMarkup(avatarUrl, conversationName, 'chat-header-avatar')}
       <div>
-        <strong>${escapeHtml(conversationName)}</strong>
-        <span class="chat-header-subtitle">A little more connection</span>
+        <strong>${escapeHtml(conversationName)}</strong>
       </div>
       ${currentConversationMeta && !currentConversationMeta.is_group ? `
         <div class="chat-call-actions">
