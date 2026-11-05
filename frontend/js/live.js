@@ -372,7 +372,7 @@ let viewersTimer = null;
 async function showProfile(userId) {
   if (!userId) return;
   try {
-    const mod = await import('./users.js?v=likes1');
+    const mod = await import('./users.js?v=profile-report1');
     await mod.openUserProfile(userId);
   } catch (err) {
     console.error('Unable to open profile:', err);

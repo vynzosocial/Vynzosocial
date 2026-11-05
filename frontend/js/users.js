@@ -219,6 +219,109 @@ function ensureProfileModal() {
   return modal;
 }
 
+function createProfileReportForm(profileId, reportButton) {
+  const form = document.createElement('form');
+  form.className = 'account-profile-report-form';
+  form.hidden = true;
+
+  const heading = document.createElement('h3');
+  heading.textContent = 'Report this profile';
+
+  const reasonLabel = document.createElement('label');
+  reasonLabel.textContent = 'What is the issue?';
+  const reasonSelect = document.createElement('select');
+  reasonSelect.name = 'reason';
+  reasonSelect.required = true;
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = 'Choose a reason';
+  placeholder.disabled = true;
+  placeholder.selected = true;
+  reasonSelect.appendChild(placeholder);
+
+  const reasons = [
+    ['Harassment, threats, hate speech or bullying', 'Be respectful. No harassment, threats, hate speech or bullying.'],
+    ['Nudity or sexual content', 'No nudity or sexual content, no sexual content involving minors, and no sharing of private images without consent.'],
+    ['Violence or self-harm', 'No violence, graphic abuse, or content that encourages self-harm or illegal activity.'],
+    ['Spam, scams, fake account or impersonation', 'No spam, scams, fake accounts or impersonation.'],
+    ['Privacy or copyright', "Respect copyright and other people's privacy. Do not post someone's personal information."],
+    ['Other', 'Something else']
+  ];
+  reasons.forEach(([value, label]) => {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    reasonSelect.appendChild(option);
+  });
+  reasonLabel.appendChild(reasonSelect);
+
+  const detailsLabel = document.createElement('label');
+  detailsLabel.textContent = 'Additional details (optional)';
+  const detailsInput = document.createElement('textarea');
+  detailsInput.name = 'details';
+  detailsInput.maxLength = 1000;
+  detailsInput.rows = 3;
+  detailsInput.placeholder = 'Add details to help us review your report';
+  detailsLabel.appendChild(detailsInput);
+
+  const actions = document.createElement('div');
+  actions.className = 'account-profile-report-actions';
+  const cancelButton = document.createElement('button');
+  cancelButton.type = 'button';
+  cancelButton.className = 'account-profile-report-cancel';
+  cancelButton.textContent = 'Cancel';
+  const submitButton = document.createElement('button');
+  submitButton.type = 'submit';
+  submitButton.className = 'account-profile-report-submit';
+  submitButton.textContent = 'Submit report';
+  actions.append(cancelButton, submitButton);
+
+  const status = document.createElement('p');
+  status.className = 'account-profile-report-status';
+  status.setAttribute('aria-live', 'polite');
+  status.hidden = true;
+
+  form.append(heading, reasonLabel, detailsLabel, actions, status);
+  cancelButton.addEventListener('click', () => {
+    form.hidden = true;
+    form.reset();
+    status.hidden = true;
+    status.textContent = '';
+    status.removeAttribute('role');
+  });
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (!form.reportValidity()) return;
+
+    cancelButton.disabled = true;
+    submitButton.disabled = true;
+    reasonSelect.disabled = true;
+    detailsInput.disabled = true;
+    status.hidden = false;
+    status.removeAttribute('role');
+    status.textContent = 'Sending report...';
+    try {
+      const details = detailsInput.value.trim();
+      const reason = details ? `${reasonSelect.value}: ${details}` : reasonSelect.value;
+      const result = await apiRequest('/moderation/report', {
+        method: 'POST',
+        body: JSON.stringify({ target_type: 'profile', target_id: profileId, reason })
+      });
+      status.textContent = result.message || 'Report submitted. Thank you.';
+      reportButton.disabled = true;
+    } catch (err) {
+      console.error('Could not report profile:', err);
+      status.setAttribute('role', 'alert');
+      status.textContent = err.message || 'Could not submit the report. Please try again.';
+      cancelButton.disabled = false;
+      submitButton.disabled = false;
+      reasonSelect.disabled = false;
+      detailsInput.disabled = false;
+    }
+  });
+  return form;
+}
+
 function renderUserProfile(container, profile, posts) {
   container.replaceChildren();
 
@@ -271,6 +374,18 @@ function renderUserProfile(container, profile, posts) {
     } finally {
       followButton.disabled = false;
     }
+  });
+
+  const reportButton = document.createElement('button');
+  reportButton.type = 'button';
+  reportButton.className = 'account-report-button';
+  reportButton.textContent = 'Report profile';
+  reportButton.hidden = profile.is_owner;
+
+  const reportForm = createProfileReportForm(profile.id, reportButton);
+  reportButton.addEventListener('click', () => {
+    reportForm.hidden = false;
+    reportForm.querySelector('select').focus();
   });
 
   const messageButton = document.createElement('button');
@@ -331,8 +446,9 @@ function renderUserProfile(container, profile, posts) {
     followButton.hidden = true;
     messageButton.hidden = true;
   }
-  header.append(avatar, identity, messageButton, followButton, blockButton);
+  header.append(avatar, identity, messageButton, followButton, reportButton, blockButton);
   container.appendChild(header);
+  if (!profile.is_owner) container.appendChild(reportForm);
 
   const storyButton = document.createElement('button');
   storyButton.type = 'button';

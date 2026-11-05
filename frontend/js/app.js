@@ -1,7 +1,7 @@
 ﻿import { restoreSupabaseSession } from './supabase-client.js';
 import { initFeed } from './feed.js?v=vc2';
 import { initStoriesCarousel } from './stories.js?v=up1';
-import { initHomeFriends } from './home-friends.js?v=likes1';
+import { initHomeFriends } from './home-friends.js?v=profile-report1';
 import { apiRequest } from './api.js?v=sb6';
 import { API_ORIGIN } from './config.js?v=sb4';
 

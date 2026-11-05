@@ -584,7 +584,7 @@ function makeAuthorLink(row, post) {
   const open = async event => {
     event.stopPropagation();
     try {
-      const { openUserProfile } = await import('./users.js?v=likes1');
+      const { openUserProfile } = await import('./users.js?v=profile-report1');
       openUserProfile(post.author_id);
     } catch (err) {
       console.error('Could not open profile:', err);

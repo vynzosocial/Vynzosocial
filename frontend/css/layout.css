@@ -465,6 +465,99 @@
   padding-right: 34px;
 }
 
+.account-report-button {
+  padding: 6px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  color: var(--text-dark);
+  background: var(--card-dark);
+  font: inherit;
+  cursor: pointer;
+}
+
+.account-report-button:hover,
+.account-report-button:focus-visible {
+  border-color: var(--secondary);
+}
+
+.account-report-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.account-profile-report-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: var(--card-dark);
+}
+
+.account-profile-report-form h3 {
+  font-size: 16px;
+}
+
+.account-profile-report-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.account-profile-report-form select,
+.account-profile-report-form textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  color: var(--text-dark);
+  background: var(--bg-dark);
+  font: inherit;
+}
+
+.account-profile-report-form textarea {
+  resize: vertical;
+}
+
+.account-profile-report-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.account-profile-report-actions button {
+  padding: 8px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  color: var(--text-dark);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.account-profile-report-actions .account-profile-report-submit {
+  border-color: var(--secondary);
+  color: #fff;
+  background: var(--secondary);
+}
+
+.account-profile-report-actions button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.account-profile-report-status {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.account-profile-report-status[role="alert"] {
+  color: #e5334b;
+}
+
 .account-profile-avatar.has-story {
   box-shadow: 0 0 0 3px #0b0b14, 0 0 0 6px #f5c451, 0 0 16px 6px rgba(245, 196, 81, 0.55);
 }
