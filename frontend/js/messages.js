@@ -234,13 +234,11 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
           <button type="button" class="chat-call-btn" id="voice-call-btn" aria-label="Voice call" title="Voice call">📞</button>
           <button type="button" class="chat-call-btn" id="video-call-btn" aria-label="Video call" title="Video call">🎥</button>
           <button type="button" class="chat-call-btn" id="hide-sender-btn" aria-label="Delete a person's messages" title="Delete a person's messages (for you)">🙈</button>
-          <button type="button" class="chat-call-btn" id="clear-chat-btn" aria-label="Clear chat" title="Clear chat">🧹</button>
           <button type="button" class="chat-call-btn" id="delete-chat-btn" aria-label="Delete conversation" title="Delete conversation">🗑</button>
         </div>
       ` : `
         <div class="chat-call-actions">
           <button type="button" class="chat-call-btn" id="hide-sender-btn" aria-label="Delete a person's messages" title="Delete a person's messages (for you)">🙈</button>
-          <button type="button" class="chat-call-btn" id="clear-chat-btn" aria-label="Clear chat" title="Clear chat">🧹</button>
           <button type="button" class="chat-call-btn" id="delete-chat-btn" aria-label="Delete conversation" title="Delete conversation">🗑</button>
         </div>
       `}
@@ -470,23 +468,6 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
       status.hidden = false;
     }
   }
-
-  document.getElementById('clear-chat-btn').addEventListener('click', async () => {
-    const conversationId = currentConversationId;
-    if (!window.confirm('Clear this chat? Messages will be removed for you only; the other person keeps their copy.')) return;
-    status.hidden = true;
-    try {
-      await apiRequest(`/messages/${encodeURIComponent(conversationId)}/messages`, { method: 'DELETE' });
-      if (currentConversationId === conversationId) msgContainer.replaceChildren();
-      refreshConversations().catch(err => {
-        console.error('Could not refresh conversation preview:', err);
-      });
-    } catch (err) {
-      console.error('Could not clear chat:', err);
-      status.textContent = err.message || 'Could not clear this chat. Please try again.';
-      status.hidden = false;
-    }
-  });
 
   document.getElementById('delete-chat-btn').addEventListener('click', async () => {
     const conversationId = currentConversationId;
