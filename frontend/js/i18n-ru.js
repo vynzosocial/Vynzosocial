@@ -155,6 +155,7 @@
     'Select country': 'Выберите страну',
     'Email': 'Эл. почта',
     'Email (optional if you add a phone number)': 'Эл. почта (необязательно, если указан телефон)',
+    "If you register with email, the verification email may land in Spam or Junk. Check those folders if you don't see it in your inbox.": 'Если вы регистрируетесь по электронной почте, письмо с подтверждением может попасть в папку «Спам». Проверьте её, если письма нет во входящих.',
     'Phone number (optional if you add an email)': 'Номер телефона (необязательно, если указана почта)',
     'I confirm that I am': 'Подтверждаю, что мне',
     '18 years old or older': '18 лет или больше',

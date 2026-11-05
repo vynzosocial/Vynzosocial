@@ -155,6 +155,7 @@
     'Select country': 'اختر الدولة',
     'Email': 'البريد الإلكتروني',
     'Email (optional if you add a phone number)': 'البريد الإلكتروني (اختياري إذا أضفت رقم هاتف)',
+    "If you register with email, the verification email may land in Spam or Junk. Check those folders if you don't see it in your inbox.": 'إذا سجلت باستخدام البريد الإلكتروني، فقد تصل رسالة التحقق إلى مجلد الرسائل غير المرغوب فيها. تحقق من هذا المجلد إذا لم تجدها في صندوق الوارد.',
     'Phone number (optional if you add an email)': 'رقم الهاتف (اختياري إذا أضفت بريدًا إلكترونيًا)',
     'I confirm that I am': 'أؤكد أن عمري',
     '18 years old or older': '18 سنة أو أكثر',

@@ -141,6 +141,7 @@
     'Select country': 'देश चुनें',
     'Email': 'ईमेल',
     'Email (optional if you add a phone number)': 'ईमेल (यदि आप फ़ोन नंबर जोड़ते हैं तो वैकल्पिक)',
+    "If you register with email, the verification email may land in Spam or Junk. Check those folders if you don't see it in your inbox.": 'यदि आप ईमेल से पंजीकरण करते हैं, तो सत्यापन ईमेल स्पैम या जंक फ़ोल्डर में आ सकता है। इनबॉक्स में न दिखे तो वहाँ जाँचें।',
     'Phone number (optional if you add an email)': 'फ़ोन नंबर (यदि आप कोई ईमेल जोड़ते हैं तो वैकल्पिक)',
     'I confirm that I am': 'मैं पुष्टि करता हूं कि मैं हूं',
     '18 years old or older': '18 वर्ष या उससे अधिक उम्र का',

@@ -154,6 +154,7 @@
     'Select country': 'Kies een land',
     'Email': 'E-mail',
     'Email (optional if you add a phone number)': 'E-mail (optioneel als je een telefoonnummer toevoegt)',
+    "If you register with email, the verification email may land in Spam or Junk. Check those folders if you don't see it in your inbox.": 'Als je je met e-mail registreert, kan de verificatiemail in de map Spam of Ongewenst terechtkomen. Controleer die mappen als je het bericht niet in je inbox ziet.',
     'Phone number (optional if you add an email)': 'Telefoonnummer (optioneel als je een e-mailadres toevoegt)',
     'I confirm that I am': 'Ik bevestig dat ik',
     '18 years old or older': '18 jaar of ouder ben',

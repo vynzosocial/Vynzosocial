@@ -1120,12 +1120,25 @@ function openStickerPicker(userId, onSelect) {
     try {
       disposeEditor?.();
       disposeEditor = await showStickerEditor(editor, picker, file, async blob => {
-        await saveSticker(userId, blob, file.name.replace(/\.[^.]+$/, '').slice(0, 60) || 'Custom sticker');
+        const stickerName = file.name.replace(/\.[^.]+$/, '').slice(0, 60) || 'Custom sticker';
+        await saveSticker(userId, blob, stickerName);
         editor.hidden = true;
         picker.hidden = false;
         disposeEditor = null;
         status.textContent = 'Sticker saved. Tap it to send.';
         await renderGrid();
+      }, async blob => {
+        const stickerName = file.name.replace(/\.[^.]+$/, '').slice(0, 60) || 'Custom sticker';
+        await saveSticker(userId, blob, stickerName);
+        editor.hidden = true;
+        picker.hidden = false;
+        disposeEditor = null;
+        await renderGrid();
+        try {
+          await send({ file: new File([blob], 'sticker.png', { type: blob.type || 'image/png' }), name: stickerName });
+        } catch {
+          status.textContent = 'Sticker saved, but it could not be sent. Tap it in your sticker tray to try again.';
+        }
       });
     } catch (err) {
       console.error('Could not open sticker editor:', err);
@@ -1136,7 +1149,7 @@ function openStickerPicker(userId, onSelect) {
   renderGrid();
 }
 
-async function showStickerEditor(editor, picker, file, onSave) {
+async function showStickerEditor(editor, picker, file, onSave, onSaveAndSend) {
   picker.hidden = true;
   editor.hidden = false;
   editor.replaceChildren();
@@ -1261,10 +1274,14 @@ async function showStickerEditor(editor, picker, file, onSave) {
   saveButton.type = 'button';
   saveButton.className = 'sticker-save-button';
   saveButton.textContent = 'Save sticker';
+  const saveAndSendButton = document.createElement('button');
+  saveAndSendButton.type = 'button';
+  saveAndSendButton.className = 'sticker-save-send-button';
+  saveAndSendButton.textContent = 'Save & Send';
   const editorStatus = document.createElement('p');
   editorStatus.className = 'sticker-status';
   editorStatus.setAttribute('role', 'status');
-  actions.append(backButton, saveButton);
+  actions.append(backButton, saveButton, saveAndSendButton);
   controls.append(textInput, selectionTools, emojiRow, actions, editorStatus);
   editor.append(note, canvasWrap, controls);
 
@@ -1283,6 +1300,13 @@ async function showStickerEditor(editor, picker, file, onSave) {
     targetContext.clearRect(0, 0, width, height);
     targetContext.globalCompositeOperation = 'source-over';
     targetContext.drawImage(source, 0, 0, width, height);
+    if (currentSelection && !activeSelection) {
+      targetContext.globalCompositeOperation = 'destination-in';
+      targetContext.beginPath();
+      traceStickerSelection(targetContext, currentSelection, width, height);
+      targetContext.fill();
+      targetContext.globalCompositeOperation = 'source-over';
+    }
     const text = textInput.value.trim();
     if (text) {
       const fontSize = Math.max(20, Math.round(width / 13));
@@ -1310,13 +1334,6 @@ async function showStickerEditor(editor, picker, file, onSave) {
       targetContext.fillText(emoji, width * positions[index][0], height * positions[index][1]);
     });
     const previewSelection = activeSelection || currentSelection;
-    if (previewSelection) {
-      targetContext.globalCompositeOperation = 'destination-in';
-      targetContext.beginPath();
-      traceStickerSelection(targetContext, previewSelection, width, height);
-      targetContext.fill();
-      targetContext.globalCompositeOperation = 'source-over';
-    }
     if (showSelection && previewSelection) {
       targetContext.save();
       targetContext.beginPath();
@@ -1401,8 +1418,16 @@ async function showStickerEditor(editor, picker, file, onSave) {
     picker.hidden = false;
   });
   saveButton.addEventListener('click', async () => {
+    await saveEditedSticker(false);
+  });
+  saveAndSendButton.addEventListener('click', async () => {
+    await saveEditedSticker(true);
+  });
+
+  async function saveEditedSticker(sendAfterSave) {
     saveButton.disabled = true;
-    editorStatus.textContent = 'Saving sticker…';
+    saveAndSendButton.disabled = true;
+    editorStatus.textContent = sendAfterSave ? 'Saving and sending sticker…' : 'Saving sticker…';
     try {
       let blob;
       if (!edited()) blob = file;
@@ -1416,14 +1441,16 @@ async function showStickerEditor(editor, picker, file, onSave) {
         blob = await canvasToBlob(exportCanvas);
       }
       if (blob.size > 10 * 1024 * 1024) throw new Error('The finished sticker must be 10 MB or smaller.');
-      await onSave(blob);
+      if (sendAfterSave) await onSaveAndSend(blob);
+      else await onSave(blob);
       dispose();
     } catch (err) {
-      console.error('Could not save sticker:', err);
-      editorStatus.textContent = err.message || 'Could not save this sticker.';
+      console.error(sendAfterSave ? 'Could not save and send sticker:' : 'Could not save sticker:', err);
+      editorStatus.textContent = err.message || (sendAfterSave ? 'Could not save and send this sticker.' : 'Could not save this sticker.');
       saveButton.disabled = false;
+      saveAndSendButton.disabled = false;
     }
-  });
+  }
   return dispose;
 }
 

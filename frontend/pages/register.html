@@ -14,6 +14,7 @@
       .form-group { margin-bottom: 16px; }
       .form-group label { display: block; margin-bottom: 6px; font-size: 14px; color: var(--text-muted); }
       .form-group input, .form-group select { width: 100%; padding: 10px; border-radius: 6px; background: var(--bg-dark); border: 1px solid var(--border-color); color: var(--text-dark); }
+      .email-verification-note { display: block; margin-top: 7px; color: var(--text-muted); font-size: 12px; line-height: 1.45; }
       .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
       .form-row-3 { grid-template-columns: 0.8fr 1.4fr 1fr; }
       .btn-submit { width: 100%; padding: 12px; background: var(--primary); color: white; font-weight: 600; border-radius: 6px; cursor: pointer; margin-top: 8px; }
@@ -69,6 +70,7 @@
             <div class="form-group">
                 <label for="email">Email (optional if you add a phone number)</label>
                 <input type="email" id="email" maxlength="255" autocomplete="email">
+                <small class="email-verification-note">If you register with email, the verification email may land in Spam or Junk. Check those folders if you don't see it in your inbox.</small>
             </div>
             <div class="form-group">
                 <label for="phone">Phone number (optional if you add an email)</label>

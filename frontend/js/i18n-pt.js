@@ -155,6 +155,7 @@
     'Select country': 'Selecione o país',
     'Email': 'E-mail',
     'Email (optional if you add a phone number)': 'E-mail (opcional se você adicionar um telefone)',
+    "If you register with email, the verification email may land in Spam or Junk. Check those folders if you don't see it in your inbox.": 'Se você se cadastrar com e-mail, a mensagem de verificação pode chegar à pasta de spam ou lixo eletrônico. Verifique essas pastas se não encontrá-la na caixa de entrada.',
     'Phone number (optional if you add an email)': 'Telefone (opcional se você adicionar um e-mail)',
     'I confirm that I am': 'Confirmo que tenho',
     '18 years old or older': '18 anos ou mais',

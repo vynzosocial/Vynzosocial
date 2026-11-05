@@ -155,6 +155,7 @@
     'Select country': 'ملک منتخب کریں',
     'Email': 'ای میل',
     'Email (optional if you add a phone number)': 'ای میل (فون نمبر شامل کرنے پر اختیاری)',
+    "If you register with email, the verification email may land in Spam or Junk. Check those folders if you don't see it in your inbox.": 'اگر آپ ای میل سے رجسٹر کرتے ہیں تو تصدیقی ای میل اسپیم یا جنک فولڈر میں جا سکتی ہے۔ ان باکس میں نہ ملے تو ان فولڈرز کو دیکھیں۔',
     'Phone number (optional if you add an email)': 'فون نمبر (ای میل شامل کرنے پر اختیاری)',
     'I confirm that I am': 'میں تصدیق کرتا/کرتی ہوں کہ میری عمر',
     '18 years old or older': '18 سال یا اس سے زیادہ ہے',
