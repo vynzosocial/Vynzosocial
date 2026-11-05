@@ -82,6 +82,39 @@ html body .home-create-button.video-create-button {
   }
 }
 
+/* Home composer: Image / Video action tiles. */
+.home-post-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+html body .home-post-actions .home-create-button {
+  flex-direction: column;
+  gap: 4px;
+  min-height: 84px;
+  padding: 14px 12px;
+  border-radius: 16px;
+  border-color: rgba(255, 215, 120, 0.45);
+  white-space: normal;
+}
+
+.home-post-actions .home-create-button .btn-icon {
+  width: 26px;
+  height: 26px;
+}
+
+.home-post-actions .create-label {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.home-post-actions .create-hint {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
 /* Keep the header username away from the chip's right edge. */
 html body .home-user-chip .home-user-name {
   padding-right: 14px;

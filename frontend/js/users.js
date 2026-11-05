@@ -1,5 +1,5 @@
-import { apiRequest } from './api.js?v=sb6';
-import { openPostViewer } from './feed.js?v=live1';
+﻿import { apiRequest } from './api.js?v=sb6';
+import { openPostViewer } from './feed.js?v=vc2';
 import { protectMedia } from './media-protect.js';
 import { openUserStories } from './stories.js?v=up1';
 

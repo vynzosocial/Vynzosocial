@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en" dir="ltr">
 <head>
     <meta charset="UTF-8">
@@ -16,7 +16,7 @@
     <link rel="stylesheet" href="./css/home-glow.css?v=2">
     <link rel="stylesheet" href="./css/mobile.css?v=5">
     <link rel="stylesheet" href="./css/sidebar-glow.css?v=3">
-    <link rel="stylesheet" href="./css/create-buttons.css?v=3">
+    <link rel="stylesheet" href="./css/create-buttons.css?v=4">
     <link rel="stylesheet" href="./css/post-author.css?v=1">
     <link rel="stylesheet" href="./css/theme.css?v=3">
     <link rel="stylesheet" href="./css/feed-insta.css?v=4">
@@ -130,8 +130,8 @@
                             <label class="sr-only" for="post-caption">Post caption (optional)</label>
                             <input id="post-caption" type="text" maxlength="500" placeholder="Write a caption (optional)">
                             <div class="home-post-actions">
-                                <button id="add-photo-post-btn" class="home-create-button photo-create-button" type="button"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><circle cx="9" cy="10" r="1.7"/><path d="M4 17l5-4.5 4 3.5 3-2.5 4 3.5"/></svg><span>Image</span></button>
-                                <button id="add-video-post-btn" class="home-create-button video-create-button" type="button"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="M16 11l5-3v8l-5-3z"/></svg><span>Video</span></button>
+                                <button id="add-photo-post-btn" class="home-create-button photo-create-button" type="button"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><circle cx="9" cy="10" r="1.7"/><path d="M4 17l5-4.5 4 3.5 3-2.5 4 3.5"/></svg><span class="create-label">Image</span><small class="create-hint">Photos &amp; GIFs</small></button>
+                                <button id="add-video-post-btn" class="home-create-button video-create-button" type="button"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="M16 11l5-3v8l-5-3z"/></svg><span class="create-label">Video</span><small class="create-hint">Record or CapCut</small></button>
                             </div>
                             <label class="protect-option"><input type="checkbox" id="post-protect"> Protect (no download / screenshot)</label>
                             <input id="photo-post-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>

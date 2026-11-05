@@ -405,6 +405,7 @@ export function openPostViewer(post) {
     media.controls = true;
     media.autoplay = true;
     media.playsInline = true;
+    media.addEventListener('ended', () => closePostViewer());
   } else {
     media.alt = `Post by @${post.author_username || 'user'}`;
   }
