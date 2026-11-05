@@ -16,6 +16,8 @@ let readReceiptsEnabled = true;
 const MAX_VIDEO_SECONDS = 60;
 const MAX_VOICE_SECONDS = 300;
 const VOICE_PATTERN = /\.(weba|m4a|ogg)(\?.*)?$/i;
+const STICKER_MESSAGE_CONTENT = '[vynzo-sticker]';
+const STICKER_EMOJIS = ['😀', '🥰', '😂', '😎', '🥳', '😭', '😡', '🤔', '😍', '👍', '👏', '❤️', '🔥', '✨', '🎉', '👋'];
 
 export async function initMessaging() {
   const container = document.getElementById('conversations-list');
@@ -170,7 +172,7 @@ function renderConversations(conversations, currentUser) {
       ${avatarMarkup(conv.other_avatar_url, conversationName, 'author-avatar')}
       <div>
         <div style="font-weight:${unread ? 800 : 600};">${escapeHtml(conversationName)}</div>
-        <div style="font-size:12px; color:var(--text-muted);">${escapeHtml(conv.last_message ? (conv.last_message.content || (conv.last_message.view_once ? '📷 View-once photo' : conv.last_message.media_url ? (VOICE_PATTERN.test(conv.last_message.media_url) ? '🎤 Voice message' : '📎 Photo / video') : 'No messages')) : 'No messages')}</div>
+        <div style="font-size:12px; color:var(--text-muted);">${escapeHtml(conv.last_message ? messagePreview(conv.last_message) : 'No messages')}</div>
       </div>
       ${unread ? `<span class="unread-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
     `;
@@ -281,6 +283,7 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
       <div class="reply-bar" id="reply-bar" hidden></div>      <div class="chat-attachment-preview" id="chat-attachment-preview" hidden></div>
       <button class="attach-btn" type="button" id="attach-btn" aria-label="Attach photo or video" title="Photo or video (video up to 60 seconds)">📎</button>
       <button class="attach-btn" type="button" id="camera-btn" aria-label="Take a photo" title="Take a photo with the camera">📷</button>
+      <button class="attach-btn sticker-open-btn" type="button" id="sticker-open-btn" aria-label="Send a sticker" title="Stickers">✨</button>
       <input type="file" id="chat-camera-input" accept="image/*" capture="environment" hidden>
       <button class="attach-btn" type="button" id="voice-btn" aria-label="Record a voice message" title="Record a voice message">🎤</button>
       <input type="file" id="chat-file-input" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" hidden>
@@ -301,6 +304,11 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
   let attachment = null;
   let viewOnce = false;
   attachEmojiPicker(form, input);
+  document.getElementById('sticker-open-btn').addEventListener('click', () => {
+    openStickerPicker(currentUser.id, async sticker => {
+      await sendSticker(sticker, currentConversationId, currentUser, status);
+    });
+  });
 
   const callMeta = currentConversationMeta;
   [['voice-call-btn', false], ['video-call-btn', true]].forEach(([id, video]) => {
@@ -858,6 +866,7 @@ function appendMessage(container, message, currentUser) {
 
 function messageMarkup(message, currentUser) {
   const isOutgoing = message.sender_id === currentUser.id;
+  const isSticker = message.content === STICKER_MESSAGE_CONTENT;
   const senderName = message.sender_display_name
     || message.display_name
     || message.sender_username
@@ -869,14 +878,14 @@ function messageMarkup(message, currentUser) {
         ${avatarMarkup(message.sender_avatar_url || message.avatar_url || (isOutgoing ? currentUser.avatar_url : ''), senderName, 'message-avatar')}
         <span class="message-sender-name">${escapeHtml(senderName)}</span>
       </span>
-      <div class="message-bubble ${isOutgoing ? 'outgoing' : 'incoming'}" data-message-id="${escapeHtml(message.id)}" data-reply-text="${escapeHtml(replyText(message))}" data-created-at="${escapeHtml(String(message.created_at || ''))}">
+      <div class="message-bubble ${isOutgoing ? 'outgoing' : 'incoming'}${isSticker ? ' sticker-message' : ''}" data-message-id="${escapeHtml(message.id)}" data-reply-text="${escapeHtml(replyText(message))}" data-created-at="${escapeHtml(String(message.created_at || ''))}">
         ${replyQuoteMarkup(message.reply_to)}
         ${mediaMarkup(message)}
         ${message.view_once ? viewOnceMarkup(message, isOutgoing) : ''}
-        ${message.content ? `<span class="message-content">${escapeHtml(message.content)}</span>` : ''}
+        ${message.content && !isSticker ? `<span class="message-content">${escapeHtml(message.content)}</span>` : ''}
         ${message.edited_at ? '<span class="message-edited">(edited)</span>' : ''}
         <button class="message-reply-button" type="button" aria-label="Reply to this message" title="Reply">↩</button>
-        ${isOutgoing && message.content && !message.view_once && message.can_unsend !== false ? '<button class="message-edit-button" type="button" aria-label="Edit message" title="Edit message">✎</button>' : ''}
+        ${isOutgoing && message.content && !isSticker && !message.view_once && message.can_unsend !== false ? '<button class="message-edit-button" type="button" aria-label="Edit message" title="Edit message">✎</button>' : ''}
         ${isOutgoing ? `<button class="message-delete-button" type="button" aria-label="Delete message" title="${message.can_unsend === false && !message.view_once ? 'Delete for me (already seen)' : 'Delete for everyone (only until it is seen)'}">×</button>` : ''}
         ${isOutgoing && readReceiptsEnabled ? `<span class="message-status ${message.seen ? 'seen' : ''}">${message.seen ? 'Seen' : 'Sent'}</span>` : ''}
       </div>
@@ -905,8 +914,14 @@ async function shrinkImage(file) {
 
 function replyText(message) {
   if (message.view_once) return '📷 View-once photo';
+  if (message.content === STICKER_MESSAGE_CONTENT) return '✨ Sticker';
   const text = message.content || (message.media_url ? (VOICE_PATTERN.test(message.media_url) ? '🎤 Voice message' : '📎 Photo / video') : '');
   return text.length > 140 ? `${text.slice(0, 137)}…` : text;
+}
+
+function messagePreview(message) {
+  if (message.content === STICKER_MESSAGE_CONTENT) return '✨ Sticker';
+  return message.content || (message.view_once ? '📷 View-once photo' : message.media_url ? (VOICE_PATTERN.test(message.media_url) ? '🎤 Voice message' : '📎 Photo / video') : 'No messages');
 }
 
 function replyQuoteMarkup(reply) {
@@ -931,7 +946,513 @@ function mediaMarkup(message) {
   if (/\.(mp4|webm|mov)$/i.test(message.media_url)) {
     return `<video class="message-media" src="${escapeHtml(src)}" controls preload="metadata" playsinline></video>`;
   }
-  return `<a href="${escapeHtml(src)}" target="_blank" rel="noopener"><img class="message-media" src="${escapeHtml(src)}" alt="Shared photo"></a>`;
+  const isSticker = message.content === STICKER_MESSAGE_CONTENT;
+  return `<a${isSticker ? ' class="sticker-media-link"' : ''} href="${escapeHtml(src)}" target="_blank" rel="noopener"><img class="message-media${isSticker ? ' sticker-media' : ''}" src="${escapeHtml(src)}" alt="${isSticker ? 'Sticker' : 'Shared photo'}"></a>`;
+}
+
+function openStickerPicker(userId, onSelect) {
+  const overlay = document.createElement('div');
+  overlay.className = 'sticker-overlay';
+  const dialog = document.createElement('section');
+  dialog.className = 'sticker-dialog';
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.setAttribute('aria-labelledby', 'sticker-dialog-title');
+
+  const header = document.createElement('header');
+  const title = document.createElement('h2');
+  title.id = 'sticker-dialog-title';
+  title.textContent = 'Stickers';
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.className = 'sticker-close';
+  closeButton.textContent = '×';
+  closeButton.setAttribute('aria-label', 'Close stickers');
+  header.append(title, closeButton);
+
+  const picker = document.createElement('div');
+  picker.className = 'sticker-picker';
+  const createButton = document.createElement('button');
+  createButton.type = 'button';
+  createButton.className = 'sticker-create-button';
+  createButton.textContent = '＋ Create sticker';
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = 'image/jpeg,image/png,image/gif';
+  fileInput.hidden = true;
+  const grid = document.createElement('div');
+  grid.className = 'sticker-grid';
+  const status = document.createElement('p');
+  status.className = 'sticker-status';
+  status.setAttribute('role', 'status');
+  picker.append(createButton, fileInput, grid, status);
+
+  const editor = document.createElement('div');
+  editor.className = 'sticker-editor';
+  editor.hidden = true;
+  dialog.append(header, picker, editor);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+
+  let disposeEditor = null;
+  const close = () => {
+    disposeEditor?.();
+    document.removeEventListener('keydown', escape);
+    overlay.remove();
+  };
+  closeButton.addEventListener('click', close);
+  overlay.addEventListener('click', event => { if (event.target === overlay) close(); });
+  const escape = event => {
+    if (event.key === 'Escape' && document.body.contains(overlay)) {
+      close();
+    }
+  };
+  document.addEventListener('keydown', escape);
+
+  const send = async sticker => {
+    status.textContent = '';
+    createButton.disabled = true;
+    for (const button of grid.querySelectorAll('button')) button.disabled = true;
+    try {
+      await onSelect(sticker);
+      close();
+    } catch (err) {
+      console.error('Could not send sticker:', err);
+      status.textContent = err.message || 'Could not send the sticker. Please try again.';
+      createButton.disabled = false;
+      for (const button of grid.querySelectorAll('button')) button.disabled = false;
+    }
+  };
+
+  const renderGrid = async () => {
+    grid.replaceChildren();
+    for (const emoji of STICKER_EMOJIS) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'sticker-emoji-tile';
+      button.textContent = emoji;
+      button.setAttribute('aria-label', `Send ${emoji} sticker`);
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        try {
+          await send({ file: await makeEmojiSticker(emoji), name: `${emoji} sticker` });
+        } catch (err) {
+          console.error('Could not create emoji sticker:', err);
+          status.textContent = err.message || 'Could not create this sticker.';
+          button.disabled = false;
+        }
+      });
+      grid.appendChild(button);
+    }
+    try {
+      const stickers = await getSavedStickers(userId);
+      stickers.forEach(sticker => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'sticker-image-tile';
+        button.title = `Send ${sticker.name || 'custom sticker'}`;
+        const image = document.createElement('img');
+        image.src = URL.createObjectURL(sticker.blob);
+        image.alt = sticker.name || 'Custom sticker';
+        image.addEventListener('load', () => URL.revokeObjectURL(image.src), { once: true });
+        button.appendChild(image);
+        button.addEventListener('click', () => send({ file: new File([sticker.blob], 'sticker.png', { type: sticker.blob.type || 'image/png' }), name: sticker.name || 'Custom sticker' }));
+        grid.appendChild(button);
+      });
+    } catch (err) {
+      console.error('Could not load saved stickers:', err);
+      status.textContent = err.message || 'Could not load your saved stickers.';
+    }
+  };
+  createButton.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    fileInput.value = '';
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/gif'].includes(file.type)) {
+      status.textContent = 'Choose a JPG, PNG, or GIF image.';
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      status.textContent = 'Sticker images must be 10 MB or smaller.';
+      return;
+    }
+    try {
+      disposeEditor?.();
+      disposeEditor = await showStickerEditor(editor, picker, file, async blob => {
+        await saveSticker(userId, blob, file.name.replace(/\.[^.]+$/, '').slice(0, 60) || 'Custom sticker');
+        editor.hidden = true;
+        picker.hidden = false;
+        disposeEditor = null;
+        status.textContent = 'Sticker saved. Tap it to send.';
+        await renderGrid();
+      });
+    } catch (err) {
+      console.error('Could not open sticker editor:', err);
+      status.textContent = err.message || 'Could not open this image.';
+    }
+  });
+
+  renderGrid();
+}
+
+async function showStickerEditor(editor, picker, file, onSave) {
+  picker.hidden = true;
+  editor.hidden = false;
+  editor.replaceChildren();
+
+  let source;
+  let sourceUrl = null;
+  try {
+    source = await createImageBitmap(file);
+  } catch {
+    sourceUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.src = sourceUrl;
+    try {
+      await image.decode();
+      source = image;
+    } catch (err) {
+      URL.revokeObjectURL(sourceUrl);
+      throw new Error('This image could not be opened.');
+    }
+  }
+
+  const width = Math.max(1, Math.round(source.width * Math.min(1, 512 / Math.max(source.width, source.height))));
+  const height = Math.max(1, Math.round(source.height * Math.min(1, 512 / Math.max(source.width, source.height))));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  canvas.className = 'sticker-editor-canvas';
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) throw new Error('Sticker editor is not supported by this browser.');
+
+  const note = document.createElement('p');
+  note.className = 'sticker-editor-note';
+  note.textContent = file.type === 'image/gif'
+    ? 'GIF preview shows its first frame. If you edit it, the saved sticker will be a PNG.'
+    : 'Edit your image, then save it to your sticker tray.';
+  const canvasWrap = document.createElement('div');
+  canvasWrap.className = 'sticker-canvas-wrap';
+  canvasWrap.appendChild(canvas);
+
+  const controls = document.createElement('div');
+  controls.className = 'sticker-editor-controls';
+  const textInput = document.createElement('input');
+  textInput.type = 'text';
+  textInput.maxLength = 60;
+  textInput.placeholder = 'Write on your sticker';
+  textInput.setAttribute('aria-label', 'Write on your sticker');
+
+  const bgRow = document.createElement('div');
+  bgRow.className = 'sticker-background-controls';
+  const removeBackground = document.createElement('button');
+  removeBackground.type = 'button';
+  removeBackground.className = 'sticker-secondary-button';
+  removeBackground.textContent = 'Pick background color';
+  const bgHint = document.createElement('span');
+  bgHint.textContent = 'Click the background on the image to remove it.';
+  const toleranceLabel = document.createElement('label');
+  toleranceLabel.textContent = 'Color tolerance';
+  const tolerance = document.createElement('input');
+  tolerance.type = 'range';
+  tolerance.min = '10';
+  tolerance.max = '140';
+  tolerance.value = '48';
+  tolerance.setAttribute('aria-label', 'Background color tolerance');
+  toleranceLabel.appendChild(tolerance);
+  bgRow.append(removeBackground, bgHint, toleranceLabel);
+
+  const emojiRow = document.createElement('div');
+  emojiRow.className = 'sticker-emoji-controls';
+  const emojiHint = document.createElement('span');
+  emojiHint.textContent = 'Add emoji (up to 6):';
+  const emojiPicker = document.createElement('div');
+  emojiPicker.className = 'sticker-editor-emoji-picker';
+  const selectedEmojis = document.createElement('div');
+  selectedEmojis.className = 'sticker-selected-emojis';
+  const emojis = [];
+  STICKER_EMOJIS.forEach(emoji => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = emoji;
+    button.setAttribute('aria-label', `Add ${emoji}`);
+    button.addEventListener('click', () => {
+      if (emojis.length >= 6) return;
+      emojis.push(emoji);
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'sticker-emoji-chip';
+      chip.textContent = emoji;
+      chip.title = 'Remove emoji';
+      chip.setAttribute('aria-label', `Remove ${emoji}`);
+      chip.addEventListener('click', () => {
+        const index = [...selectedEmojis.children].indexOf(chip);
+        if (index >= 0) emojis.splice(index, 1);
+        chip.remove();
+        render();
+      });
+      selectedEmojis.appendChild(chip);
+      render();
+    });
+    emojiPicker.appendChild(button);
+  });
+  emojiRow.append(emojiHint, emojiPicker, selectedEmojis);
+
+  const actions = document.createElement('div');
+  actions.className = 'sticker-editor-actions';
+  const backButton = document.createElement('button');
+  backButton.type = 'button';
+  backButton.className = 'sticker-secondary-button';
+  backButton.textContent = 'Back';
+  const saveButton = document.createElement('button');
+  saveButton.type = 'button';
+  saveButton.className = 'sticker-save-button';
+  saveButton.textContent = 'Save sticker';
+  const editorStatus = document.createElement('p');
+  editorStatus.className = 'sticker-status';
+  editorStatus.setAttribute('role', 'status');
+  actions.append(backButton, saveButton);
+  controls.append(textInput, bgRow, emojiRow, actions, editorStatus);
+  editor.append(note, canvasWrap, controls);
+
+  let backgroundColor = null;
+  let pickingBackground = false;
+  let disposed = false;
+  const dispose = () => {
+    disposed = true;
+    if (source.close) source.close();
+    if (sourceUrl) URL.revokeObjectURL(sourceUrl);
+  };
+  const edited = () => Boolean(backgroundColor || textInput.value.trim() || emojis.length);
+
+  function render() {
+    if (disposed) return;
+    context.clearRect(0, 0, width, height);
+    context.drawImage(source, 0, 0, width, height);
+    if (backgroundColor) removeEdgeBackground(context, width, height, backgroundColor, Number(tolerance.value));
+    const text = textInput.value.trim();
+    if (text) {
+      const fontSize = Math.max(20, Math.round(width / 13));
+      context.font = `800 ${fontSize}px system-ui, sans-serif`;
+      context.textAlign = 'center';
+      context.textBaseline = 'bottom';
+      context.lineJoin = 'round';
+      context.lineWidth = Math.max(3, fontSize / 8);
+      context.strokeStyle = 'rgba(0,0,0,.8)';
+      context.fillStyle = '#fff';
+      context.shadowColor = 'rgba(0,0,0,.7)';
+      context.shadowBlur = 5;
+      const maxWidth = width - 24;
+      let output = text;
+      while (context.measureText(output).width > maxWidth && output.length > 1) output = `${output.slice(0, -2)}…`;
+      context.strokeText(output, width / 2, height - 12, maxWidth);
+      context.fillText(output, width / 2, height - 12, maxWidth);
+      context.shadowBlur = 0;
+    }
+    emojis.forEach((emoji, index) => {
+      context.font = `${Math.max(28, Math.round(Math.min(width, height) / 4))}px system-ui, sans-serif`;
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      const positions = [[.78, .25], [.25, .25], [.75, .7], [.25, .72], [.5, .15], [.5, .78]];
+      context.fillText(emoji, width * positions[index][0], height * positions[index][1]);
+    });
+  }
+  render();
+
+  removeBackground.addEventListener('click', () => {
+    pickingBackground = !pickingBackground;
+    removeBackground.classList.toggle('is-active', pickingBackground);
+    removeBackground.textContent = pickingBackground ? 'Click the image background…' : backgroundColor ? 'Pick a different color' : 'Pick background color';
+    canvas.classList.toggle('is-picking-color', pickingBackground);
+  });
+  canvas.addEventListener('click', event => {
+    if (!pickingBackground) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.max(0, Math.min(width - 1, Math.floor((event.clientX - rect.left) * width / rect.width)));
+    const y = Math.max(0, Math.min(height - 1, Math.floor((event.clientY - rect.top) * height / rect.height)));
+    const pixel = context.getImageData(x, y, 1, 1).data;
+    backgroundColor = [pixel[0], pixel[1], pixel[2], pixel[3]];
+    pickingBackground = false;
+    removeBackground.classList.remove('is-active');
+    removeBackground.textContent = 'Pick a different color';
+    bgHint.textContent = `Selected color: rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`;
+    canvas.classList.remove('is-picking-color');
+    render();
+  });
+  textInput.addEventListener('input', render);
+  tolerance.addEventListener('input', render);
+  backButton.addEventListener('click', () => {
+    dispose();
+    editor.hidden = true;
+    picker.hidden = false;
+  });
+  saveButton.addEventListener('click', async () => {
+    saveButton.disabled = true;
+    editorStatus.textContent = 'Saving sticker…';
+    try {
+      let blob;
+      if (!edited()) blob = file;
+      else blob = await canvasToBlob(canvas);
+      if (blob.size > 10 * 1024 * 1024) throw new Error('The finished sticker must be 10 MB or smaller.');
+      dispose();
+      await onSave(blob);
+    } catch (err) {
+      console.error('Could not save sticker:', err);
+      editorStatus.textContent = err.message || 'Could not save this sticker.';
+      saveButton.disabled = false;
+    }
+  });
+  return dispose;
+}
+
+function removeEdgeBackground(context, width, height, color, tolerance) {
+  const image = context.getImageData(0, 0, width, height);
+  const pixels = image.data;
+  const count = width * height;
+  const visited = new Uint8Array(count);
+  const queue = new Int32Array(count);
+  let head = 0;
+  let tail = 0;
+  const threshold = tolerance * tolerance * 3;
+  const matches = index => {
+    const p = index * 4;
+    if (pixels[p + 3] === 0) return true;
+    const alphaDiff = Math.abs(pixels[p + 3] - color[3]);
+    if (alphaDiff > 32) return false;
+    const red = pixels[p] - color[0];
+    const green = pixels[p + 1] - color[1];
+    const blue = pixels[p + 2] - color[2];
+    return red * red + green * green + blue * blue <= threshold;
+  };
+  const add = index => {
+    if (visited[index] || !matches(index)) return;
+    visited[index] = 1;
+    queue[tail++] = index;
+  };
+  for (let x = 0; x < width; x++) {
+    add(x);
+    add((height - 1) * width + x);
+  }
+  for (let y = 1; y < height - 1; y++) {
+    add(y * width);
+    add(y * width + width - 1);
+  }
+  while (head < tail) {
+    const index = queue[head++];
+    const x = index % width;
+    if (x > 0) add(index - 1);
+    if (x + 1 < width) add(index + 1);
+    if (index >= width) add(index - width);
+    if (index + width < count) add(index + width);
+  }
+  for (let i = 0; i < count; i++) if (visited[i]) pixels[i * 4 + 3] = 0;
+  context.putImageData(image, 0, 0);
+}
+
+function canvasToBlob(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Could not export the sticker image.')), 'image/png');
+  });
+}
+
+async function makeEmojiSticker(emoji) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Sticker creation is not supported by this browser.');
+  context.font = '190px system-ui, sans-serif';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText(emoji, 128, 132);
+  return canvasToBlob(canvas);
+}
+
+function openStickerDatabase() {
+  if (!window.indexedDB) return Promise.reject(new Error('Saved stickers are not supported by this browser.'));
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('vynzo-stickers', 1);
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains('stickers')) {
+        const store = database.createObjectStore('stickers', { keyPath: 'id' });
+        store.createIndex('user_id', 'user_id', { unique: false });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(new Error('Could not open your saved sticker tray.'));
+  });
+}
+
+async function getSavedStickers(userId) {
+  const database = await openStickerDatabase();
+  return new Promise((resolve, reject) => {
+    const request = database.transaction('stickers', 'readonly').objectStore('stickers').index('user_id').getAll(userId);
+    request.onsuccess = () => {
+      database.close();
+      resolve(request.result.sort((a, b) => b.created_at - a.created_at));
+    };
+    request.onerror = () => {
+      database.close();
+      reject(new Error('Could not read your saved stickers.'));
+    };
+  });
+}
+
+async function saveSticker(userId, blob, name) {
+  const database = await openStickerDatabase();
+  const stickers = await getSavedStickers(userId);
+  const transaction = database.transaction('stickers', 'readwrite');
+  const store = transaction.objectStore('stickers');
+  if (stickers.length >= 50) store.delete(stickers[stickers.length - 1].id);
+  store.put({ id: crypto.randomUUID(), user_id: userId, name, blob, created_at: Date.now() });
+  await new Promise((resolve, reject) => {
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(new Error('Could not save the sticker.'));
+    transaction.onabort = () => reject(new Error('Could not save the sticker.'));
+  });
+  database.close();
+}
+
+async function sendSticker(sticker, conversationId, currentUser, status) {
+  if (!conversationId) throw new Error('Select a conversation before sending a sticker.');
+  if (!supabase) throw new Error('Supabase is not configured for sticker uploads.');
+  status.hidden = true;
+  try {
+    const file = sticker.file instanceof File
+      ? sticker.file
+      : new File([sticker.file], 'sticker.png', { type: sticker.file.type || 'image/png' });
+    const upload = await apiRequest(`/messages/${encodeURIComponent(conversationId)}/upload-url`, {
+      method: 'POST',
+      body: JSON.stringify({ content_type: file.type })
+    });
+    const { error: uploadError } = await supabase.storage.from('uploads')
+      .uploadToSignedUrl(upload.path, upload.token, file, { contentType: file.type });
+    if (uploadError) throw new Error(`Sticker upload failed: ${uploadError.message || 'please try again.'}`);
+    const result = await apiRequest(`/messages/${encodeURIComponent(conversationId)}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({
+        content: STICKER_MESSAGE_CONTENT,
+        media_path: upload.path,
+        reply_to_id: replyingTo?.id || null
+      })
+    });
+    if (currentConversationId === conversationId) {
+      const container = document.getElementById('chat-messages-container');
+      if (container) appendMessage(container, result.message, currentUser);
+      replyingTo = null;
+      document.getElementById('reply-bar')?.replaceChildren();
+      const replyBar = document.getElementById('reply-bar');
+      if (replyBar) replyBar.hidden = true;
+    }
+    notifyPeer(conversationId);
+    refreshConversations().catch(err => console.error('Could not refresh conversation preview:', err));
+  } catch (err) {
+    status.textContent = err.message || 'Could not send this sticker.';
+    status.hidden = false;
+    throw err;
+  }
 }
 
 async function openViewOnce(conversationId, messageId) {
