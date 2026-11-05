@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.91.0'
 import { GUIDELINES_MESSAGE, suspensionMessage, violatesGuidelines } from './community-rules.ts'
+import { MEDIA_WARNING, scanImages, toDataUrl } from './media-moderation.ts'
 import { handleBlogs } from './blogs.ts'
 import { startBlogAutoReview } from './blog-autoreview.ts'
 
@@ -780,6 +781,81 @@ async function handleModeration(request: Request, viewerId: string, headers: Rec
       report
     }, headers)
   }
+  if (route === '/moderation/notices' && request.method === 'GET') {
+    const { data, error } = await admin.from('moderation_notices')
+      .select('id,message,created_at').eq('user_id', viewerId).is('seen_at', null)
+      .order('created_at', { ascending: false }).limit(5)
+    throwOnError(error)
+    return jsonResponse(200, { notices: data || [] }, headers)
+  }
+  if (route === '/moderation/notices/seen' && request.method === 'POST') {
+    const { error } = await admin.from('moderation_notices')
+      .update({ seen_at: new Date().toISOString() }).eq('user_id', viewerId).is('seen_at', null)
+    throwOnError(error)
+    return jsonResponse(200, { success: true }, headers)
+  }
+  // Scans the viewer's not-yet-checked content. Images are checked here; videos are returned so
+  // the browser can send sample frames to /moderation/frames.
+  if (route === '/moderation/pending' && request.method === 'GET') {
+    const [{ data: scanned }, { data: posts }, { data: stories }] = await Promise.all([
+      admin.from('media_moderation').select('kind,item_id').eq('user_id', viewerId),
+      admin.from('posts').select('id,media_type,media_url').eq('user_id', viewerId).order('created_at', { ascending: false }).limit(40),
+      admin.from('stories').select('id,media_type,media_url').eq('user_id', viewerId).gt('expires_at', new Date().toISOString())
+    ])
+    const done = new Set((scanned || []).map((row) => `${row.kind}:${row.item_id}`))
+    const todo = [
+      ...(posts || []).map((row) => ({ kind: 'post' as const, ...row })),
+      ...(stories || []).map((row) => ({ kind: 'story' as const, ...row }))
+    ].filter((row) => row.media_url && !done.has(`${row.kind}:${row.id}`))
+    const videos: Array<{ kind: string; id: string; media_url: string }> = []
+    let removed = 0
+    for (const item of todo.slice(0, 15)) {
+      if (item.media_type === 'video') {
+        videos.push({ kind: item.kind, id: item.id, media_url: item.media_url })
+        continue
+      }
+      const flagged = await scanImages([item.media_url])
+      if (flagged === null) break
+      if (flagged) {
+        await removeFlaggedItem(item.kind, item.id, viewerId, item.media_url)
+        removed++
+      } else {
+        await admin.from('media_moderation').upsert({ kind: item.kind, item_id: item.id, user_id: viewerId, status: 'clean' })
+      }
+    }
+    return jsonResponse(200, { videos, removed }, headers)
+  }
+  if (route === '/moderation/frames' && request.method === 'POST') {
+    const body = await request.json().catch(() => ({}))
+    const kind = body?.kind === 'story' ? 'story' : 'post'
+    const frames = (Array.isArray(body?.frames) ? body.frames : [])
+      .filter((frame: unknown) => typeof frame === 'string' && frame.startsWith('data:image/') && frame.length < 600000)
+      .slice(0, 6)
+    const { data: item, error } = await admin.from(kind === 'post' ? 'posts' : 'stories')
+      .select('id,media_url').eq('id', String(body?.id || '')).eq('user_id', viewerId).maybeSingle()
+    throwOnError(error)
+    if (!item || !frames.length) return jsonResponse(404, { error: 'Nothing to scan' }, headers)
+    const flagged = await scanImages(frames)
+    if (flagged === null) return jsonResponse(200, { scanned: false }, headers)
+    if (flagged) {
+      await removeFlaggedItem(kind, item.id, viewerId, item.media_url)
+      return jsonResponse(200, { removed: true }, headers)
+    }
+    await admin.from('media_moderation').upsert({ kind, item_id: item.id, user_id: viewerId, status: 'clean' })
+    return jsonResponse(200, { removed: false }, headers)
+  }
+  if (route === '/moderation/live-frame' && request.method === 'POST') {
+    const body = await request.json().catch(() => ({}))
+    const frame = typeof body?.frame === 'string' && body.frame.startsWith('data:image/') && body.frame.length < 600000 ? body.frame : ''
+    const { data: session, error } = await admin.from('live_sessions')
+      .select('id').eq('id', String(body?.session_id || '')).eq('host_id', viewerId).eq('is_active', true).maybeSingle()
+    throwOnError(error)
+    if (!session || !frame) return jsonResponse(200, { ended: false }, headers)
+    if (!(await scanImages([frame]))) return jsonResponse(200, { ended: false }, headers)
+    await admin.from('live_sessions').update({ is_active: false }).eq('id', session.id).eq('host_id', viewerId)
+    await addModerationNotice(viewerId, 'Warning: your live stream was ended because it appears to violate the Vynzo community guidelines (nudity, hate, bullying or other material offensive to public decency).')
+    return jsonResponse(200, { ended: true }, headers)
+  }
   const blockMatch = route.match(/^\/moderation\/block\/([^/]+)$/)
   if (blockMatch && request.method === 'POST') {
     const blockedId = blockMatch[1]
@@ -921,6 +997,8 @@ async function handleStories(request: Request, viewerId: string, headers: Record
     if (file.size > 50 * 1024 * 1024 || !allowedMediaTypes.has(file.type)) {
       return jsonResponse(400, { error: 'Choose a supported image or video file up to 50 MB.' }, headers)
     }
+    const unsafeStory = await rejectUnsafeImage(file, viewerId, headers)
+    if (unsafeStory) return unsafeStory
     const extension = file.name.match(/\.[a-zA-Z0-9]{1,10}$/)?.[0] || ''
     const path = `${viewerId}/${crypto.randomUUID()}${extension}`
     const { error: uploadError } = await admin.storage.from('uploads').upload(path, file, {
@@ -1083,6 +1161,30 @@ async function handleStories(request: Request, viewerId: string, headers: Record
   return jsonResponse(404, { error: 'Endpoint not found' }, headers)
 }
 
+async function addModerationNotice(userId: string, message = MEDIA_WARNING) {
+  const { error } = await admin.from('moderation_notices').insert({ user_id: userId, message })
+  if (error) console.error('Moderation notice failed:', error)
+}
+
+async function removeFlaggedItem(kind: 'post' | 'story', itemId: string, userId: string, mediaUrl: string) {
+  await admin.from(kind === 'post' ? 'posts' : 'stories').delete().eq('id', itemId).eq('user_id', userId)
+  const path = storagePath(mediaUrl)
+  if (path) {
+    const { error } = await admin.storage.from('uploads').remove([path])
+    if (error) console.error('Flagged media cleanup error:', error)
+  }
+  await admin.from('media_moderation').upsert({ kind, item_id: itemId, user_id: userId, status: 'removed' })
+  await addModerationNotice(userId)
+}
+
+async function rejectUnsafeImage(file: File, viewerId: string, headers: Record<string, string>) {
+  if (!file.type.startsWith('image/') || file.size > 15 * 1024 * 1024) return null
+  const flagged = await scanImages([toDataUrl(new Uint8Array(await file.arrayBuffer()), file.type)])
+  if (!flagged) return null
+  await addModerationNotice(viewerId)
+  return jsonResponse(422, { error: MEDIA_WARNING, code: 'media_policy' }, headers)
+}
+
 function storagePath(mediaUrl: string): string | null {
   try {
     const url = new URL(mediaUrl)
@@ -1181,6 +1283,8 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
     }
     const caption = String(form.get('caption') || '').slice(0, 2200)
     if (violatesGuidelines(caption)) return jsonResponse(422, { error: GUIDELINES_MESSAGE, code: 'guidelines' }, headers)
+    const unsafePost = await rejectUnsafeImage(file, viewerId, headers)
+    if (unsafePost) return unsafePost
 
     const extension = file.name.match(/\.[a-zA-Z0-9]{1,10}$/)?.[0] || ''
     const path = `${viewerId}/${crypto.randomUUID()}${extension}`

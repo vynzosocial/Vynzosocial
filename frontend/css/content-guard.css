@@ -1,0 +1,5 @@
+.content-guard-overlay{position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.72)}
+.content-guard-box{max-width:420px;width:100%;padding:24px;border-radius:16px;background:#14110a;border:1px solid #d4af37;color:#f5ecd0;box-shadow:0 12px 40px rgba(0,0,0,.6)}
+.content-guard-box h3{margin:0 0 12px;color:#f0c75e}
+.content-guard-box p{margin:0 0 12px;line-height:1.5}
+.content-guard-box button{width:100%;padding:12px;border:0;border-radius:10px;background:linear-gradient(135deg,#f0c75e,#b8860b);color:#1a1405;font-weight:700;cursor:pointer}

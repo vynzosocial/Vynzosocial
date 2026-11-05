@@ -1,7 +1,9 @@
 ﻿import { apiRequest } from './api.js?v=sb6';
 import { API_ORIGIN } from './config.js?v=sb4';
 import { createRealtimeSocket } from './realtime.js?v=sb9';
+import { startLiveFrameGuard } from './content-guard.js?v=1';
 
+let stopLiveFrameGuard = null;
 let socket = null;
 let cameraStream = null;
 let cameraMirrored = false;
@@ -1741,6 +1743,14 @@ export async function startBroadcasting(title, category, visibility = 'public', 
     ensureHostPlaceholder();
     joinLiveRoom(sessionId);
     refreshLiveStreams();
+    stopLiveFrameGuard = startLiveFrameGuard(
+      () => activeBroadcastSessionId,
+      () => [...document.querySelectorAll('video')].find(v => v.srcObject?.getVideoTracks?.().includes(localVideoTrack)),
+      () => {
+        exitBroadcasting();
+        alert('Your live stream was ended because it appears to violate the Vynzo community guidelines.');
+      }
+    );
 
     const broadcastButton = document.getElementById('start-broadcast-btn');
     broadcastButton.textContent = 'Exit Live';
@@ -1755,6 +1765,7 @@ export async function exitBroadcasting() {
   if (!activeBroadcastSessionId) return;
 
   const sessionId = activeBroadcastSessionId;
+  if (stopLiveFrameGuard) stopLiveFrameGuard();
   const broadcastButton = document.getElementById('start-broadcast-btn');
   broadcastButton.disabled = true;
 
