@@ -318,6 +318,10 @@
   background-color: transparent;
 }
 
+.live-video-player.is-mirrored {
+  transform: scaleX(-1);
+}
+
 .live-video-status {
   position: absolute;
   top: 50%;
@@ -364,6 +368,20 @@
 .live-sidebar > div:first-child {
   background: linear-gradient(105deg, rgba(255, 60, 174, 0.16), rgba(108, 91, 255, 0.14), rgba(52, 202, 255, 0.1));
   border-bottom-color: rgba(182, 128, 255, 0.25) !important;
+}
+
+.live-audience-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: #e7b5ff;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.live-audience-link[hidden] {
+  display: none;
 }
 
 .live-chat-box {

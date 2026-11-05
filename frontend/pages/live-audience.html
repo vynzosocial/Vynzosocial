@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <link rel="icon" type="image/png" href="../assets/favicon-32.png">
+    <title>Vynzo — Choose Live Viewers</title>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/reset.css">
+    <link rel="stylesheet" href="../css/live-audience.css?v=1">
+    <script src="../js/theme.js?v=1"></script>
+    <script src="../js/i18n.js?v=5"></script>
+</head>
+<body class="dark-theme">
+    <main class="live-audience-page">
+        <a class="live-audience-back" href="live.html">&larr; Back to Live</a>
+        <header class="live-audience-header">
+            <span class="live-audience-icon" aria-hidden="true">&#128100;</span>
+            <h1>Choose who can watch</h1>
+            <p>Select the friends who can see and join your livestream.</p>
+        </header>
+        <section class="live-audience-card" aria-labelledby="friends-heading">
+            <div class="live-audience-toolbar">
+                <h2 id="friends-heading">Your friends</h2>
+                <span id="live-audience-count" aria-live="polite">0 selected</span>
+            </div>
+            <label class="live-audience-search">
+                <span class="visually-hidden">Search friends</span>
+                <input id="live-audience-search" type="search" placeholder="Search by name or username" autocomplete="off">
+            </label>
+            <p id="live-audience-message" class="live-audience-message" role="status">Loading your friends...</p>
+            <div id="live-audience-list" class="live-audience-list" aria-label="Select friends"></div>
+            <div class="live-audience-actions">
+                <a class="live-audience-cancel" href="live.html">Cancel</a>
+                <button id="live-audience-save" type="button" disabled>Save selected friends</button>
+            </div>
+        </section>
+    </main>
+    <script type="module" src="../js/live-audience.js?v=1"></script>
+</body>
+</html>

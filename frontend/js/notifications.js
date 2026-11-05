@@ -1,6 +1,6 @@
 import { apiRequest } from './api.js?v=sb6';
-import { createRealtimeSocket } from './realtime.js?v=sb4';
-import { initCalls } from './calls.js?v=sb4';
+import { createRealtimeSocket } from './realtime.js?v=sb5';
+import { initCalls } from './calls.js?v=sb5';
 
 const ASKED_KEY = 'vynzo_notify_prompt_dismissed';
 const lastSeen = new Map();

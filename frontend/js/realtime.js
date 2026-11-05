@@ -47,7 +47,7 @@ function dispatchAll(event, data) {
 
 async function outboundChannel(userId) {
   if (!hub.outbound.has(userId)) {
-    const channel = supabase.channel(`user:${userId}`);
+    const channel = supabase.channel(`user:${userId}`, { config: { private: true } });
     hub.outbound.set(userId, subscribe(channel).catch(err => {
       hub.outbound.delete(userId);
       throw err;
@@ -113,9 +113,9 @@ async function startHub() {
   if (hub.starting) return hub.starting;
   hub.userId = user.id;
   hub.starting = (async () => {
-    const inbox = supabase.channel(`user:${user.id}`, { config: { broadcast: { self: false } } });
+    const inbox = supabase.channel(`user:${user.id}`, { config: { broadcast: { self: false }, private: true } });
     inbox.on('broadcast', { event: 'sig' }, ({ payload }) => onUserSignal(payload));
-    const online = supabase.channel('vynzo:online', { config: { presence: { key: user.id } } });
+    const online = supabase.channel('vynzo:online', { config: { presence: { key: user.id }, private: true } });
     await subscribe(inbox);
     await subscribe(online);
     await online.track({ user_id: user.id, at: Date.now() });
@@ -418,7 +418,7 @@ export function createRealtimeSocket(options = {}) {
     const isHost = me.id === stream.host_id;
     const joinOrder = Date.now() * 1000 + Math.floor(Math.random() * 1000);
     const channel = supabase.channel(`live:${sessionId}`, {
-      config: { broadcast: { self: true }, presence: { key: socket.id } }
+      config: { broadcast: { self: true }, presence: { key: socket.id }, private: true }
     });
     const next = {
       sessionId,

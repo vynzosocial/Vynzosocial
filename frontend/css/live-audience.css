@@ -1,0 +1,232 @@
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse at 18% 8%, rgba(255, 65, 171, 0.2), transparent 42%),
+    radial-gradient(ellipse at 84% 24%, rgba(91, 56, 255, 0.24), transparent 45%),
+    #100c20;
+  color: var(--text-dark, #fff);
+}
+
+.live-audience-page {
+  width: min(680px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: max(24px, env(safe-area-inset-top)) 0 max(28px, env(safe-area-inset-bottom));
+}
+
+.live-audience-back {
+  color: #d7c6f3;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.live-audience-header {
+  padding: 38px 0 24px;
+  text-align: center;
+}
+
+.live-audience-icon {
+  display: inline-grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  border: 1px solid rgba(220, 156, 255, 0.4);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(255, 79, 163, 0.25), rgba(91, 56, 255, 0.3));
+  font-size: 25px;
+}
+
+.live-audience-header h1 {
+  margin: 14px 0 7px;
+  font-size: clamp(24px, 6vw, 34px);
+}
+
+.live-audience-header p {
+  margin: 0;
+  color: #b7a9ce;
+}
+
+.live-audience-card {
+  padding: 18px;
+  border: 1px solid rgba(172, 119, 255, 0.28);
+  border-radius: 18px;
+  background: linear-gradient(155deg, rgba(33, 22, 53, 0.96), rgba(19, 17, 35, 0.96));
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+}
+
+.live-audience-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.live-audience-toolbar h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.live-audience-toolbar span {
+  color: #d9b8ff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.live-audience-search input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid rgba(183, 142, 255, 0.32);
+  border-radius: 10px;
+  background: rgba(12, 12, 25, 0.8);
+  color: #fff;
+  font: inherit;
+}
+
+.live-audience-message {
+  margin: 14px 0;
+  color: #b7a9ce;
+  font-size: 13px;
+}
+
+.live-audience-message:empty {
+  display: none;
+}
+
+.live-audience-list {
+  display: grid;
+  max-height: min(52vh, 480px);
+  overflow: auto;
+  gap: 7px;
+}
+
+.live-audience-option {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.035);
+  cursor: pointer;
+}
+
+.live-audience-option:hover,
+.live-audience-option:focus-within {
+  border-color: rgba(205, 143, 255, 0.5);
+  background: rgba(177, 115, 255, 0.1);
+}
+
+.live-audience-option input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  accent-color: #bd82ff;
+}
+
+.live-audience-avatar {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  place-items: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #a848ff, #ff4fa3);
+  color: #fff;
+  font-weight: 700;
+}
+
+.live-audience-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.live-audience-name {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.live-audience-name strong,
+.live-audience-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-audience-name span {
+  color: #b7a9ce;
+  font-size: 12px;
+}
+
+.live-audience-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.live-audience-actions a {
+  color: #d7c6f3;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.live-audience-actions button {
+  min-height: 42px;
+  padding: 9px 15px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(110deg, #e83f9b, #744bff);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.live-audience-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+html[data-theme="daylight"] .live-audience-card {
+  background: linear-gradient(155deg, #fff, #f3edff);
+  color: #241a35;
+}
+
+html[data-theme="daylight"] .live-audience-search input {
+  background: #fff;
+  color: #241a35;
+}
+
+html[data-theme="daylight"] .live-audience-option {
+  background: rgba(30, 20, 50, 0.04);
+}
+
+@media (max-width: 480px) {
+  .live-audience-card {
+    padding: 14px;
+  }
+
+  .live-audience-actions {
+    justify-content: space-between;
+  }
+
+  .live-audience-actions button {
+    padding-inline: 11px;
+  }
+}

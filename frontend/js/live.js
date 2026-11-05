@@ -1,9 +1,10 @@
 import { apiRequest } from './api.js?v=sb6';
 import { API_ORIGIN } from './config.js?v=sb4';
-import { createRealtimeSocket } from './realtime.js?v=sb4';
+import { createRealtimeSocket } from './realtime.js?v=sb5';
 
 let socket = null;
 let cameraStream = null;
+let cameraMirrored = false;
 let imageStream = null;
 let imageObjectUrl = null;
 let imageAnimationFrame = null;
@@ -27,7 +28,18 @@ const HD_AUDIO_CONSTRAINTS = { echoCancellation: true, noiseSuppression: true, a
 const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: ['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' }] };
 
 const LIVE_TITLE_KEY = 'vynzo_live_title';
+const LIVE_AUDIENCE_KEY = 'vynzo_live_selected_viewers';
 const TITLE_EMOJIS = ['😀','😂','😍','🔥','🎉','🎶','🎮','💬','❤️','👏','✨','🌟','🙏','😎','🤝','📣'];
+
+export function getSelectedLiveAudience() {
+  try {
+    const ids = JSON.parse(sessionStorage.getItem(LIVE_AUDIENCE_KEY) || '[]');
+    return Array.isArray(ids) ? [...new Set(ids.filter(id => typeof id === 'string'))] : [];
+  } catch (err) {
+    console.warn('Could not read the selected livestream audience:', err);
+    return [];
+  }
+}
 
 export function getSavedLiveTitle() {
   return localStorage.getItem(LIVE_TITLE_KEY) || '';
@@ -544,6 +556,7 @@ function createLiveStage(placeholder, isHost, hostUsername = '', title = '', hos
           </div>
           <div class="live-media-actions">
             <button type="button" class="live-media-button" id="live-enable-camera-btn">${isHost ? 'Open camera' : '🎤 Request to Join'}</button>
+            <button type="button" class="live-media-button" id="live-mirror-camera-btn" aria-pressed="false" title="Mirror your preview; viewers see the normal camera view" hidden>Mirror camera</button>
             <button type="button" class="live-media-button live-media-image-button" id="live-select-image-btn">${isHost ? 'Choose image' : 'Use image'}</button>
             <input id="live-image-file" type="file" accept="image/*" hidden>
             <button type="button" class="live-media-button live-media-off-button" id="live-turn-media-off-btn" hidden>${isHost ? 'Turn media off' : 'Leave stage'}</button>
@@ -651,9 +664,16 @@ function attachLiveMediaControls() {
   const imageButton = document.getElementById('live-select-image-btn');
   const imageInput = document.getElementById('live-image-file');
   const offButton = document.getElementById('live-turn-media-off-btn');
+  const mirrorButton = document.getElementById('live-mirror-camera-btn');
   if (!cameraButton || !imageInput || !offButton) return;
 
   cameraButton.addEventListener('click', enableLocalCamera);
+  if (mirrorButton) {
+    mirrorButton.addEventListener('click', () => {
+      cameraMirrored = !cameraMirrored;
+      applyCameraMirror();
+    });
+  }
   if (imageButton) imageButton.addEventListener('click', () => imageInput.click());
   const titleButton = document.getElementById('live-edit-title-btn');
   const guestExit = document.getElementById('live-guest-exit-btn');
@@ -975,8 +995,22 @@ function updateLocalMediaControls(message) {
   const offButton = document.getElementById('live-turn-media-off-btn');
   if (status) status.textContent = message;
   if (offButton) offButton.hidden = !localVideoTrack && !localAudioTrack;
+  applyCameraMirror();
   applyMute();
   updateVideoGridLayout();
+}
+
+function applyCameraMirror() {
+  const mirrorButton = document.getElementById('live-mirror-camera-btn');
+  const hasCameraTrack = Boolean(
+    cameraStream && localVideoTrack && cameraStream.getVideoTracks().includes(localVideoTrack)
+  );
+  const preview = document.querySelector('.live-video-frame[data-peer-id="self"] .live-video-player');
+  if (mirrorButton) {
+    mirrorButton.hidden = !hasCameraTrack;
+    mirrorButton.setAttribute('aria-pressed', String(cameraMirrored));
+  }
+  if (preview) preview.classList.toggle('is-mirrored', hasCameraTrack && cameraMirrored);
 }
 
 let guestMuted = false;
@@ -1671,7 +1705,7 @@ function closeAllPeerConnections() {
   Object.keys(peerConnections).forEach(closePeerConnection);
 }
 
-export async function startBroadcasting(title, category, visibility = 'public') {
+export async function startBroadcasting(title, category, visibility = 'public', audienceIds = []) {
   if (activeBroadcastSessionId) return;
   if (!localStorage.getItem('vynzo_token')) {
     alert('Please log in to your Vynzo account before starting a livestream.');
@@ -1681,7 +1715,7 @@ export async function startBroadcasting(title, category, visibility = 'public') 
   try {
     const res = await apiRequest('/live/start', {
       method: 'POST',
-      body: JSON.stringify({ title, category, visibility })
+      body: JSON.stringify({ title, category, visibility, audience_ids: audienceIds })
     });
 
     const sessionId = res.session.id;

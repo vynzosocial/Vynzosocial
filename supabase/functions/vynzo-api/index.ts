@@ -175,6 +175,29 @@ async function getLiveFriendIds(viewerId: string, hostIds: string[]): Promise<Se
   ])
 }
 
+async function getLiveMutualFriendIds(viewerId: string | undefined, userIds: string[]): Promise<Set<string>> {
+  if (!viewerId || !userIds.length) return new Set<string>()
+  const [following, followedBy] = await Promise.all([
+    admin.from('follows').select('following_id').eq('follower_id', viewerId).eq('status', 'accepted').in('following_id', userIds),
+    admin.from('follows').select('follower_id').eq('following_id', viewerId).eq('status', 'accepted').in('follower_id', userIds)
+  ])
+  throwOnError(following.error)
+  throwOnError(followedBy.error)
+  const followingIds = new Set((following.data || []).map(row => row.following_id))
+  const followedByIds = new Set((followedBy.data || []).map(row => row.follower_id))
+  return new Set([...followingIds].filter(id => followedByIds.has(id)))
+}
+
+async function getLiveInvitedSessionIds(viewerId: string | undefined, sessionIds: string[]): Promise<Set<string>> {
+  if (!viewerId || !sessionIds.length) return new Set<string>()
+  const { data, error } = await admin.from('live_session_invites')
+    .select('live_session_id')
+    .eq('user_id', viewerId)
+    .in('live_session_id', sessionIds)
+  throwOnError(error)
+  return new Set((data || []).map(row => row.live_session_id))
+}
+
 async function getUserSummaries(userIds: string[], withCounts = true, viewerId?: string) {
   if (!userIds.length) return new Map()
   const { data: users, error } = await admin.from('users')
@@ -190,7 +213,14 @@ async function getUserSummaries(userIds: string[], withCounts = true, viewerId?:
   throwOnError(liveError)
   const friendsOnlyHosts = [...new Set((rawLiveSessions || []).filter(s => s.visibility === 'friends' && s.host_id !== viewerId).map(s => s.host_id))]
   const allowedFriendHosts = viewerId && friendsOnlyHosts.length ? await getLiveFriendIds(viewerId, friendsOnlyHosts) : new Set<string>()
-  const liveSessions = (rawLiveSessions || []).filter(s => s.visibility !== 'friends' || s.host_id === viewerId || allowedFriendHosts.has(s.host_id))
+  const selectedSessionIds = (rawLiveSessions || []).filter(s => s.visibility === 'selected' && s.host_id !== viewerId).map(s => s.id)
+  const selectedHostIds = [...new Set((rawLiveSessions || []).filter(s => s.visibility === 'selected' && s.host_id !== viewerId).map(s => s.host_id))]
+  const allowedSelectedSessions = await getLiveInvitedSessionIds(viewerId, selectedSessionIds)
+  const selectedFriendHosts = await getLiveMutualFriendIds(viewerId, selectedHostIds)
+  const liveSessions = (rawLiveSessions || []).filter(s => s.visibility === 'public'
+    || s.host_id === viewerId
+    || (s.visibility === 'friends' && allowedFriendHosts.has(s.host_id))
+    || (s.visibility === 'selected' && allowedSelectedSessions.has(s.id) && selectedFriendHosts.has(s.host_id)))
   const liveByHost = new Map<string, NonNullable<typeof liveSessions>[number]>()
   for (const session of liveSessions || []) {
     if (!liveByHost.has(session.host_id)) liveByHost.set(session.host_id, session)
@@ -630,7 +660,15 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
     const { data: liveRaw, error: liveError } = await admin.from('live_sessions')
       .select('id,title,visibility').eq('host_id', targetId).eq('is_active', true).gte('last_heartbeat', new Date(Date.now() - 90_000).toISOString()).order('created_at', { ascending: false }).limit(1).maybeSingle()
     throwOnError(liveError)
-    const live = liveRaw && (liveRaw.visibility !== 'friends' || isOwner || isFriend) ? liveRaw : null
+    const invitedLiveSessions = liveRaw?.visibility === 'selected'
+      ? await getLiveInvitedSessionIds(viewerId, [liveRaw.id])
+      : new Set<string>()
+    const live = liveRaw && (liveRaw.visibility === 'public'
+      || isOwner
+      || (liveRaw.visibility === 'friends' && isFriend)
+      || (liveRaw.visibility === 'selected' && invitedLiveSessions.has(liveRaw.id)))
+      ? liveRaw
+      : null
     let likeStats: Record<string, number> | undefined
     {
       const [storiesResult, imagePostsResult, videoPostsResult, blogsResult] = await Promise.all([
@@ -1971,8 +2009,15 @@ async function handleLive(request: Request, viewerId: string | undefined, header
       ...(followedByResult.data || []).map(row => row.follower_id)
     ])
     const blockedForLive = viewerId ? await getBlockedIds(viewerId) : new Set<string>()
+    const selectedSessionIds = sessions.filter(session => session.visibility === 'selected' && session.host_id !== viewerId).map(session => session.id)
+    const selectedHostIds = [...new Set(sessions.filter(session => session.visibility === 'selected' && session.host_id !== viewerId).map(session => session.host_id))]
+    const allowedSelectedSessions = await getLiveInvitedSessionIds(viewerId, selectedSessionIds)
+    const selectedFriendHosts = await getLiveMutualFriendIds(viewerId, selectedHostIds)
     const liveStreams = sessions.filter(session => !blockedForLive.has(session.host_id)
-      && (session.visibility !== 'friends' || session.host_id === viewerId || friendIds.has(session.host_id))).map(session => {
+      && (session.visibility === 'public'
+        || session.host_id === viewerId
+        || (session.visibility === 'friends' && friendIds.has(session.host_id))
+        || (session.visibility === 'selected' && allowedSelectedSessions.has(session.id) && selectedFriendHosts.has(session.host_id)))).map(session => {
       const host = usersById.get(session.host_id)
       return {
         id: session.id,
@@ -1999,7 +2044,26 @@ async function handleLive(request: Request, viewerId: string | undefined, header
       : 'General'
     if (!title) return jsonResponse(400, { error: 'Livestream title is required' }, headers)
     if (violatesGuidelines(title, category)) return jsonResponse(422, { error: GUIDELINES_MESSAGE, code: 'guidelines' }, headers)
-    const visibility = body?.visibility === 'friends' ? 'friends' : 'public'
+    const visibility = ['friends', 'selected'].includes(body?.visibility) ? body.visibility : 'public'
+    let audienceIds: string[] = []
+    if (visibility === 'selected') {
+      if (!Array.isArray(body?.audience_ids) || !body.audience_ids.length || body.audience_ids.length > 200
+        || body.audience_ids.some((id: unknown) => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))) {
+        return jsonResponse(400, { error: 'Select between 1 and 200 friends for your livestream.' }, headers)
+      }
+      audienceIds = [...new Set(body.audience_ids as string[])]
+      const [following, followedBy] = await Promise.all([
+        admin.from('follows').select('following_id').eq('follower_id', viewerId).eq('status', 'accepted').in('following_id', audienceIds),
+        admin.from('follows').select('follower_id').eq('following_id', viewerId).eq('status', 'accepted').in('follower_id', audienceIds)
+      ])
+      throwOnError(following.error)
+      throwOnError(followedBy.error)
+      const follows = new Set((following.data || []).map(row => row.following_id))
+      const followedByIds = new Set((followedBy.data || []).map(row => row.follower_id))
+      if (audienceIds.some(id => id === viewerId || !follows.has(id) || !followedByIds.has(id))) {
+        return jsonResponse(400, { error: 'Only your current friends can be selected to watch this livestream.' }, headers)
+      }
+    }
 
     const { data: session, error: insertError } = await admin.from('live_sessions')
       .insert({ host_id: viewerId, title, category, visibility, is_active: true })
@@ -2007,6 +2071,17 @@ async function handleLive(request: Request, viewerId: string | undefined, header
       .single()
     throwOnError(insertError)
     if (!session) throw new Error('Supabase did not return the new livestream session.')
+
+    if (audienceIds.length) {
+      const { error: inviteError } = await admin.from('live_session_invites').insert(
+        audienceIds.map(userId => ({ live_session_id: session.id, user_id: userId }))
+      )
+      if (inviteError) {
+        const { error: cleanupError } = await admin.from('live_sessions').delete().eq('id', session.id).eq('host_id', viewerId)
+        if (cleanupError) console.error('Failed to clean up livestream after invite creation failed:', cleanupError)
+        throwOnError(inviteError)
+      }
+    }
 
     const { error: endPreviousError } = await admin.from('live_sessions')
       .update({ is_active: false })
