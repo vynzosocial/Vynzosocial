@@ -1,5 +1,5 @@
 ﻿import { apiRequest } from './api.js?v=sb6';
-import { createRealtimeSocket } from './realtime.js?v=sb6';
+import { createRealtimeSocket } from './realtime.js?v=sb7';
 import { initCalls } from './calls.js?v=sb5';
 
 const ASKED_KEY = 'vynzo_notify_prompt_dismissed';

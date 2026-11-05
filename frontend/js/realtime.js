@@ -363,7 +363,10 @@ export function createRealtimeSocket(options = {}) {
     if (!room || key === socket.id) return;
     const meta = metas[metas.length - 1] || {};
     dispatch('live_viewers_changed');
-    if (meta.joinOrder > room.joinOrder) dispatch('viewer_joined', { socketId: key });
+    if (meta.joinOrder > room.joinOrder) {
+      dispatch('viewer_joined', { socketId: key });
+      if (!meta.isHost) dispatch('live_member_joined', { name: meta.name });
+    }
     if (meta.isHost && room.hostTimer) {
       clearTimeout(room.hostTimer);
       room.hostTimer = null;

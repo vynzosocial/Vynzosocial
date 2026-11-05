@@ -1,6 +1,6 @@
 ﻿import { apiRequest } from './api.js?v=sb6';
 import { API_ORIGIN } from './config.js?v=sb4';
-import { createRealtimeSocket } from './realtime.js?v=sb6';
+import { createRealtimeSocket } from './realtime.js?v=sb7';
 
 let socket = null;
 let cameraStream = null;
@@ -1308,6 +1308,9 @@ function registerLiveListeners() {
     if (frame?.dataset.stageGuest) removeVideoTile(socketId);
     stageGuestIds.delete(socketId);
   });
+  socket.off('live_member_joined');
+  socket.on('live_member_joined', ({ name }) => renderSystemChatMessage(`\u2728 ${name || 'A viewer'} joined the live`));
+
   socket.off('live_guest_joined');
   socket.on('live_guest_joined', ({ name }) => renderSystemChatMessage(`\u2728 ${name || 'A guest'} joined the live`));
   socket.off('live_stage_guest_info');
