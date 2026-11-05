@@ -77,8 +77,22 @@ function render() {
     return;
   }
   visible.forEach(item => {
-    const row = document.createElement('div');
-    row.className = `activity-item${item.fresh ? ' is-new' : ''}`;
+    const row = document.createElement(item.actor_id ? 'button' : 'div');
+    row.className = `activity-item${item.fresh ? ' is-new' : ''}${item.actor_id ? ' is-link' : ''}`;
+    if (item.actor_id) {
+      row.type = 'button';
+      row.setAttribute('aria-label', `View ${item.display_name || item.username || 'user'}'s profile`);
+      row.addEventListener('click', async event => {
+        event.stopPropagation();
+        try {
+          const { openUserProfile } = await import('./users.js?v=likes1');
+          setOpen(false);
+          openUserProfile(item.actor_id);
+        } catch (err) {
+          console.error('Could not open profile:', err);
+        }
+      });
+    }
     const text = document.createElement('span');
     text.className = 'activity-text';
     const strong = document.createElement('strong');

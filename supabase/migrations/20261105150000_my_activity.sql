@@ -93,6 +93,10 @@ BEGIN
       FROM public.follows AS f
       JOIN public.users AS u ON u.id = f.follower_id
       WHERE f.following_id = me AND f.status = 'accepted' AND f.follower_id <> me
+        AND NOT EXISTS (
+          SELECT 1 FROM public.follows AS back
+          WHERE back.follower_id = me AND back.following_id = f.follower_id AND back.status = 'accepted'
+        )
       ORDER BY f.created_at DESC
       LIMIT max_rows
     ) AS new_followers
