@@ -229,6 +229,11 @@
   animation: message-arrive 260ms ease-out both;
 }
 
+.message-bubble:has(> .reply-quote) {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
 .message-row {
   display: flex;
   max-width: min(78%, 600px);
