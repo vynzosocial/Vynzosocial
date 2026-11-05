@@ -1144,24 +1144,44 @@ async function showStickerEditor(editor, picker, file, onSave) {
   textInput.placeholder = 'Write on your sticker';
   textInput.setAttribute('aria-label', 'Write on your sticker');
 
-  const bgRow = document.createElement('div');
-  bgRow.className = 'sticker-background-controls';
-  const removeBackground = document.createElement('button');
-  removeBackground.type = 'button';
-  removeBackground.className = 'sticker-secondary-button';
-  removeBackground.textContent = 'Pick background color';
-  const bgHint = document.createElement('span');
-  bgHint.textContent = 'Click the background on the image to remove it.';
-  const toleranceLabel = document.createElement('label');
-  toleranceLabel.textContent = 'Color tolerance';
-  const tolerance = document.createElement('input');
-  tolerance.type = 'range';
-  tolerance.min = '10';
-  tolerance.max = '140';
-  tolerance.value = '48';
-  tolerance.setAttribute('aria-label', 'Background color tolerance');
-  toleranceLabel.appendChild(tolerance);
-  bgRow.append(removeBackground, bgHint, toleranceLabel);
+  const selectionTools = document.createElement('div');
+  selectionTools.className = 'sticker-selection-tools';
+  const selectionHint = document.createElement('span');
+  selectionHint.textContent = 'Select an area to make transparent:';
+  const selectionModes = document.createElement('div');
+  selectionModes.className = 'sticker-selection-modes';
+  const selectionModeButtons = new Map();
+  [['free', 'Free selection'], ['circle', 'Circle'], ['square', 'Square']].forEach(([mode, label]) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'sticker-secondary-button';
+    button.textContent = label;
+    button.setAttribute('aria-pressed', String(mode === 'free'));
+    button.addEventListener('click', () => {
+      selectionMode = mode;
+      selectionModeButtons.forEach((modeButton, modeName) => {
+        modeButton.classList.toggle('is-active', modeName === mode);
+        modeButton.setAttribute('aria-pressed', String(modeName === mode));
+      });
+    });
+    selectionModeButtons.set(mode, button);
+    if (mode === 'free') button.classList.add('is-active');
+    selectionModes.appendChild(button);
+  });
+  const selectionActions = document.createElement('div');
+  selectionActions.className = 'sticker-selection-actions';
+  const removeSelected = document.createElement('button');
+  removeSelected.type = 'button';
+  removeSelected.className = 'sticker-secondary-button';
+  removeSelected.textContent = 'Remove selected area';
+  removeSelected.disabled = true;
+  const undoCutout = document.createElement('button');
+  undoCutout.type = 'button';
+  undoCutout.className = 'sticker-secondary-button';
+  undoCutout.textContent = 'Undo last cutout';
+  undoCutout.disabled = true;
+  selectionActions.append(removeSelected, undoCutout);
+  selectionTools.append(selectionHint, selectionModes, selectionActions);
 
   const emojiRow = document.createElement('div');
   emojiRow.className = 'sticker-emoji-controls';
@@ -1213,75 +1233,146 @@ async function showStickerEditor(editor, picker, file, onSave) {
   editorStatus.className = 'sticker-status';
   editorStatus.setAttribute('role', 'status');
   actions.append(backButton, saveButton);
-  controls.append(textInput, bgRow, emojiRow, actions, editorStatus);
+  controls.append(textInput, selectionTools, emojiRow, actions, editorStatus);
   editor.append(note, canvasWrap, controls);
 
-  let backgroundColor = null;
-  let pickingBackground = false;
+  let selectionMode = 'free';
+  let currentSelection = null;
+  let activeSelection = null;
+  const cutouts = [];
   let disposed = false;
   const dispose = () => {
     disposed = true;
     if (source.close) source.close();
     if (sourceUrl) URL.revokeObjectURL(sourceUrl);
   };
-  const edited = () => Boolean(backgroundColor || textInput.value.trim() || emojis.length);
+  const edited = () => Boolean(cutouts.length || textInput.value.trim() || emojis.length);
 
-  function render() {
-    if (disposed) return;
-    context.clearRect(0, 0, width, height);
-    context.drawImage(source, 0, 0, width, height);
-    if (backgroundColor) removeEdgeBackground(context, width, height, backgroundColor, Number(tolerance.value));
+  function drawSticker(targetContext, showSelection = false) {
+    targetContext.clearRect(0, 0, width, height);
+    targetContext.globalCompositeOperation = 'source-over';
+    targetContext.drawImage(source, 0, 0, width, height);
+    if (cutouts.length) {
+      targetContext.globalCompositeOperation = 'destination-out';
+      cutouts.forEach(selection => {
+        targetContext.beginPath();
+        traceStickerSelection(targetContext, selection, width, height);
+        targetContext.fill();
+      });
+      targetContext.globalCompositeOperation = 'source-over';
+    }
+    const previewSelection = currentSelection || activeSelection;
+    if (showSelection && previewSelection) {
+      targetContext.save();
+      targetContext.beginPath();
+      traceStickerSelection(targetContext, previewSelection, width, height);
+      targetContext.fillStyle = 'rgba(255, 60, 170, .22)';
+      targetContext.fill();
+      targetContext.setLineDash([6, 4]);
+      targetContext.lineWidth = Math.max(2, width / 180);
+      targetContext.strokeStyle = '#ff3caa';
+      targetContext.stroke();
+      targetContext.restore();
+    }
     const text = textInput.value.trim();
     if (text) {
       const fontSize = Math.max(20, Math.round(width / 13));
-      context.font = `800 ${fontSize}px system-ui, sans-serif`;
-      context.textAlign = 'center';
-      context.textBaseline = 'bottom';
-      context.lineJoin = 'round';
-      context.lineWidth = Math.max(3, fontSize / 8);
-      context.strokeStyle = 'rgba(0,0,0,.8)';
-      context.fillStyle = '#fff';
-      context.shadowColor = 'rgba(0,0,0,.7)';
-      context.shadowBlur = 5;
+      targetContext.font = `800 ${fontSize}px system-ui, sans-serif`;
+      targetContext.textAlign = 'center';
+      targetContext.textBaseline = 'bottom';
+      targetContext.lineJoin = 'round';
+      targetContext.lineWidth = Math.max(3, fontSize / 8);
+      targetContext.strokeStyle = 'rgba(0,0,0,.8)';
+      targetContext.fillStyle = '#fff';
+      targetContext.shadowColor = 'rgba(0,0,0,.7)';
+      targetContext.shadowBlur = 5;
       const maxWidth = width - 24;
       let output = text;
-      while (context.measureText(output).width > maxWidth && output.length > 1) output = `${output.slice(0, -2)}…`;
-      context.strokeText(output, width / 2, height - 12, maxWidth);
-      context.fillText(output, width / 2, height - 12, maxWidth);
-      context.shadowBlur = 0;
+      while (targetContext.measureText(output).width > maxWidth && output.length > 1) output = `${output.slice(0, -2)}…`;
+      targetContext.strokeText(output, width / 2, height - 12, maxWidth);
+      targetContext.fillText(output, width / 2, height - 12, maxWidth);
+      targetContext.shadowBlur = 0;
     }
     emojis.forEach((emoji, index) => {
-      context.font = `${Math.max(28, Math.round(Math.min(width, height) / 4))}px system-ui, sans-serif`;
-      context.textAlign = 'center';
-      context.textBaseline = 'middle';
+      targetContext.font = `${Math.max(28, Math.round(Math.min(width, height) / 4))}px system-ui, sans-serif`;
+      targetContext.textAlign = 'center';
+      targetContext.textBaseline = 'middle';
       const positions = [[.78, .25], [.25, .25], [.75, .7], [.25, .72], [.5, .15], [.5, .78]];
-      context.fillText(emoji, width * positions[index][0], height * positions[index][1]);
+      targetContext.fillText(emoji, width * positions[index][0], height * positions[index][1]);
     });
+  }
+
+  function render() {
+    if (disposed) return;
+    drawSticker(context, true);
+    removeSelected.disabled = !currentSelection;
+    undoCutout.disabled = cutouts.length === 0;
   }
   render();
 
-  removeBackground.addEventListener('click', () => {
-    pickingBackground = !pickingBackground;
-    removeBackground.classList.toggle('is-active', pickingBackground);
-    removeBackground.textContent = pickingBackground ? 'Click the image background…' : backgroundColor ? 'Pick a different color' : 'Pick background color';
-    canvas.classList.toggle('is-picking-color', pickingBackground);
-  });
-  canvas.addEventListener('click', event => {
-    if (!pickingBackground) return;
+  const selectionPoint = event => {
     const rect = canvas.getBoundingClientRect();
-    const x = Math.max(0, Math.min(width - 1, Math.floor((event.clientX - rect.left) * width / rect.width)));
-    const y = Math.max(0, Math.min(height - 1, Math.floor((event.clientY - rect.top) * height / rect.height)));
-    const pixel = context.getImageData(x, y, 1, 1).data;
-    backgroundColor = [pixel[0], pixel[1], pixel[2], pixel[3]];
-    pickingBackground = false;
-    removeBackground.classList.remove('is-active');
-    removeBackground.textContent = 'Pick a different color';
-    bgHint.textContent = `Selected color: rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`;
-    canvas.classList.remove('is-picking-color');
+    return {
+      x: Math.max(0, Math.min(width, (event.clientX - rect.left) * width / rect.width)),
+      y: Math.max(0, Math.min(height, (event.clientY - rect.top) * height / rect.height))
+    };
+  };
+  canvas.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    canvas.setPointerCapture(event.pointerId);
+    const point = selectionPoint(event);
+    activeSelection = { mode: selectionMode, start: point, end: point, points: [point] };
+    currentSelection = null;
+    render();
+  });
+  canvas.addEventListener('pointermove', event => {
+    if (!activeSelection) return;
+    const point = selectionPoint(event);
+    activeSelection.end = point;
+    if (activeSelection.mode === 'free') {
+      const last = activeSelection.points[activeSelection.points.length - 1];
+      if (Math.hypot(point.x - last.x, point.y - last.y) >= 2) activeSelection.points.push(point);
+    }
+    render();
+  });
+  const finishSelection = event => {
+    if (!activeSelection) return;
+    if (event && canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+    const selection = activeSelection;
+    if (event && selection.mode === 'free') {
+      const point = selectionPoint(event);
+      const last = selection.points[selection.points.length - 1];
+      if (Math.hypot(point.x - last.x, point.y - last.y) >= 2) selection.points.push(point);
+      selection.end = point;
+    }
+    activeSelection = null;
+    if (selection.mode === 'free' && selection.points.length < 3) {
+      currentSelection = null;
+      render();
+      return;
+    }
+    if (selection.mode !== 'free' && Math.hypot(selection.end.x - selection.start.x, selection.end.y - selection.start.y) < 3) {
+      currentSelection = null;
+      render();
+      return;
+    }
+    currentSelection = selection;
+    render();
+  };
+  canvas.addEventListener('pointerup', finishSelection);
+  canvas.addEventListener('pointercancel', finishSelection);
+  removeSelected.addEventListener('click', () => {
+    if (!currentSelection) return;
+    cutouts.push(currentSelection);
+    currentSelection = null;
+    render();
+  });
+  undoCutout.addEventListener('click', () => {
+    cutouts.pop();
     render();
   });
   textInput.addEventListener('input', render);
-  tolerance.addEventListener('input', render);
   backButton.addEventListener('click', () => {
     dispose();
     editor.hidden = true;
@@ -1293,7 +1384,15 @@ async function showStickerEditor(editor, picker, file, onSave) {
     try {
       let blob;
       if (!edited()) blob = file;
-      else blob = await canvasToBlob(canvas);
+      else {
+        const exportCanvas = document.createElement('canvas');
+        exportCanvas.width = width;
+        exportCanvas.height = height;
+        const exportContext = exportCanvas.getContext('2d');
+        if (!exportContext) throw new Error('Sticker export is not supported by this browser.');
+        drawSticker(exportContext);
+        blob = await canvasToBlob(exportCanvas);
+      }
       if (blob.size > 10 * 1024 * 1024) throw new Error('The finished sticker must be 10 MB or smaller.');
       dispose();
       await onSave(blob);
@@ -1306,48 +1405,47 @@ async function showStickerEditor(editor, picker, file, onSave) {
   return dispose;
 }
 
-function removeEdgeBackground(context, width, height, color, tolerance) {
-  const image = context.getImageData(0, 0, width, height);
-  const pixels = image.data;
-  const count = width * height;
-  const visited = new Uint8Array(count);
-  const queue = new Int32Array(count);
-  let head = 0;
-  let tail = 0;
-  const threshold = tolerance * tolerance * 3;
-  const matches = index => {
-    const p = index * 4;
-    if (pixels[p + 3] === 0) return true;
-    const alphaDiff = Math.abs(pixels[p + 3] - color[3]);
-    if (alphaDiff > 32) return false;
-    const red = pixels[p] - color[0];
-    const green = pixels[p + 1] - color[1];
-    const blue = pixels[p + 2] - color[2];
-    return red * red + green * green + blue * blue <= threshold;
-  };
-  const add = index => {
-    if (visited[index] || !matches(index)) return;
-    visited[index] = 1;
-    queue[tail++] = index;
-  };
-  for (let x = 0; x < width; x++) {
-    add(x);
-    add((height - 1) * width + x);
+function traceStickerSelection(context, selection, width, height) {
+  const { start, end, mode } = selection;
+  if (mode === 'free') {
+    const points = selection.points;
+    context.moveTo(points[0].x, points[0].y);
+    for (let index = 1; index < points.length; index++) {
+      context.lineTo(points[index].x, points[index].y);
+    }
+    context.closePath();
+    return;
   }
-  for (let y = 1; y < height - 1; y++) {
-    add(y * width);
-    add(y * width + width - 1);
+  const left = Math.min(start.x, end.x);
+  const top = Math.min(start.y, end.y);
+  const boxWidth = Math.abs(end.x - start.x);
+  const boxHeight = Math.abs(end.y - start.y);
+  if (mode === 'circle') {
+    const centerX = left + boxWidth / 2;
+    const centerY = top + boxHeight / 2;
+    const radius = Math.min(
+      Math.max(boxWidth, boxHeight) / 2,
+      centerX,
+      width - centerX,
+      centerY,
+      height - centerY
+    );
+    context.arc(centerX, centerY, radius, 0, Math.PI * 2);
+  } else {
+    const directionX = Math.sign(end.x - start.x) || 1;
+    const directionY = Math.sign(end.y - start.y) || 1;
+    const side = Math.min(
+      Math.max(boxWidth, boxHeight),
+      directionX > 0 ? width - start.x : start.x,
+      directionY > 0 ? height - start.y : start.y
+    );
+    context.rect(
+      directionX > 0 ? start.x : start.x - side,
+      directionY > 0 ? start.y : start.y - side,
+      side,
+      side
+    );
   }
-  while (head < tail) {
-    const index = queue[head++];
-    const x = index % width;
-    if (x > 0) add(index - 1);
-    if (x + 1 < width) add(index + 1);
-    if (index >= width) add(index - width);
-    if (index + width < count) add(index + width);
-  }
-  for (let i = 0; i < count; i++) if (visited[i]) pixels[i * 4 + 3] = 0;
-  context.putImageData(image, 0, 0);
 }
 
 function canvasToBlob(canvas) {

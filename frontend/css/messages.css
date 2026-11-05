@@ -831,8 +831,33 @@
   object-fit: contain;
 }
 
-.sticker-editor-canvas.is-picking-color {
-  cursor: crosshair;
+.sticker-editor-canvas {
+  touch-action: none;
+}
+
+.sticker-selection-tools {
+  display: grid;
+  gap: 8px;
+  color: #c9badb;
+  font-size: 13px;
+}
+
+.sticker-selection-modes,
+.sticker-selection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.sticker-selection-modes button[aria-pressed="true"] {
+  border-color: #75ffdf;
+  color: #75ffdf;
+  background: rgba(117, 255, 223, 0.12);
+}
+
+.sticker-selection-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .sticker-editor-controls {
@@ -852,22 +877,11 @@
   font: inherit;
 }
 
-.sticker-background-controls,
 .sticker-emoji-controls {
   display: grid;
   gap: 8px;
   color: #c9badb;
   font-size: 13px;
-}
-
-.sticker-background-controls label {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.sticker-background-controls input[type="range"] {
-  flex: 1;
 }
 
 .sticker-secondary-button.is-active {
