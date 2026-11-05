@@ -2064,6 +2064,8 @@ async function handleLive(request: Request, viewerId: string | undefined, header
     return jsonResponse(200, { message: 'Livestream ended successfully' }, headers)
   }
 
+  if (!viewerId && method !== 'GET') return jsonResponse(401, { error: 'Invalid or expired session.' }, headers)
+
   return jsonResponse(404, { error: 'Endpoint not found' }, headers)
 }
 
