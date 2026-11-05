@@ -5,6 +5,8 @@
   var LANGS = [
     { code: 'en', name: 'English' },
     { code: 'es', name: 'Español' },
+    { code: 'de', name: 'Deutsch' },
+    { code: 'nl', name: 'Nederlands' },
     { code: 'hi', name: 'हिन्दी' },
     { code: 'ar', name: 'العربية', rtl: true },
     { code: 'fr', name: 'Français' },
