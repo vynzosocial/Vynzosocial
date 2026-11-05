@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="../css/reset.css">
     <link rel="stylesheet" href="../css/layout.css?v=20261031-prof">
     <link rel="stylesheet" href="../css/components.css">
-    <link rel="stylesheet" href="../css/live.css?v=3">
+    <link rel="stylesheet" href="../css/live.css?v=4">
     <link rel="stylesheet" href="../css/live-layout.css?v=12">
     <link rel="stylesheet" href="../css/responsive.css">
     <link rel="stylesheet" href="../css/mobile.css?v=2">
@@ -42,7 +42,37 @@
                 </div>
                 <div style="padding: 10px 16px; border-bottom: 1px solid var(--border-color);">
                     <div style="font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px;">Your live title</div>
-                    <div id="live-title-editor"></div><div style="font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); margin:10px 0 6px;">Who can watch</div><select id="live-audience" aria-label="Who can watch your live" style="width:100%;padding:9px 10px;border-radius:10px;border:1px solid var(--border-color);background:transparent;color:inherit;font:inherit;"><option value="public">&#127757; Public - everyone</option><option value="friends">&#128101; Friends only</option><option value="selected">&#128100; Selected friends</option></select>
+                    <div id="live-title-editor"></div>
+                    <div class="live-audience-heading">Who can watch</div>
+                    <div class="live-audience-picker">
+                        <button id="live-audience-trigger" class="live-audience-trigger" type="button" aria-label="Who can watch your live" aria-haspopup="menu" aria-expanded="false" aria-controls="live-audience-menu">
+                            <span id="live-audience-icon" class="live-audience-choice-icon" aria-hidden="true">&#127757;</span>
+                            <span class="live-audience-choice-copy"><strong id="live-audience-label">Public</strong><small id="live-audience-summary">Anyone can watch your live</small></span>
+                            <span class="live-audience-chevron" aria-hidden="true">&#9662;</span>
+                        </button>
+                        <div id="live-audience-menu" class="live-audience-menu" role="menu" aria-label="Choose who can watch" hidden>
+                            <button type="button" class="live-audience-option is-active" role="menuitemradio" aria-checked="true" data-value="public" data-icon="&#127757;" data-label="Public" data-summary="Anyone can watch your live">
+                                <span class="live-audience-option-icon" aria-hidden="true">&#127757;</span>
+                                <span class="live-audience-option-copy"><strong>Public</strong><small>Anyone can watch your live</small></span>
+                                <span class="live-audience-option-check" aria-hidden="true">&#10003;</span>
+                            </button>
+                            <button type="button" class="live-audience-option" role="menuitemradio" aria-checked="false" data-value="friends" data-icon="&#128101;" data-label="Friends only" data-summary="Your friends can watch">
+                                <span class="live-audience-option-icon" aria-hidden="true">&#128101;</span>
+                                <span class="live-audience-option-copy"><strong>Friends only</strong><small>Your friends can watch</small></span>
+                                <span class="live-audience-option-check" aria-hidden="true">&#10003;</span>
+                            </button>
+                            <button type="button" class="live-audience-option" role="menuitemradio" aria-checked="false" data-value="selected" data-icon="&#128100;" data-label="Selected friends" data-summary="Only people you choose can watch">
+                                <span class="live-audience-option-icon" aria-hidden="true">&#128100;</span>
+                                <span class="live-audience-option-copy"><strong>Selected friends</strong><small>Only people you choose can watch</small></span>
+                                <span class="live-audience-option-check" aria-hidden="true">&#10003;</span>
+                            </button>
+                        </div>
+                        <select id="live-audience" class="live-audience-value" aria-hidden="true" tabindex="-1">
+                            <option value="public">Public</option>
+                            <option value="friends">Friends only</option>
+                            <option value="selected">Selected friends</option>
+                        </select>
+                    </div>
                     <a id="live-audience-link" class="live-audience-link" href="live-audience.html" hidden>Choose friends</a>
                 </div>
                 <div id="live-streams-list" style="flex: 1; overflow-y: auto;">
@@ -75,6 +105,29 @@
             document.getElementById('live-title-editor').appendChild(element);
             const audience = document.getElementById('live-audience');
             const audienceLink = document.getElementById('live-audience-link');
+            const audiencePicker = document.querySelector('.live-audience-picker');
+            const audienceTrigger = document.getElementById('live-audience-trigger');
+            const audienceMenu = document.getElementById('live-audience-menu');
+            const audienceOptions = [...audienceMenu.querySelectorAll('.live-audience-option')];
+            const audienceIcon = document.getElementById('live-audience-icon');
+            const audienceLabel = document.getElementById('live-audience-label');
+            const audienceSummary = document.getElementById('live-audience-summary');
+            const closeAudienceMenu = () => {
+                audienceMenu.hidden = true;
+                audienceTrigger.setAttribute('aria-expanded', 'false');
+            };
+            const syncAudiencePicker = () => {
+                const selectedOption = audienceOptions.find(option => option.dataset.value === audience.value);
+                if (!selectedOption) return;
+                audienceIcon.textContent = selectedOption.dataset.icon;
+                audienceLabel.textContent = selectedOption.dataset.label;
+                audienceSummary.textContent = selectedOption.dataset.summary;
+                audienceOptions.forEach(option => {
+                    const active = option === selectedOption;
+                    option.classList.toggle('is-active', active);
+                    option.setAttribute('aria-checked', String(active));
+                });
+            };
             try {
                 const savedAudience = sessionStorage.getItem('vynzo_live_visibility');
                 if (['public', 'friends', 'selected'].includes(savedAudience)) audience.value = savedAudience;
@@ -92,7 +145,40 @@
                 } catch (error) {
                     console.warn('Could not save the livestream audience setting:', error);
                 }
+                syncAudiencePicker();
             };
+            audienceTrigger.addEventListener('click', () => {
+                const opening = audienceMenu.hidden;
+                audienceMenu.hidden = !opening;
+                audienceTrigger.setAttribute('aria-expanded', String(opening));
+                if (opening) audienceOptions.find(option => option.dataset.value === audience.value)?.focus();
+            });
+            audienceOptions.forEach(option => option.addEventListener('click', () => {
+                audience.value = option.dataset.value;
+                updateAudienceLink();
+                closeAudienceMenu();
+                audienceTrigger.focus();
+            }));
+            audienceOptions.forEach((option, index) => option.addEventListener('keydown', event => {
+                let nextIndex;
+                if (event.key === 'ArrowDown') nextIndex = (index + 1) % audienceOptions.length;
+                if (event.key === 'ArrowUp') nextIndex = (index - 1 + audienceOptions.length) % audienceOptions.length;
+                if (event.key === 'Home') nextIndex = 0;
+                if (event.key === 'End') nextIndex = audienceOptions.length - 1;
+                if (nextIndex !== undefined) {
+                    event.preventDefault();
+                    audienceOptions[nextIndex].focus();
+                }
+            }));
+            document.addEventListener('click', event => {
+                if (!audiencePicker.contains(event.target)) closeAudienceMenu();
+            });
+            document.addEventListener('keydown', event => {
+                if (event.key === 'Escape' && !audienceMenu.hidden) {
+                    closeAudienceMenu();
+                    audienceTrigger.focus();
+                }
+            });
             audience.addEventListener('change', updateAudienceLink);
             updateAudienceLink();
 
