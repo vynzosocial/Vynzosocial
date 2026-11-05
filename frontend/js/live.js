@@ -1312,7 +1312,7 @@ function registerLiveListeners() {
   socket.on('live_member_joined', ({ name }) => renderSystemChatMessage(`\u2728 ${name || 'A viewer'} joined the live`));
 
   socket.off('live_guest_joined');
-  socket.on('live_guest_joined', ({ name }) => renderSystemChatMessage(`\u2728 ${name || 'A guest'} joined the live`));
+  socket.on('live_guest_joined', () => {});
   socket.off('live_stage_guest_info');
   socket.on('live_stage_guest_info', info => {
     stageGuestIds.add(info.socketId);
