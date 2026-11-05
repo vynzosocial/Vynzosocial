@@ -1455,6 +1455,7 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
     const usersById = new Map((users || []).map(user => [user.id, user]))
     const hiddenSenders = (viewerMembership.hidden_senders || {}) as Record<string, string>
     const visibleMessages = (messages || []).filter(message => {
+      if (hiddenSenders[`msg:${message.id}`]) return false
       const hiddenAt = hiddenSenders[message.sender_id]
       return !hiddenAt || new Date(message.created_at).getTime() > new Date(hiddenAt).getTime()
     })
@@ -1775,7 +1776,16 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
     const seen = members.some(member => member.user_id !== viewerId
       && member.last_read_at
       && new Date(member.last_read_at).getTime() >= new Date(message.created_at).getTime())
-    if (seen) return jsonResponse(404, { error: 'This message can no longer be deleted because it has already been seen.' }, headers)
+    if (seen) {
+      const mine = members.find(member => member.user_id === viewerId)!
+      const hidden = { ...((mine.hidden_senders || {}) as Record<string, string>), [`msg:${messageId}`]: new Date().toISOString() }
+      const { error: hideError } = await admin.from('conversation_members')
+        .update({ hidden_senders: hidden })
+        .eq('conversation_id', conversationId)
+        .eq('user_id', viewerId)
+      throwOnError(hideError)
+      return jsonResponse(200, { messageId, hidden_for_me: true }, headers)
+    }
     const { error: deleteError } = await admin.from('messages')
       .delete()
       .eq('id', messageId)

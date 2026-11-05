@@ -639,7 +639,8 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     const bubble = button.closest('.message-bubble');
     const messageId = bubble.dataset.messageId;
     const conversationId = currentConversationId;
-    if (!window.confirm('Delete this message for everyone?')) return;
+    const forMe = button.title.startsWith('Delete for me');
+    if (!window.confirm(forMe ? 'Delete this message for you only? The other person will still see it.' : 'Delete this message for everyone?')) return;
 
     button.disabled = true;
     status.hidden = true;
@@ -755,7 +756,9 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     const readAt = new Date(event.read_at).getTime();
     msgContainer.querySelectorAll('.message-bubble.outgoing').forEach(bubble => {
       if (new Date(bubble.dataset.createdAt).getTime() > readAt) return;
-      bubble.querySelector('.message-delete-button')?.remove();
+      const del = bubble.querySelector('.message-delete-button');
+      if (del) del.title = 'Delete for me (already seen)';
+      bubble.dataset.seen = '1';
       bubble.querySelector('.message-edit-button')?.remove();
       const label = bubble.querySelector('.message-status');
       if (label && event.show_receipt && readReceiptsEnabled) {
@@ -860,7 +863,7 @@ function messageMarkup(message, currentUser) {
         ${message.edited_at ? '<span class="message-edited">(edited)</span>' : ''}
         <button class="message-reply-button" type="button" aria-label="Reply to this message" title="Reply">↩</button>
         ${isOutgoing && message.content && !message.view_once && message.can_unsend !== false ? '<button class="message-edit-button" type="button" aria-label="Edit message" title="Edit message">✎</button>' : ''}
-        ${isOutgoing && message.can_unsend !== false ? '<button class="message-delete-button" type="button" aria-label="Delete message" title="Delete for everyone (only until it is seen)">×</button>' : ''}
+        ${isOutgoing ? `<button class="message-delete-button" type="button" aria-label="Delete message" title="${message.can_unsend === false && !message.view_once ? 'Delete for me (already seen)' : 'Delete for everyone (only until it is seen)'}">×</button>` : ''}
         ${isOutgoing && readReceiptsEnabled ? `<span class="message-status ${message.seen ? 'seen' : ''}">${message.seen ? 'Seen' : 'Sent'}</span>` : ''}
       </div>
     </div>
