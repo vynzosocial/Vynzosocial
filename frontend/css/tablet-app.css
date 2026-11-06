@@ -1,0 +1,66 @@
+@media (min-width: 769px) {
+  #app-container {
+    height: 100vh;
+    height: 100dvh;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  #app-container > .main-content,
+  #app-container > .messaging-container,
+  #app-container > .live-container {
+    min-width: 0;
+    height: 100%;
+  }
+
+  #app-container > .sidebar {
+    min-height: 0;
+    overflow-y: auto;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1400px) {
+  #app-container > .sidebar {
+    width: 190px;
+    flex: 0 0 190px;
+    padding: 20px 14px;
+  }
+
+  .messages-page .conversations-sidebar {
+    width: clamp(200px, 26vw, 280px);
+    flex-basis: clamp(200px, 26vw, 280px);
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1100px) {
+  .home-main-column {
+    width: 100%;
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1100px) {
+  .home-content-layout {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .home-main-column,
+  .home-friends-sidebar {
+    width: 100%;
+  }
+
+  .home-friends-sidebar {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .home-friends-list {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+
+  .home-friend-card {
+    width: auto;
+    min-width: 205px;
+  }
+}

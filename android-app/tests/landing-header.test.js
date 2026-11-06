@@ -22,3 +22,21 @@ test('Android web bundle shows separate login and signup links without changing 
   assert.match(css, /\.vynzo-android-app \.welcome-nav \.welcome-web-auth\s*\{\s*display:\s*none/);
   assert.match(css, /\.vynzo-android-app \.welcome-app-auth\s*\{\s*display:\s*inline-flex/);
 });
+
+test('tablet stylesheet is included in every Android page, not the website pages', () => {
+  function checkPages(directory, relative = '') {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const name = path.join(relative, entry.name);
+      if (entry.isDirectory()) {
+        checkPages(path.join(directory, entry.name), name);
+      } else if (entry.name.endsWith('.html')) {
+        const website = fs.readFileSync(path.join(frontend, name), 'utf8');
+        const android = fs.readFileSync(path.join(appRoot, 'www', name), 'utf8');
+        assert.doesNotMatch(website, /\/css\/tablet-app\.css/);
+        assert.match(android, /<link rel="stylesheet" href="\/css\/tablet-app\.css\?v=1">/);
+        assert.match(android, /<script src="\/ota-ready\.js"><\/script>/);
+      }
+    }
+  }
+  checkPages(frontend);
+});

@@ -35,17 +35,24 @@ fs.writeFileSync(configPath, config.replace(placeholder, JSON.stringify(key)));
 fs.writeFileSync(path.join(www, 'ota-ready.js'),
   "(function(){function r(){try{var p=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.Ota;if(p)p.notifyReady();}catch(e){}}" +
   "if(document.readyState==='complete')r();else window.addEventListener('load',r);})();\n");
-const injectReady = (dir) => {
+const prepareHtml = (dir) => {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) injectReady(full);
+    if (entry.isDirectory()) prepareHtml(full);
     else if (entry.name.endsWith('.html')) {
-      const html = fs.readFileSync(full, 'utf8');
-      if (!html.includes('/ota-ready.js') && /<\/body>/i.test(html)) {
-        fs.writeFileSync(full, html.replace(/<\/body>/i, '<script src="/ota-ready.js"></script></body>'));
+      let html = fs.readFileSync(full, 'utf8');
+      if (!/<\/head>/i.test(html) || !/<\/body>/i.test(html)) {
+        throw new Error(`Cannot prepare Android page: ${full}`);
       }
+      if (!html.includes('/css/tablet-app.css')) {
+        html = html.replace(/<\/head>/i, '<link rel="stylesheet" href="/css/tablet-app.css?v=1"></head>');
+      }
+      if (!html.includes('/ota-ready.js')) {
+        html = html.replace(/<\/body>/i, '<script src="/ota-ready.js"></script></body>');
+      }
+      fs.writeFileSync(full, html);
     }
   }
 };
-injectReady(www);
+prepareHtml(www);
 console.log('Prepared android-app/www');
