@@ -2,6 +2,11 @@
   // English -> French
   var D = {
     /* Navigation & shared */
+    'Offer to save this login in my password manager': 'Proposer d’enregistrer ces identifiants dans mon gestionnaire de mots de passe',
+    'Your browser or phone decides whether to save it. Avoid saving on shared devices': 'Votre navigateur ou téléphone décide de les enregistrer. Évitez de le faire sur un appareil partagé',
+    'Use a saved login': 'Utiliser des identifiants enregistrés',
+    'Could not use a saved login. Check your password manager or enter your details': 'Impossible d’utiliser les identifiants enregistrés. Vérifiez votre gestionnaire de mots de passe ou saisissez vos identifiants',
+    'You are logged in, but the password manager did not save your login. You can continue': 'Vous êtes connecté, mais le gestionnaire de mots de passe n’a pas enregistré vos identifiants. Vous pouvez continuer',
     'Choose a reason': 'Choisissez un motif',
     'Harassment, threats, hate speech or bullying': 'Harcèlement, menaces, discours haineux ou intimidation',
     'Nudity, sexual content or sharing private images without consent': 'Nudité, contenu sexuel ou partage d’images privées sans consentement',

@@ -3,6 +3,11 @@
   // English (key, without leading/trailing punctuation or emoji) -> Arabic
   var D = {
     /* Navigation & shared */
+    'Offer to save this login in my password manager': 'عرض حفظ بيانات تسجيل الدخول في مدير كلمات المرور',
+    'Your browser or phone decides whether to save it. Avoid saving on shared devices': 'يقرر المتصفح أو الهاتف ما إذا كان سيحفظها. تجنب الحفظ على الأجهزة المشتركة',
+    'Use a saved login': 'استخدام بيانات دخول محفوظة',
+    'Could not use a saved login. Check your password manager or enter your details': 'تعذر استخدام بيانات الدخول المحفوظة. تحقق من مدير كلمات المرور أو أدخل بياناتك',
+    'You are logged in, but the password manager did not save your login. You can continue': 'تم تسجيل دخولك، لكن مدير كلمات المرور لم يحفظ بياناتك. يمكنك المتابعة',
     'Choose a reason': 'اختر سببًا',
     'Harassment, threats, hate speech or bullying': 'المضايقة أو التهديد أو خطاب الكراهية أو التنمر',
     'Nudity, sexual content or sharing private images without consent': 'العري أو المحتوى الجنسي أو مشاركة الصور الخاصة دون موافقة',

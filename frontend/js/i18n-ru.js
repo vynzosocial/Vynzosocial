@@ -3,6 +3,11 @@
   // English (key, without leading/trailing punctuation or emoji) -> Russian
   var D = {
     /* Navigation & shared */
+    'Offer to save this login in my password manager': 'Предложить сохранить данные входа в менеджере паролей',
+    'Your browser or phone decides whether to save it. Avoid saving on shared devices': 'Браузер или телефон решает, сохранять ли данные. Не сохраняйте их на общих устройствах',
+    'Use a saved login': 'Использовать сохранённые данные входа',
+    'Could not use a saved login. Check your password manager or enter your details': 'Не удалось использовать сохранённые данные. Проверьте менеджер паролей или введите данные вручную',
+    'You are logged in, but the password manager did not save your login. You can continue': 'Вы вошли, но менеджер паролей не сохранил данные. Вы можете продолжить',
     'Choose a reason': 'Выберите причину',
     'Harassment, threats, hate speech or bullying': 'Домогательства, угрозы, разжигание ненависти или травля',
     'Nudity, sexual content or sharing private images without consent': 'Обнажённые изображения, сексуальный контент или публикация личных изображений без согласия',

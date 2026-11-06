@@ -2,6 +2,11 @@
   // English -> German
   var D = {
     /* Navigation & shared */
+    'Offer to save this login in my password manager': 'Anmeldedaten im Passwortmanager speichern lassen',
+    'Your browser or phone decides whether to save it. Avoid saving on shared devices': 'Dein Browser oder Telefon entscheidet, ob die Daten gespeichert werden. Speichere sie nicht auf gemeinsam genutzten Geräten',
+    'Use a saved login': 'Gespeicherte Anmeldung verwenden',
+    'Could not use a saved login. Check your password manager or enter your details': 'Gespeicherte Anmeldung nicht verfügbar. Prüfe deinen Passwortmanager oder gib deine Daten ein',
+    'You are logged in, but the password manager did not save your login. You can continue': 'Du bist angemeldet, aber der Passwortmanager hat deine Daten nicht gespeichert. Du kannst fortfahren',
     'Choose a reason': 'Grund auswählen',
     'Harassment, threats, hate speech or bullying': 'Belästigung, Drohungen, Hassrede oder Mobbing',
     'Nudity, sexual content or sharing private images without consent': 'Nacktheit, sexuelle Inhalte oder Teilen privater Bilder ohne Einwilligung',

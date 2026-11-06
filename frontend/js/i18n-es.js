@@ -2,6 +2,11 @@
   // English -> Spanish (Latin America)
   var D = {
     /* Navigation & shared */
+    'Offer to save this login in my password manager': 'Ofrecer guardar este inicio de sesión en mi gestor de contraseñas',
+    'Your browser or phone decides whether to save it. Avoid saving on shared devices': 'Tu navegador o teléfono decide si lo guarda. Evita guardarlo en dispositivos compartidos',
+    'Use a saved login': 'Usar un inicio de sesión guardado',
+    'Could not use a saved login. Check your password manager or enter your details': 'No se pudo usar un inicio de sesión guardado. Revisa tu gestor de contraseñas o introduce tus datos',
+    'You are logged in, but the password manager did not save your login. You can continue': 'Has iniciado sesión, pero el gestor de contraseñas no guardó tus datos. Puedes continuar',
     'Choose a reason': 'Elige un motivo',
     'Harassment, threats, hate speech or bullying': 'Acoso, amenazas, discurso de odio o intimidación',
     'Nudity, sexual content or sharing private images without consent': 'Desnudez, contenido sexual o compartir imágenes privadas sin consentimiento',

@@ -2,6 +2,11 @@
   // English -> Dutch
   var D = {
     /* Navigation & shared */
+    'Offer to save this login in my password manager': 'Aanbieden om deze inloggegevens in mijn wachtwoordmanager op te slaan',
+    'Your browser or phone decides whether to save it. Avoid saving on shared devices': 'Je browser of telefoon bepaalt of de gegevens worden opgeslagen. Sla ze niet op gedeelde apparaten op',
+    'Use a saved login': 'Opgeslagen inloggegevens gebruiken',
+    'Could not use a saved login. Check your password manager or enter your details': 'Opgeslagen inloggegevens konden niet worden gebruikt. Controleer je wachtwoordmanager of voer je gegevens in',
+    'You are logged in, but the password manager did not save your login. You can continue': 'Je bent ingelogd, maar de wachtwoordmanager heeft je gegevens niet opgeslagen. Je kunt doorgaan',
     'Choose a reason': 'Kies een reden',
     'Harassment, threats, hate speech or bullying': 'Intimidatie, bedreigingen, haatzaaien of pesten',
     'Nudity, sexual content or sharing private images without consent': 'Naaktheid, seksuele inhoud of privébeelden delen zonder toestemming',

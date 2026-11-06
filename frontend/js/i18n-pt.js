@@ -3,6 +3,11 @@
   // English -> Portuguese (Brazil)
   var D = {
     /* Navigation & shared */
+    'Offer to save this login in my password manager': 'Oferecer salvar este acesso no meu gerenciador de senhas',
+    'Your browser or phone decides whether to save it. Avoid saving on shared devices': 'Seu navegador ou telefone decide se irá salvar. Evite salvar em dispositivos compartilhados',
+    'Use a saved login': 'Usar um acesso salvo',
+    'Could not use a saved login. Check your password manager or enter your details': 'Não foi possível usar o acesso salvo. Verifique seu gerenciador de senhas ou informe seus dados',
+    'You are logged in, but the password manager did not save your login. You can continue': 'Você entrou, mas o gerenciador de senhas não salvou seus dados. Você pode continuar',
     'Choose a reason': 'Escolha um motivo',
     'Harassment, threats, hate speech or bullying': 'Assédio, ameaças, discurso de ódio ou intimidação',
     'Nudity, sexual content or sharing private images without consent': 'Nudez, conteúdo sexual ou compartilhamento de imagens privadas sem consentimento',

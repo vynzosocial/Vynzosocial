@@ -3,6 +3,11 @@
   // English (key, without leading/trailing punctuation or emoji) -> Urdu
   var D = {
     /* Navigation & shared */
+    'Offer to save this login in my password manager': 'یہ لاگ ان میرے پاس ورڈ مینیجر میں محفوظ کرنے کی پیشکش کریں',
+    'Your browser or phone decides whether to save it. Avoid saving on shared devices': 'آپ کا براؤزر یا فون فیصلہ کرتا ہے کہ اسے محفوظ کرنا ہے یا نہیں۔ مشترکہ آلات پر محفوظ نہ کریں',
+    'Use a saved login': 'محفوظ شدہ لاگ ان استعمال کریں',
+    'Could not use a saved login. Check your password manager or enter your details': 'محفوظ شدہ لاگ ان استعمال نہیں ہو سکا۔ پاس ورڈ مینیجر چیک کریں یا اپنی تفصیلات درج کریں',
+    'You are logged in, but the password manager did not save your login. You can continue': 'آپ لاگ ان ہیں، لیکن پاس ورڈ مینیجر نے آپ کی تفصیلات محفوظ نہیں کیں۔ آپ جاری رکھ سکتے ہیں',
     'Choose a reason': 'وجہ منتخب کریں',
     'Harassment, threats, hate speech or bullying': 'ہراسانی، دھمکیاں، نفرت انگیز اظہار یا دھونس',
     'Nudity, sexual content or sharing private images without consent': 'عریانی، جنسی مواد یا رضامندی کے بغیر نجی تصاویر شیئر کرنا',

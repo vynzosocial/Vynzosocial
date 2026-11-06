@@ -1,6 +1,11 @@
 (function () {
   'use strict';
   var D = {
+    'Offer to save this login in my password manager': 'इस लॉगिन को मेरे पासवर्ड मैनेजर में सेव करने का विकल्प दें',
+    'Your browser or phone decides whether to save it. Avoid saving on shared devices': 'आपका ब्राउज़र या फोन तय करता है कि इसे सेव करना है या नहीं। साझा डिवाइस पर सेव न करें',
+    'Use a saved login': 'सेव किया हुआ लॉगिन इस्तेमाल करें',
+    'Could not use a saved login. Check your password manager or enter your details': 'सेव किया हुआ लॉगिन इस्तेमाल नहीं हो सका। पासवर्ड मैनेजर जांचें या अपना विवरण दर्ज करें',
+    'You are logged in, but the password manager did not save your login. You can continue': 'आप लॉग इन हैं, लेकिन पासवर्ड मैनेजर ने आपका लॉगिन सेव नहीं किया। आप आगे बढ़ सकते हैं',
     'Choose a reason': 'कारण चुनें',
     'Harassment, threats, hate speech or bullying': 'उत्पीड़न, धमकी, घृणास्पद भाषण या बदमाशी',
     'Nudity, sexual content or sharing private images without consent': 'नग्नता, यौन सामग्री या बिना सहमति निजी तस्वीरें साझा करना',

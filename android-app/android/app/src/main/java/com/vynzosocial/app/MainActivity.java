@@ -19,6 +19,7 @@ public class MainActivity extends BridgeActivity {
         OtaManager.prepareOnLaunch(this);
         registerPlugin(ScreenGuardPlugin.class);
         registerPlugin(ShareTargetPlugin.class);
+        registerPlugin(PasswordManagerPlugin.class);
         registerPlugin(OtaPlugin.class);
         super.onCreate(savedInstanceState);
         keepContentInsideSystemBars();
