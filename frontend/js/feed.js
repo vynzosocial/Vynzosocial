@@ -360,7 +360,12 @@ function createPostCard(post, reel = false) {
   return card;
 }
 
-export function openPostViewer(post) {
+export function openPostViewer(post, posts = null) {
+  viewerPosts = Array.isArray(posts) && posts.includes(post) ? posts : null;
+  showPostViewer(post);
+}
+
+function showPostViewer(post) {
   let modal = document.getElementById('post-viewer-modal');
   if (!modal) {
     modal = document.createElement('div');
@@ -370,6 +375,11 @@ export function openPostViewer(post) {
       <section class="post-viewer-content" role="dialog" aria-modal="true" aria-label="Post media">
         <button class="post-viewer-close" type="button" aria-label="Close media viewer">&times;</button>
         <div class="post-viewer-media" id="post-viewer-media"></div>
+        <nav class="post-viewer-navigation" aria-label="Profile posts" hidden>
+          <button type="button" class="post-viewer-previous" aria-label="Previous post">↑ Previous</button>
+          <span class="post-viewer-position" aria-live="polite"></span>
+          <button type="button" class="post-viewer-next" aria-label="Next post">Next ↓</button>
+        </nav>
         <div class="post-viewer-details">
           <div class="post-author-row"><span id="post-viewer-avatar-slot"></span><strong id="post-viewer-author"></strong></div>
           <p id="post-viewer-caption"></p>
@@ -389,15 +399,47 @@ export function openPostViewer(post) {
     modal.querySelector('#post-viewer-comment-form').addEventListener('submit', submitPostViewerComment);
     attachEmojiPicker(modal.querySelector('#post-viewer-comment-form'), modal.querySelector('#post-viewer-comment-input'));
     modal.querySelector('.post-viewer-close').addEventListener('click', closePostViewer);
+    modal.querySelector('.post-viewer-previous').addEventListener('click', () => navigateViewer(-1));
+    modal.querySelector('.post-viewer-next').addEventListener('click', () => navigateViewer(1));
+    const viewerMedia = modal.querySelector('#post-viewer-media');
+    let touchStart = null;
+    viewerMedia.addEventListener('touchstart', event => {
+      if (viewerPosts && event.touches.length === 1) {
+        touchStart = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+      }
+    }, { passive: true });
+    viewerMedia.addEventListener('touchend', event => {
+      if (!touchStart || event.changedTouches.length !== 1) return;
+      const dx = event.changedTouches[0].clientX - touchStart.x;
+      const dy = event.changedTouches[0].clientY - touchStart.y;
+      touchStart = null;
+      if (Math.abs(dy) >= 60 && Math.abs(dy) > Math.abs(dx) * 1.5) navigateViewer(dy < 0 ? 1 : -1);
+    }, { passive: true });
+    viewerMedia.addEventListener('touchcancel', () => { touchStart = null; });
+    let lastWheelNavigation = 0;
+    viewerMedia.addEventListener('wheel', event => {
+      if (!viewerPosts || Math.abs(event.deltaY) < Math.abs(event.deltaX)) return;
+      event.preventDefault();
+      if (Math.abs(event.deltaY) < 10 || Date.now() - lastWheelNavigation < 600) return;
+      lastWheelNavigation = Date.now();
+      navigateViewer(event.deltaY > 0 ? 1 : -1);
+    }, { passive: false });
     modal.addEventListener('click', event => {
       if (event.target === modal) closePostViewer();
     });
     document.addEventListener('keydown', event => {
+      if (!modal.classList.contains('active')) return;
       if (event.key === 'Escape') closePostViewer();
+      else if (viewerPosts && ['ArrowUp', 'ArrowDown'].includes(event.key) &&
+        !event.target.closest('input, textarea, select, video, [contenteditable="true"]')) {
+        event.preventDefault();
+        navigateViewer(event.key === 'ArrowDown' ? 1 : -1);
+      }
     });
   }
 
   const mediaContainer = modal.querySelector('#post-viewer-media');
+  mediaContainer.querySelector('video')?.pause();
   mediaContainer.replaceChildren();
   const media = document.createElement(post.media_type === 'video' ? 'video' : 'img');
   media.src = /^https?:/i.test(post.media_url) ? post.media_url : `${API_ORIGIN}${post.media_url}`;
@@ -405,13 +447,24 @@ export function openPostViewer(post) {
     media.controls = true;
     media.autoplay = true;
     media.playsInline = true;
-    media.addEventListener('ended', () => closePostViewer());
+    if (!viewerPosts) media.addEventListener('ended', () => closePostViewer());
   } else {
     media.alt = `Post by @${post.author_username || 'user'}`;
   }
   mediaContainer.appendChild(media);
   if (post.is_protected) protectMedia(mediaContainer);
-  else delete mediaContainer.dataset.protected;
+  else {
+    delete mediaContainer.dataset.protected;
+    mediaContainer.classList.remove('is-protected-media');
+  }
+  const index = viewerPosts ? viewerPosts.indexOf(post) : -1;
+  const navigation = modal.querySelector('.post-viewer-navigation');
+  modal.classList.toggle('has-profile-navigation', Boolean(viewerPosts && viewerPosts.length > 1));
+  navigation.hidden = !viewerPosts || viewerPosts.length < 2;
+  modal.querySelector('.post-viewer-previous').disabled = index <= 0;
+  modal.querySelector('.post-viewer-next').disabled = !viewerPosts || index >= viewerPosts.length - 1;
+  modal.querySelector('.post-viewer-position').textContent = viewerPosts ? `${index + 1} / ${viewerPosts.length}` : '';
+  modal.querySelector('#post-viewer-comment-input').value = '';
   let viewerDelete = modal.querySelector('#post-viewer-delete');
   if (!viewerDelete) {
     viewerDelete = document.createElement('button');
@@ -439,7 +492,7 @@ export function openPostViewer(post) {
       target.privacy = viewerPrivacy.value;
       document.querySelectorAll(`.post-privacy-select[data-post-id="${target.id}"]`).forEach(s => { s.value = target.privacy; });
     } catch (err) {
-      viewerPrivacy.value = target.privacy || 'everyone';
+      if (viewerPost === target) viewerPrivacy.value = target.privacy || 'everyone';
       alert(err.message || 'Could not change who can see this post.');
     }
   };
@@ -455,6 +508,14 @@ export function openPostViewer(post) {
 }
 
 let viewerPost = null;
+let viewerPosts = null;
+let viewerGeneration = 0;
+
+function navigateViewer(direction) {
+  if (!viewerPosts || !viewerPost) return;
+  const next = viewerPosts[viewerPosts.indexOf(viewerPost) + direction];
+  if (next) showPostViewer(next);
+}
 
 async function deleteOwnPost(post) {
   if (!confirm('Delete this post permanently?')) return;
@@ -514,16 +575,17 @@ function currentUserId() {
 
 async function loadPostViewerComments(post) {
   const list = document.getElementById('post-viewer-comments');
+  const generation = ++viewerGeneration;
   list.replaceChildren();
   setPostCommentFormState(false);
   try {
     const data = await apiRequest(`/posts/${post.id}/comments`);
-    if (viewerPost?.id !== post.id) return;
+    if (viewerPost !== post || generation !== viewerGeneration) return;
     if (!data.comments.length) list.textContent = 'No comments yet. Be the first!';
     data.comments.forEach(comment => appendPostComment(list, comment));
     setPostCommentFormState(false);
   } catch (err) {
-    if (viewerPost?.id === post.id) list.textContent = 'Could not load comments.';
+    if (viewerPost === post && generation === viewerGeneration) list.textContent = 'Could not load comments.';
   }
 }
 
@@ -536,7 +598,7 @@ async function togglePostViewerLike() {
     const result = await apiRequest(`/posts/${post.id}/like`, { method: 'POST' });
     post.likes_count = Math.max(0, (Number(post.likes_count) || 0) + (result.liked ? 1 : -1));
     post.is_liked = result.liked;
-    renderPostViewerLike();
+    if (viewerPost === post) renderPostViewerLike();
     syncFeedCard(post);
   } catch (err) {
     alert(err.message || 'Please log in to like posts.');
@@ -548,6 +610,7 @@ async function togglePostViewerLike() {
 async function submitPostViewerComment(event) {
   event.preventDefault();
   const post = viewerPost;
+  const generation = viewerGeneration;
   const input = document.getElementById('post-viewer-comment-input');
   const content = input.value.trim();
   if (!post || !content) return;
@@ -558,12 +621,14 @@ async function submitPostViewerComment(event) {
       method: 'POST',
       body: JSON.stringify({ content })
     });
-    const list = document.getElementById('post-viewer-comments');
-    if (!list.querySelector('p')) list.replaceChildren();
-    appendPostComment(list, result.comment);
     post.comments_count = (Number(post.comments_count) || 0) + 1;
     syncFeedCard(post);
-    input.value = '';
+    if (viewerPost === post && viewerGeneration === generation) {
+      const list = document.getElementById('post-viewer-comments');
+      if (!list.querySelector('p')) list.replaceChildren();
+      appendPostComment(list, result.comment);
+      input.value = '';
+    }
   } catch (err) {
     alert(err.message || 'Could not add comment. Please try again.');
   } finally {
@@ -577,6 +642,9 @@ function closePostViewer() {
   modal.querySelector('video')?.pause();
   modal.querySelector('#post-viewer-media').replaceChildren();
   modal.classList.remove('active');
+  viewerPost = null;
+  viewerPosts = null;
+  viewerGeneration++;
 }
 
 function makeAuthorLink(row, post) {
@@ -584,7 +652,7 @@ function makeAuthorLink(row, post) {
   const open = async event => {
     event.stopPropagation();
     try {
-      const { openUserProfile } = await import('./users.js?v=profile-report1');
+      const { openUserProfile } = await import('./users.js?v=profile-media1');
       openUserProfile(post.author_id);
     } catch (err) {
       console.error('Could not open profile:', err);

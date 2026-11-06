@@ -382,12 +382,39 @@
   background: #050505;
 }
 
+.post-viewer-modal.has-profile-navigation .post-viewer-media {
+  touch-action: pan-x;
+}
+
 .post-viewer-media img,
 .post-viewer-media video {
   display: block;
   width: 100%;
   max-height: 52vh;
   object-fit: contain;
+}
+
+.post-viewer-navigation:not([hidden]) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px;
+  color: #fff;
+}
+
+.post-viewer-navigation button {
+  padding: 7px 12px;
+  border: 1px solid #666;
+  border-radius: 999px;
+  color: #fff;
+  background: #222;
+  cursor: pointer;
+}
+
+.post-viewer-navigation button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .post-viewer-content {
@@ -694,6 +721,19 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+video.account-profile-post-media::-webkit-media-controls-start-playback-button {
+  display: none;
+}
+
+.account-profile-post.preview-unavailable::after {
+  content: "Preview unavailable";
+  position: absolute;
+  inset: auto 4px 8px;
+  color: #fff;
+  font-size: 11px;
+  text-align: center;
 }
 
 .account-profile-video-indicator {

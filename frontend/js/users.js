@@ -1,5 +1,5 @@
 ﻿import { apiRequest } from './api.js?v=sb6';
-import { openPostViewer } from './feed.js?v=vc2';
+import { openPostViewer } from './feed.js?v=profile-media1';
 import { protectMedia } from './media-protect.js';
 import { openUserStories } from './stories.js?v=up1';
 
@@ -567,7 +567,12 @@ function renderUserProfile(container, profile, posts) {
 
   const grid = document.createElement('div');
   grid.className = 'account-profile-post-grid';
-  posts.forEach(post => {
+  const viewerPosts = posts.map(post => ({
+    ...post,
+    author_username: profile.username,
+    author_avatar_url: profile.avatar_url
+  }));
+  viewerPosts.forEach(post => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'account-profile-post';
@@ -579,6 +584,15 @@ function renderUserProfile(container, profile, posts) {
       media.muted = true;
       media.playsInline = true;
       media.preload = 'metadata';
+      media.addEventListener('loadedmetadata', () => {
+        if (media.duration > 0) {
+          media.currentTime = Math.min(0.1, media.duration / 2);
+        }
+      }, { once: true });
+      media.addEventListener('error', () => {
+        button.classList.add('preview-unavailable');
+        button.setAttribute('aria-label', `Video preview unavailable. Open post by @${profile.username}`);
+      }, { once: true });
     } else {
       media.alt = `Post by @${profile.username}`;
     }
@@ -591,11 +605,7 @@ function renderUserProfile(container, profile, posts) {
       indicator.textContent = '▶';
       button.appendChild(indicator);
     }
-    button.addEventListener('click', () => openPostViewer({
-      ...post,
-      author_username: profile.username,
-      author_avatar_url: profile.avatar_url
-    }));
+    button.addEventListener('click', () => openPostViewer(post, viewerPosts));
     grid.appendChild(button);
   });
   container.appendChild(grid);
