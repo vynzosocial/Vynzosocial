@@ -194,6 +194,12 @@ test('moderation samples the outgoing self preview, not a processing input video
   assert.match(liveSource, /srcObject\?\.getVideoTracks\?\.\(\)\.includes\(localVideoTrack\)/);
 });
 
+test('host camera-off status stays empty on initial display and after turning media off', () => {
+  assert.doesNotMatch(liveSource, /Your camera is off\. Choose an option to share with everyone\./);
+  assert.match(liveSource, /id="live-media-status">\$\{isHost \? '' :/);
+  assert.match(liveSource, /updateLocalMediaControls\(isGuest\s*\? 'You are back in the chat\.[^\n]+\n\s*: ''\)/);
+});
+
 test('face presets draw only when facial landmarks are available', () => {
   const drawingSource = faceSource.slice(0, faceSource.indexOf('\nexport async function createFaceTracker'))
     .replace('export function drawFaceEffect', 'function drawFaceEffect');

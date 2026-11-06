@@ -559,7 +559,7 @@ function createLiveStage(placeholder, isHost, hostUsername = '', title = '', hos
         </div>` : ''}        <div class="live-media-controls" aria-label="Camera and image sharing">
           <div class="live-media-description">
             <strong></strong>
-            <span id="live-media-status">${isHost ? 'Your camera is off. Choose an option to share with everyone.' : 'Tap "Request to Join" to ask the host to put you on camera. You can keep chatting meanwhile (up to 11 guests on camera).'}</span>
+            <span id="live-media-status">${isHost ? '' : 'Tap "Request to Join" to ask the host to put you on camera. You can keep chatting meanwhile (up to 11 guests on camera).'}</span>
           </div>
           <div class="live-media-actions">
             <button type="button" class="live-media-button" id="live-enable-camera-btn">${isHost ? 'Open camera' : '🎤 Request to Join'}</button>
@@ -1050,7 +1050,7 @@ async function stopLocalMedia() {
     if (isGuest && cameraBtn) cameraBtn.textContent = '🎤 Request to Join';
     updateLocalMediaControls(isGuest
       ? 'You are back in the chat. Tap "Request to Join" to ask the host again.'
-      : 'Your camera is off. Choose an option to share with everyone.');
+      : '');
   } catch (err) {
     console.error('Unable to turn off live media:', err);
     showLiveError('Unable to stop sharing media with other participants.');
