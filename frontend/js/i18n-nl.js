@@ -2,6 +2,13 @@
   // English -> Dutch
   var D = {
     /* Navigation & shared */
+    'Choose a reason': 'Kies een reden',
+    'Harassment, threats, hate speech or bullying': 'Intimidatie, bedreigingen, haatzaaien of pesten',
+    'Nudity, sexual content or sharing private images without consent': 'Naaktheid, seksuele inhoud of privébeelden delen zonder toestemming',
+    'Violence, graphic abuse, self-harm or illegal activity': 'Geweld, expliciete mishandeling, zelfbeschadiging of illegale activiteiten',
+    'Spam, scams, fake account or impersonation': 'Spam, oplichting, nepaccount of identiteitsfraude',
+    'Privacy or copyright violation': 'Schending van privacy of auteursrecht',
+    'Something else': 'Een andere reden',
     'Vynzo': 'Vynzo',
     'vynzo': 'vynzo',
     'Home': 'Home',

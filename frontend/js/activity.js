@@ -85,7 +85,7 @@ function render() {
       row.addEventListener('click', async event => {
         event.stopPropagation();
         try {
-          const { openUserProfile } = await import('./users.js?v=profile-media1');
+          const { openUserProfile } = await import('./users.js?v=report-reasons1');
           setOpen(false);
           openUserProfile(item.actor_id);
         } catch (err) {

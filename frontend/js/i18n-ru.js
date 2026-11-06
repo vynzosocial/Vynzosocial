@@ -3,6 +3,13 @@
   // English (key, without leading/trailing punctuation or emoji) -> Russian
   var D = {
     /* Navigation & shared */
+    'Choose a reason': 'Выберите причину',
+    'Harassment, threats, hate speech or bullying': 'Домогательства, угрозы, разжигание ненависти или травля',
+    'Nudity, sexual content or sharing private images without consent': 'Обнажённые изображения, сексуальный контент или публикация личных изображений без согласия',
+    'Violence, graphic abuse, self-harm or illegal activity': 'Насилие, жестокое обращение, самоповреждение или незаконная деятельность',
+    'Spam, scams, fake account or impersonation': 'Спам, мошенничество, поддельный аккаунт или выдача себя за другого',
+    'Privacy or copyright violation': 'Нарушение конфиденциальности или авторских прав',
+    'Something else': 'Другая причина',
     'Vynzo': 'Vynzo',
     'vynzo': 'vynzo',
     'Home': 'Главная',

@@ -1,6 +1,13 @@
 (function () {
   'use strict';
   var D = {
+    'Choose a reason': 'कारण चुनें',
+    'Harassment, threats, hate speech or bullying': 'उत्पीड़न, धमकी, घृणास्पद भाषण या बदमाशी',
+    'Nudity, sexual content or sharing private images without consent': 'नग्नता, यौन सामग्री या बिना सहमति निजी तस्वीरें साझा करना',
+    'Violence, graphic abuse, self-harm or illegal activity': 'हिंसा, वीभत्स दुर्व्यवहार, आत्म-हानि या गैरकानूनी गतिविधि',
+    'Spam, scams, fake account or impersonation': 'स्पैम, धोखाधड़ी, नकली खाता या पहचान का प्रतिरूपण',
+    'Privacy or copyright violation': 'गोपनीयता या कॉपीराइट का उल्लंघन',
+    'Something else': 'अन्य कारण',
     'Vynzo': 'Vynzo',
     'vynzo': 'vynzo',
     'Home': 'घर',

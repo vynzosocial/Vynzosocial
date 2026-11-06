@@ -1,5 +1,5 @@
 ﻿import { apiRequest } from './api.js?v=sb6';
-import { openPostViewer } from './feed.js?v=profile-media1';
+import { openPostViewer } from './feed.js?v=report-reasons1';
 import { protectMedia } from './media-protect.js';
 import { openUserStories } from './stories.js?v=up1';
 
@@ -285,11 +285,11 @@ function createProfileReportForm(profileId, reportButton) {
   reasonSelect.appendChild(placeholder);
 
   const reasons = [
-    ['Harassment, threats, hate speech or bullying', 'Be respectful. No harassment, threats, hate speech or bullying.'],
-    ['Nudity or sexual content', 'No nudity or sexual content, no sexual content involving minors, and no sharing of private images without consent.'],
-    ['Violence or self-harm', 'No violence, graphic abuse, or content that encourages self-harm or illegal activity.'],
-    ['Spam, scams, fake account or impersonation', 'No spam, scams, fake accounts or impersonation.'],
-    ['Privacy or copyright', "Respect copyright and other people's privacy. Do not post someone's personal information."],
+    ['Harassment, threats, hate speech or bullying', 'Harassment, threats, hate speech or bullying'],
+    ['Nudity or sexual content', 'Nudity, sexual content or sharing private images without consent'],
+    ['Violence or self-harm', 'Violence, graphic abuse, self-harm or illegal activity'],
+    ['Spam, scams, fake account or impersonation', 'Spam, scams, fake account or impersonation'],
+    ['Privacy or copyright', 'Privacy or copyright violation'],
     ['Other', 'Something else']
   ];
   reasons.forEach(([value, label]) => {

@@ -2,6 +2,13 @@
   // English -> French
   var D = {
     /* Navigation & shared */
+    'Choose a reason': 'Choisissez un motif',
+    'Harassment, threats, hate speech or bullying': 'Harcèlement, menaces, discours haineux ou intimidation',
+    'Nudity, sexual content or sharing private images without consent': 'Nudité, contenu sexuel ou partage d’images privées sans consentement',
+    'Violence, graphic abuse, self-harm or illegal activity': 'Violence, sévices explicites, automutilation ou activité illégale',
+    'Spam, scams, fake account or impersonation': 'Spam, escroqueries, faux compte ou usurpation d’identité',
+    'Privacy or copyright violation': 'Atteinte à la vie privée ou aux droits d’auteur',
+    'Something else': 'Autre motif',
     'Vynzo': 'Vynzo',
     'vynzo': 'vynzo',
     'Home': 'Accueil',

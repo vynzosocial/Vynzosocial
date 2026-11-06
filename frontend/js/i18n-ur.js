@@ -3,6 +3,13 @@
   // English (key, without leading/trailing punctuation or emoji) -> Urdu
   var D = {
     /* Navigation & shared */
+    'Choose a reason': 'وجہ منتخب کریں',
+    'Harassment, threats, hate speech or bullying': 'ہراسانی، دھمکیاں، نفرت انگیز اظہار یا دھونس',
+    'Nudity, sexual content or sharing private images without consent': 'عریانی، جنسی مواد یا رضامندی کے بغیر نجی تصاویر شیئر کرنا',
+    'Violence, graphic abuse, self-harm or illegal activity': 'تشدد، دل دہلا دینے والا ظلم، خود کو نقصان پہنچانا یا غیر قانونی سرگرمی',
+    'Spam, scams, fake account or impersonation': 'اسپیم، فراڈ، جعلی اکاؤنٹ یا کسی اور کی نقالی',
+    'Privacy or copyright violation': 'رازداری یا کاپی رائٹ کی خلاف ورزی',
+    'Something else': 'کوئی اور وجہ',
     'Vynzo': 'Vynzo',
     'vynzo': 'vynzo',
     'Home': 'ہوم',

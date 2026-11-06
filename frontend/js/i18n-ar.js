@@ -3,6 +3,13 @@
   // English (key, without leading/trailing punctuation or emoji) -> Arabic
   var D = {
     /* Navigation & shared */
+    'Choose a reason': 'اختر سببًا',
+    'Harassment, threats, hate speech or bullying': 'المضايقة أو التهديد أو خطاب الكراهية أو التنمر',
+    'Nudity, sexual content or sharing private images without consent': 'العري أو المحتوى الجنسي أو مشاركة الصور الخاصة دون موافقة',
+    'Violence, graphic abuse, self-harm or illegal activity': 'العنف أو الإساءة الصادمة أو إيذاء النفس أو النشاط غير القانوني',
+    'Spam, scams, fake account or impersonation': 'الرسائل المزعجة أو الاحتيال أو الحساب المزيف أو انتحال الشخصية',
+    'Privacy or copyright violation': 'انتهاك الخصوصية أو حقوق النشر',
+    'Something else': 'سبب آخر',
     'Vynzo': 'Vynzo',
     'vynzo': 'vynzo',
     'Home': 'الرئيسية',
