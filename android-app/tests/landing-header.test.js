@@ -19,6 +19,6 @@ test('Android web bundle shows separate login and signup links without changing 
   assert.match(android, /class="welcome-web-auth"|class="[^"]*welcome-web-auth/);
   assert.match(android, /class="welcome-app-auth"[\s\S]*href="\.\/pages\/login\.html">Log in<\/a>[\s\S]*href="\.\/pages\/register\.html">Sign up<\/a>/);
   assert.match(css, /\.welcome-app-auth\s*\{\s*display:\s*none/);
-  assert.match(css, /\.vynzo-android-app \.welcome-web-auth\s*\{\s*display:\s*none/);
+  assert.match(css, /\.vynzo-android-app \.welcome-nav \.welcome-web-auth\s*\{\s*display:\s*none/);
   assert.match(css, /\.vynzo-android-app \.welcome-app-auth\s*\{\s*display:\s*inline-flex/);
 });
