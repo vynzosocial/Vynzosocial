@@ -424,17 +424,45 @@
   }
 }
 
-@media (max-width: 420px) {
+@media (max-width: 760px) {
+  .welcome-header {
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px 0;
+    min-height: 0;
+  }
+
   .welcome-nav {
-    gap: 13px;
+    flex-wrap: wrap;
+    width: 100%;
+    gap: 8px 12px;
+    font-size: 12px;
+  }
+
+  .welcome-nav > * {
+    min-width: 0;
+  }
+
+  .welcome-nav .welcome-login {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+  }
+
+  .welcome-nav .vi-pill {
+    padding: 6px 10px;
     font-size: 12px;
   }
 
   .welcome-button-small {
-    min-height: 38px;
+    min-height: 36px;
     padding: 0 12px;
+    font-size: 12px;
+    text-align: center;
   }
+}
 
+@media (max-width: 420px) {
   .welcome-actions {
     align-items: flex-start;
     flex-direction: column;
