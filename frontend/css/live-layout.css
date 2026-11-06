@@ -505,6 +505,34 @@ html[dir="rtl"] .live-video-grid[data-layout="two"] > * {
   -webkit-mask-image: none;
   mask-image: none;
 }
+
+@media (min-width: 769px) and (min-height: 501px) and (hover: hover) and (pointer: fine) {
+  .live-container .live-stage .live-chat-box {
+    gap: 2px;
+    padding: 2px 4px;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 8%);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 8%);
+  }
+  .live-container .live-stage.live-multi .live-chat-box {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  .live-container .live-stage .live-chat-message {
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    line-height: 1.25;
+  }
+  .live-container .live-stage .live-chat-avatar {
+    width: 20px;
+    height: 20px;
+    font-size: 10px;
+  }
+  .live-container .live-stage .live-chat-user {
+    margin-right: 4px;
+  }
+}
+
 @media (max-width: 768px) {
   .live-container .live-stage.live-multi .live-video-area { order: 1; }
   .live-container .live-stage.live-multi .live-chat-panel {
