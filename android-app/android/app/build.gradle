@@ -1,5 +1,11 @@
 apply plugin: 'com.android.application'
 
+def releaseStoreFile = providers.environmentVariable('ANDROID_UPLOAD_STORE_FILE').orNull
+def releaseStorePassword = providers.environmentVariable('ANDROID_UPLOAD_STORE_PASSWORD').orNull
+def releaseKeyAlias = providers.environmentVariable('ANDROID_UPLOAD_KEY_ALIAS').orNull
+def releaseKeyPassword = providers.environmentVariable('ANDROID_UPLOAD_KEY_PASSWORD').orNull
+def hasReleaseSigning = [releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword].every { it }
+
 android {
     namespace = "com.vynzosocial.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,8 +22,19 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (hasReleaseSigning) {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
@@ -51,4 +68,28 @@ try {
     }
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}
+
+def validateReleaseSigning = tasks.register('validateReleaseSigning') {
+    doLast {
+        def missing = [
+            ANDROID_UPLOAD_STORE_FILE: releaseStoreFile,
+            ANDROID_UPLOAD_STORE_PASSWORD: releaseStorePassword,
+            ANDROID_UPLOAD_KEY_ALIAS: releaseKeyAlias,
+            ANDROID_UPLOAD_KEY_PASSWORD: releaseKeyPassword
+        ].findAll { name, value -> !value }.keySet()
+
+        if (missing) {
+            throw new GradleException("Release signing is not configured. Set: ${missing.join(', ')}")
+        }
+        if (!file(releaseStoreFile).isFile()) {
+            throw new GradleException("Release keystore not found: ${releaseStoreFile}")
+        }
+    }
+}
+
+tasks.configureEach {
+    if (name in ['assembleRelease', 'bundleRelease', 'validateSigningRelease']) {
+        dependsOn(validateReleaseSigning)
+    }
 }

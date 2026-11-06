@@ -10,6 +10,8 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         OtaManager.prepareOnLaunch(this);
+        registerPlugin(ScreenGuardPlugin.class);
+        registerPlugin(ShareTargetPlugin.class);
         registerPlugin(OtaPlugin.class);
         super.onCreate(savedInstanceState);
     }

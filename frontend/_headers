@@ -28,3 +28,11 @@
   Content-Type: text/css; charset=utf-8
   Cache-Control: no-cache, must-revalidate
   X-Content-Type-Options: nosniff
+
+/ota/manifest.json
+  Cache-Control: no-store
+  X-Content-Type-Options: nosniff
+
+/ota/manifest.json.sig
+  Cache-Control: no-store
+  X-Content-Type-Options: nosniff

@@ -1,4 +1,4 @@
-package com.vynzo.app;
+package com.vynzosocial.app;
 
 import android.view.WindowManager;
 
@@ -7,7 +7,6 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
-/** Blocks screenshots and screen recording while protected media is on screen. */
 @CapacitorPlugin(name = "ScreenGuard")
 public class ScreenGuardPlugin extends Plugin {
 

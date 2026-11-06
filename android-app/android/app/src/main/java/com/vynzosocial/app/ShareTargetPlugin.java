@@ -1,9 +1,8 @@
-package com.vynzo.app;
+package com.vynzosocial.app;
 
 import android.content.ClipData;
 import android.content.ContentResolver;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Parcelable;
@@ -27,10 +26,6 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.UUID;
 
-/**
- * Receives videos shared to Vynzo (ACTION_SEND / ACTION_SEND_MULTIPLE) and hands them to the
- * web layer, and opens CapCut through standard Android intents only.
- */
 @CapacitorPlugin(name = "ShareTarget")
 public class ShareTargetPlugin extends Plugin {
 
@@ -67,7 +62,6 @@ public class ShareTargetPlugin extends Plugin {
                 }
             }
         }
-        // Don't re-handle this intent on later launches.
         final String sharedType = intent.getType();
         getActivity().setIntent(new Intent(Intent.ACTION_MAIN));
         if (uris.isEmpty()) return;
@@ -86,9 +80,8 @@ public class ShareTargetPlugin extends Plugin {
             JSObject payload = new JSObject();
             payload.put("files", files);
             payload.put("errors", errors);
-            // Retained until the web layer registers its listener, so a cold start from a share works.
             notifyListeners("sharedVideo", payload, true);
-        }).start();
+        }, "vynzo-share-target").start();
     }
 
     private JSObject copyToCache(Uri uri, String fallbackType) throws Exception {
@@ -130,7 +123,6 @@ public class ShareTargetPlugin extends Plugin {
                 out.write(buffer, 0, read);
             }
         } catch (Exception error) {
-            //noinspection ResultOfMethodCallIgnored
             target.delete();
             throw error;
         }
@@ -148,10 +140,7 @@ public class ShareTargetPlugin extends Plugin {
         if (old == null) return;
         long cutoff = System.currentTimeMillis() - STALE_MS;
         for (File file : old) {
-            if (file.lastModified() < cutoff) {
-                //noinspection ResultOfMethodCallIgnored
-                file.delete();
-            }
+            if (file.lastModified() < cutoff) file.delete();
         }
     }
 
@@ -166,7 +155,6 @@ public class ShareTargetPlugin extends Plugin {
         call.resolve(result);
     }
 
-    /** Opens CapCut so the user can start a new project. */
     @PluginMethod
     public void openCapCut(PluginCall call) {
         Intent launch = getContext().getPackageManager().getLaunchIntentForPackage(CAPCUT_PACKAGE);
@@ -182,7 +170,6 @@ public class ShareTargetPlugin extends Plugin {
         call.resolve(result);
     }
 
-    /** Lets the user pick a video and sends it to CapCut as a standard share. */
     @PluginMethod
     public void editInCapCut(PluginCall call) {
         if (!capCutInstalled()) {

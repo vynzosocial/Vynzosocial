@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">Vynzo</string>
-    <string name="title_activity_main">Vynzo</string>
-    <string name="package_name">com.vynzo.app</string>
-    <string name="custom_url_scheme">com.vynzo.app</string>
-</resources>

@@ -1,9 +1,10 @@
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
-$keystorePath = Join-Path $repositoryRoot 'android\app\upload-keystore.jks'
+$androidAppRoot = Join-Path $repositoryRoot 'android-app'
+$keystorePath = Join-Path $androidAppRoot 'android\app\upload-keystore.jks'
 $keyAlias = 'upload'
 
-Push-Location $repositoryRoot
+Push-Location $androidAppRoot
 try {
     $securePassword = Read-Host 'Enter or create the upload keystore password' -AsSecureString
     $passwordPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
@@ -37,20 +38,20 @@ try {
         if ($LASTEXITCODE -ne 0) {
             throw "keytool failed with exit code $LASTEXITCODE."
         }
-        Write-Warning 'Back up android\app\upload-keystore.jks and its password securely. Losing either can prevent future app updates.'
+        Write-Warning 'Back up android-app\android\app\upload-keystore.jks and its password securely. Losing either can prevent future app updates.'
     }
 
-    & npx cap sync android
+    & npm run sync
     if ($LASTEXITCODE -ne 0) {
-        throw "Capacitor sync failed with exit code $LASTEXITCODE."
+        throw "Web preparation or Capacitor sync failed with exit code $LASTEXITCODE."
     }
 
     & .\android\gradlew.bat -p .\android assembleRelease bundleRelease
     if ($LASTEXITCODE -ne 0) {
         throw "Release build failed with exit code $LASTEXITCODE."
     }
-    Write-Output 'Release APK: android\app\build\outputs\apk\release\app-release.apk'
-    Write-Output 'Play Store bundle: android\app\build\outputs\bundle\release\app-release.aab'
+    Write-Output 'Release APK: android-app\android\app\build\outputs\apk\release\app-release.apk'
+    Write-Output 'Play Store bundle: android-app\android\app\build\outputs\bundle\release\app-release.aab'
 }
 finally {
     Remove-Item Env:ANDROID_UPLOAD_STORE_FILE -ErrorAction SilentlyContinue
