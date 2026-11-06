@@ -711,3 +711,377 @@ html[data-theme="daylight"] .welcome-features-cta {
     transition: none;
   }
 }
+
+.welcome-art {
+  display: block;
+  width: min(100%, 510px);
+  aspect-ratio: 1;
+}
+
+.welcome-preview-card {
+  position: absolute;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 22px;
+  background: #281d42;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.38), 0 0 32px rgba(190, 105, 255, 0.16);
+  text-align: left;
+}
+
+.welcome-preview-card::after {
+  position: absolute;
+  background: linear-gradient(180deg, rgba(10, 8, 24, 0.12) 5%, transparent 36%, rgba(10, 8, 24, 0.82) 100%);
+  content: "";
+  inset: 0;
+  pointer-events: none;
+}
+
+.welcome-preview-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.welcome-preview-story {
+  z-index: 1;
+  top: 8%;
+  left: 3%;
+  width: 55%;
+  height: 80%;
+  transform: rotate(-5deg);
+}
+
+.welcome-preview-blog {
+  z-index: 2;
+  top: 5%;
+  right: 0;
+  width: 48%;
+  height: 39%;
+  transform: rotate(4deg);
+}
+
+.welcome-preview-live {
+  z-index: 3;
+  right: 1%;
+  bottom: 5%;
+  width: 51%;
+  height: 40%;
+  transform: rotate(3deg);
+}
+
+.welcome-preview-tag,
+.welcome-preview-caption {
+  position: absolute;
+  z-index: 1;
+  color: #fff;
+}
+
+.welcome-preview-tag {
+  top: 12px;
+  left: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  background: rgba(15, 11, 28, 0.52);
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 1px;
+  backdrop-filter: blur(12px);
+}
+
+.welcome-preview-tag i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff526d;
+  box-shadow: 0 0 10px rgba(255, 82, 109, 0.9);
+}
+
+.welcome-preview-caption {
+  right: 15px;
+  bottom: 14px;
+  left: 15px;
+  display: grid;
+  gap: 4px;
+}
+
+.welcome-preview-caption strong {
+  font-size: 13px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.welcome-preview-caption small {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 10px;
+}
+
+@media (max-width: 760px) {
+  .welcome-art {
+    order: -1;
+    width: min(88vw, 360px);
+    margin: 0 auto 8px;
+  }
+}
+
+@media (max-width: 420px) {
+  .welcome-preview-card {
+    border-radius: 17px;
+  }
+
+  .welcome-preview-tag {
+    top: 8px;
+    left: 8px;
+    gap: 5px;
+    padding: 6px 8px;
+    font-size: 8px;
+  }
+
+  .welcome-preview-caption {
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+  }
+
+  .welcome-preview-caption strong {
+    font-size: 11px;
+  }
+
+  .welcome-preview-caption small {
+    font-size: 9px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-preview-card {
+    transform: none;
+  }
+}
+
+.welcome-preview-live {
+  z-index: 4;
+  right: 0;
+  bottom: 1%;
+  width: 53%;
+  height: 47%;
+  transform: rotate(2deg);
+}
+
+.welcome-preview-card > img {
+  position: absolute;
+  inset: 0;
+}
+
+.welcome-live-room {
+  position: absolute;
+  z-index: 1;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  height: 62%;
+  gap: 5px;
+  padding: 8px 10px 9px;
+  background: rgba(18, 12, 31, 0.94);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  text-align: left;
+  backdrop-filter: blur(12px);
+}
+
+.welcome-live-room-heading,
+.welcome-live-chat-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.welcome-live-room-heading strong {
+  overflow: hidden;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.welcome-live-room-heading > span {
+  flex: none;
+  color: #d3c8e3;
+  font-size: 8px;
+}
+
+.welcome-live-guests {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.welcome-live-guests img,
+.welcome-live-message img {
+  flex: none;
+  width: 19px;
+  height: 19px;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.welcome-live-guests > span {
+  overflow: hidden;
+  margin-left: 2px;
+  color: #eee8f6;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.welcome-live-chat {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-height: 0;
+  padding-top: 5px;
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.welcome-live-chat-heading {
+  margin-bottom: 1px;
+}
+
+.welcome-live-chat-heading strong {
+  color: #e8ccff;
+  font-size: 7px;
+  letter-spacing: 0.8px;
+}
+
+.welcome-live-chat-heading span {
+  color: #aaa0b9;
+  font-size: 7px;
+}
+
+.welcome-live-message {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: #eeeaf5;
+  font-size: 8px;
+  line-height: 1.2;
+}
+
+.welcome-live-message img {
+  width: 15px;
+  height: 15px;
+}
+
+.welcome-live-message > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.welcome-live-message b {
+  margin-right: 3px;
+  color: #d7a8ff;
+}
+
+.welcome-preview-brand {
+  position: absolute;
+  z-index: 5;
+  bottom: 1%;
+  left: 3%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 13px 8px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 15px;
+  background: rgba(26, 17, 47, 0.9);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3), 0 0 20px rgba(190, 105, 255, 0.2);
+  backdrop-filter: blur(14px);
+}
+
+.welcome-preview-brand img {
+  width: 35px;
+  height: 35px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 10px;
+}
+
+.welcome-preview-brand span {
+  display: grid;
+  gap: 2px;
+}
+
+.welcome-preview-brand strong {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.welcome-preview-brand small {
+  color: #d0c4e0;
+  font-size: 9px;
+}
+
+@media (max-width: 760px) {
+  .welcome-preview-live {
+    width: 59%;
+    height: 49%;
+  }
+
+  .welcome-live-room {
+    gap: 4px;
+    padding: 7px 8px;
+  }
+
+  .welcome-live-guests img {
+    width: 17px;
+    height: 17px;
+  }
+}
+
+@media (max-width: 420px) {
+  .welcome-preview-brand {
+    gap: 6px;
+    padding: 6px 9px 6px 6px;
+    border-radius: 12px;
+  }
+
+  .welcome-preview-brand img {
+    width: 29px;
+    height: 29px;
+    border-radius: 8px;
+  }
+
+  .welcome-preview-brand strong {
+    font-size: 10px;
+  }
+
+  .welcome-preview-brand small {
+    font-size: 8px;
+  }
+
+  .welcome-live-room-heading strong {
+    font-size: 10px;
+  }
+
+  .welcome-live-room-heading > span,
+  .welcome-live-guests > span {
+    font-size: 7px;
+  }
+
+  .welcome-live-guests img {
+    width: 15px;
+    height: 15px;
+  }
+
+  .welcome-live-message {
+    font-size: 7px;
+  }
+}
