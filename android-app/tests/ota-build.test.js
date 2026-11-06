@@ -32,6 +32,8 @@ test('website build contains an authentic, compatible OTA bundle', () => {
   assert.ok(zip.getEntry('index.html'));
   assert.ok(zip.getEntry('ota-ready.js'));
   assert.match(zip.readAsText('index.html'), /src="\/ota-ready\.js"/);
+  assert.match(zip.readAsText('index.html'), /<html class="vynzo-android-app"/);
+  assert.doesNotMatch(fs.readFileSync(path.join(root, 'dist', 'index.html'), 'utf8'), /<html class="vynzo-android-app"/);
   assert.match(fs.readFileSync(path.join(root, 'dist', '_headers'), 'utf8'), /\/ota\/manifest\.json\s+Cache-Control: no-store/);
 });
 

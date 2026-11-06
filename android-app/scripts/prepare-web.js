@@ -11,6 +11,13 @@ fs.rmSync(www, { recursive: true, force: true });
 fs.cpSync(path.join(repoRoot, 'frontend'), www, { recursive: true });
 fs.rmSync(path.join(www, '_headers'), { force: true });
 
+const homePath = path.join(www, 'index.html');
+const home = fs.readFileSync(homePath, 'utf8');
+if (!home.includes('<html lang="en" dir="ltr">')) {
+  throw new Error('Could not mark the Android landing page.');
+}
+fs.writeFileSync(homePath, home.replace('<html lang="en" dir="ltr">', '<html class="vynzo-android-app" lang="en" dir="ltr">'));
+
 const wrangler = fs.readFileSync(path.join(repoRoot, 'wrangler.jsonc'), 'utf8');
 const key = (process.env.VYNZO_SUPABASE_PUBLISHABLE_KEY
   || (wrangler.match(/"VYNZO_SUPABASE_PUBLISHABLE_KEY"\s*:\s*"([^"]+)"/) || [])[1] || '').trim();
