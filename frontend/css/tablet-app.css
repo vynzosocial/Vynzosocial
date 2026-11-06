@@ -29,6 +29,26 @@
     width: clamp(200px, 26vw, 280px);
     flex-basis: clamp(200px, 26vw, 280px);
   }
+
+  .messages-page .chat-input-form,
+  .messages-page .has-emoji-picker.chat-input-form {
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0 8px 10px;
+    padding: 7px;
+  }
+
+  .messages-page .chat-input-form .chat-input {
+    order: -1;
+    flex: 1 0 100%;
+    padding: 9px 8px;
+    border-bottom: 1px solid rgba(189, 130, 255, 0.2);
+    border-radius: 0;
+  }
+
+  .messages-page .chat-input-form .send-btn {
+    margin-inline-start: auto;
+  }
 }
 
 @media (min-width: 769px) and (max-width: 1100px) {

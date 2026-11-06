@@ -45,7 +45,7 @@ const prepareHtml = (dir) => {
         throw new Error(`Cannot prepare Android page: ${full}`);
       }
       if (!html.includes('/css/tablet-app.css')) {
-        html = html.replace(/<\/head>/i, '<link rel="stylesheet" href="/css/tablet-app.css?v=1"></head>');
+        html = html.replace(/<\/head>/i, '<link rel="stylesheet" href="/css/tablet-app.css?v=2"></head>');
       }
       if (!html.includes('/ota-ready.js')) {
         html = html.replace(/<\/body>/i, '<script src="/ota-ready.js"></script></body>');
