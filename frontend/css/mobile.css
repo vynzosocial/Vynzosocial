@@ -197,6 +197,25 @@
     gap: 6px;
   }
 
+  .live-container .live-media-controls.has-camera-filter {
+    flex-wrap: wrap;
+  }
+
+  .live-container .live-stage .has-camera-filter .live-media-description {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .live-container .has-camera-filter .live-media-actions {
+    flex: 1 1 100%;
+    min-width: 0;
+    overflow-x: auto;
+  }
+
+  .live-container .live-camera-filter {
+    flex: 0 0 auto;
+  }
+
   .live-container .live-media-button {
     flex: 1;
     min-height: 40px;

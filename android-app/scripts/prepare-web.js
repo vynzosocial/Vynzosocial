@@ -9,6 +9,7 @@ const www = path.join(appRoot, 'www');
 
 fs.rmSync(www, { recursive: true, force: true });
 fs.cpSync(path.join(repoRoot, 'frontend'), www, { recursive: true });
+require(path.join(repoRoot, 'scripts', 'copy-live-face-assets'))(www);
 fs.rmSync(path.join(www, '_headers'), { force: true });
 
 const homePath = path.join(www, 'index.html');

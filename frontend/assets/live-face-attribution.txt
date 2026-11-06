@@ -1,0 +1,23 @@
+Live face effects use Human 3.3.6 by Vladimir Mandic (MIT license).
+The Human license is distributed at /vendor/human/LICENSE.txt.
+
+The BlazeFace, FaceMesh, and Iris models supplied with Human are converted from
+Google MediaPipe models. MediaPipe and TensorFlow.js are distributed under
+the Apache License 2.0; the license text is at /assets/apache-2.0.txt.
+
+Sources:
+https://github.com/vladmandic/human
+https://github.com/vladmandic/human/wiki/Models
+https://github.com/google-ai-edge/mediapipe
+https://github.com/tensorflow/tfjs
+
+Background segmentation uses the Selfie Segmentation model converted by
+Vladimir Mandic from PINTO0309/PINTO_model_zoo/109_Selfie_Segmentation.
+The source model is distributed under Apache License 2.0; the license text is
+at /assets/apache-2.0.txt. The conversion is distributed under the MIT license
+at /vendor/human/LICENSE.txt.
+Model source revision: bc66dc53bac03c96d35a7e6daaf717e72f3985f5
+https://github.com/vladmandic/human-models/tree/bc66dc53bac03c96d35a7e6daaf717e72f3985f5
+https://github.com/PINTO0309/PINTO_model_zoo/tree/main/109_Selfie_Segmentation
+SHA-256 selfie.json: 8b7f5f95c0159a83a7240b1298a67012cfffd0396bfa653bdf452913610e9a88
+SHA-256 selfie.bin: 8f57aaa72dc068a50bd37c232d2e073e107912241e459002e1480876676f382a

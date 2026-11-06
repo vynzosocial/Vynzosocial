@@ -6,6 +6,7 @@ const dist = path.join(root, 'dist');
 
 fs.rmSync(dist, { recursive: true, force: true });
 fs.cpSync(path.join(root, 'frontend'), dist, { recursive: true });
+require('./copy-live-face-assets')(dist);
 
 const wranglerConfig = JSON.parse(fs.readFileSync(path.join(root, 'wrangler.jsonc'), 'utf8'));
 const publishableKey = process.env.VYNZO_SUPABASE_PUBLISHABLE_KEY?.trim()

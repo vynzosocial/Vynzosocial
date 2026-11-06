@@ -2,11 +2,16 @@
 import { API_ORIGIN } from './config.js?v=sb4';
 import { createRealtimeSocket } from './realtime.js?v=sb9';
 import { startLiveFrameGuard } from './content-guard.js?v=1';
+import { createCameraFilter } from './live-camera-filter.js?v=5';
 
 let stopLiveFrameGuard = null;
 let socket = null;
 let cameraStream = null;
 let cameraMirrored = false;
+let cameraFilter = null;
+let cameraFilterName = 'none';
+let cameraFilterSetup = null;
+let cameraFilterGeneration = 0;
 let imageStream = null;
 let imageObjectUrl = null;
 let imageAnimationFrame = null;
@@ -559,6 +564,35 @@ function createLiveStage(placeholder, isHost, hostUsername = '', title = '', hos
           <div class="live-media-actions">
             <button type="button" class="live-media-button" id="live-enable-camera-btn">${isHost ? 'Open camera' : '🎤 Request to Join'}</button>
             <button type="button" class="live-media-button" id="live-mirror-camera-btn" aria-pressed="false" title="Mirror your preview; viewers see the normal camera view" hidden>Mirror camera</button>
+            <label class="live-camera-filter" id="live-camera-filter-control" title="Effects are processed on your device and visible to live viewers" hidden>
+              <span>Filter</span>
+              <select id="live-camera-filter" aria-label="Camera filter or face effect">
+                <option value="none">None</option>
+                <option value="warm">Warm</option>
+                <option value="cool">Cool</option>
+                <option value="vivid">Vivid</option>
+                <option value="mono">Black &amp; white</option>
+                <option value="lipstick">Lipstick</option>
+                <option value="blush">Blush</option>
+                <option value="skin">Skin smoothing</option>
+                <option value="eyeshadow">Eyeshadow</option>
+                <option value="eyeliner">Eyeliner</option>
+                <option value="lashes">Eyelashes</option>
+                <option value="eyebrows">Eyebrows</option>
+                <option value="eyes-blue">Blue eyes</option>
+                <option value="eyes-green">Green eyes</option>
+                <option value="eyes-violet">Violet eyes</option>
+                <option value="glasses">Glasses</option>
+                <option value="hat">Party hat</option>
+                <option value="stars">Star stickers</option>
+                <option value="party">Party look</option>
+                <option value="background-blue">Blue background</option>
+                <option value="background-purple">Purple background</option>
+                <option value="background-dark">Dark background</option>
+                <option value="background-image">Choose background image...</option>
+              </select>
+            </label>
+            <input id="live-background-file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
             <button type="button" class="live-media-button live-media-image-button" id="live-select-image-btn">${isHost ? 'Choose image' : 'Use image'}</button>
             <input id="live-image-file" type="file" accept="image/*" hidden>
             <button type="button" class="live-media-button live-media-off-button" id="live-turn-media-off-btn" hidden>${isHost ? 'Turn media off' : 'Leave stage'}</button>
@@ -667,9 +701,47 @@ function attachLiveMediaControls() {
   const imageInput = document.getElementById('live-image-file');
   const offButton = document.getElementById('live-turn-media-off-btn');
   const mirrorButton = document.getElementById('live-mirror-camera-btn');
+  const filterSelect = document.getElementById('live-camera-filter');
+  const backgroundInput = document.getElementById('live-background-file');
   if (!cameraButton || !imageInput || !offButton) return;
 
   cameraButton.addEventListener('click', enableLocalCamera);
+  if (filterSelect) filterSelect.addEventListener('change', () => {
+    if (filterSelect.value === 'background-image') {
+      filterSelect.value = cameraFilterName;
+      backgroundInput?.click();
+    } else applyLocalCameraFilter(filterSelect.value);
+  });
+  if (backgroundInput) backgroundInput.addEventListener('change', async () => {
+    const file = backgroundInput.files?.[0];
+    backgroundInput.value = '';
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {
+      showLiveError('Choose a JPEG, PNG or WebP image smaller than 10 MB.');
+      return;
+    }
+    const generation = cameraFilterGeneration;
+    const source = cameraStream?.getVideoTracks()[0];
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    try {
+      image.src = url;
+      await image.decode();
+      if (!image.naturalWidth || !image.naturalHeight || image.naturalWidth * image.naturalHeight > 32000000) {
+        throw new Error('Image dimensions are too large.');
+      }
+      if (generation !== cameraFilterGeneration || !source || !cameraStream?.getVideoTracks().includes(source)) {
+        showLiveError('Background selection was cancelled because your camera changed.');
+        return;
+      }
+      await applyLocalCameraFilter('background-image', image);
+    } catch (error) {
+      console.error('Unable to open background image:', error);
+      showLiveError('Could not open this background image. Choose a different image.');
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  });
   if (mirrorButton) {
     mirrorButton.addEventListener('click', () => {
       cameraMirrored = !cameraMirrored;
@@ -754,6 +826,7 @@ async function enableLocalCamera() {
     // Guests join with the camera off; they open it afterwards.
     try {
       const audioStream = await navigator.mediaDevices.getUserMedia({ audio: HD_AUDIO_CONSTRAINTS });
+      stopCameraFilter();
       stopImageSource();
       if (cameraStream) cameraStream.getTracks().forEach(track => track.stop());
       cameraStream = audioStream;
@@ -779,6 +852,7 @@ async function enableLocalCamera() {
       stream = await navigator.mediaDevices.getUserMedia({ video: HD_VIDEO_CONSTRAINTS });
       showLiveError('Camera is on, but microphone access is unavailable.');
     }
+    stopCameraFilter();
     stopImageSource();
     if (cameraStream) cameraStream.getTracks().forEach(track => track.stop());
     cameraStream = stream;
@@ -821,16 +895,6 @@ async function useLocalImage(file) {
     return;
   }
 
-  stopImageSource();
-  if (cameraStream) {
-    cameraStream.getVideoTracks().forEach(track => {
-      track.stop();
-      cameraStream.removeTrack(track);
-    });
-    localAudioTrack = cameraStream.getAudioTracks()[0] || null;
-    if (!localAudioTrack) cameraStream = null;
-  }
-
   const scale = Math.min(1, 1280 / image.naturalWidth, 1280 / image.naturalHeight);
   const canvas = document.createElement('canvas');
   canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
@@ -847,13 +911,28 @@ async function useLocalImage(file) {
     imageAnimationFrame = requestAnimationFrame(drawImageFrame);
   };
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  let nextImageStream;
   try {
-    imageStream = canvas.captureStream(10);
+    nextImageStream = canvas.captureStream(10);
+    if (!nextImageStream.getVideoTracks()[0]) throw new Error('No image video track was created.');
   } catch (err) {
+    if (nextImageStream) nextImageStream.getTracks().forEach(track => track.stop());
     URL.revokeObjectURL(objectUrl);
+    console.error('Unable to prepare image video:', err);
     showLiveError('This browser cannot share images as live video.');
     return;
   }
+  stopCameraFilter();
+  stopImageSource();
+  if (cameraStream) {
+    cameraStream.getVideoTracks().forEach(track => {
+      track.stop();
+      cameraStream.removeTrack(track);
+    });
+    localAudioTrack = cameraStream.getAudioTracks()[0] || null;
+    if (!localAudioTrack) cameraStream = null;
+  }
+  imageStream = nextImageStream;
   imageObjectUrl = objectUrl;
   imageAnimationFrame = requestAnimationFrame(drawImageFrame);
   localVideoTrack = imageStream.getVideoTracks()[0] || null;
@@ -956,6 +1035,7 @@ async function stopLocalMedia() {
     guestOnStage = false;
     if (socket) socket.emit('live_guest_leave');
   }
+  stopCameraFilter();
   stopImageSource();
   if (cameraStream) {
     cameraStream.getTracks().forEach(track => track.stop());
@@ -1005,14 +1085,127 @@ function updateLocalMediaControls(message) {
 function applyCameraMirror() {
   const mirrorButton = document.getElementById('live-mirror-camera-btn');
   const hasCameraTrack = Boolean(
-    cameraStream && localVideoTrack && cameraStream.getVideoTracks().includes(localVideoTrack)
+    cameraStream && localVideoTrack &&
+    (cameraStream.getVideoTracks().includes(localVideoTrack) || cameraFilter?.track === localVideoTrack)
   );
+  const filterControl = document.getElementById('live-camera-filter-control');
+  if (filterControl) filterControl.hidden = !hasCameraTrack;
+  document.querySelector('.live-media-controls')?.classList.toggle('has-camera-filter', hasCameraTrack);
   const preview = document.querySelector('.live-video-frame[data-peer-id="self"] .live-video-player');
   if (mirrorButton) {
     mirrorButton.hidden = !hasCameraTrack;
     mirrorButton.setAttribute('aria-pressed', String(cameraMirrored));
   }
   if (preview) preview.classList.toggle('is-mirrored', hasCameraTrack && cameraMirrored);
+}
+
+function stopCameraFilter() {
+  cameraFilterGeneration++;
+  if (cameraFilterSetup) cameraFilterSetup.abort();
+  cameraFilterSetup = null;
+  if (cameraFilter) cameraFilter.stop();
+  cameraFilter = null;
+  cameraFilterName = 'none';
+  const select = document.getElementById('live-camera-filter');
+  if (select) {
+    select.value = 'none';
+    select.disabled = false;
+  }
+}
+
+async function applyLocalCameraFilter(name, backgroundImage) {
+  const select = document.getElementById('live-camera-filter');
+  const source = cameraStream?.getVideoTracks()[0];
+  if (!source || source.readyState !== 'live') {
+    if (select) select.value = 'none';
+    showLiveError('Turn on your camera before choosing a filter.');
+    return;
+  }
+  const generation = ++cameraFilterGeneration;
+  if (cameraFilter && name !== 'none' && cameraFilter.supportsFilter(name)) {
+    cameraFilter.setFilter(name);
+    cameraFilterName = name;
+    return;
+  }
+  const previous = cameraFilter;
+  const previousName = cameraFilterName;
+  const setup = new AbortController();
+  cameraFilterSetup = setup;
+  if (select) {
+    select.value = previousName;
+    select.disabled = true;
+  }
+  if (name.startsWith('background-')) {
+    updateLocalMediaControls('Setting up the background. Your current video remains visible until it is ready.');
+  }
+  try {
+    let next;
+    next = name === 'none' ? null : await createCameraFilter(source, name, (error) => {
+      if (!next || cameraFilter !== next) return;
+      console.error('Live camera filter failed:', error);
+      stopCameraFilter();
+      const wasBackground = name.startsWith('background-');
+      if (wasBackground) source.stop();
+      localVideoTrack = !wasBackground && source.readyState === 'live' ? source : null;
+      publishLocalMedia().catch(err => {
+        console.error('Unable to restore the camera:', err);
+        showLiveError('Unable to restore your camera. Turn media off and try again.');
+      });
+      showLiveError(wasBackground ? 'Background processing stopped. Video sharing was turned off; turn your camera on to try again.' : 'The camera filter stopped. Check your camera and try again.');
+      updateLocalMediaControls(!wasBackground && source.readyState === 'live'
+        ? 'Your camera is being shared without a filter.'
+        : 'Your camera is off. Turn it on to share video.');
+    }, setup.signal, backgroundImage);
+    if (generation !== cameraFilterGeneration || !cameraStream?.getVideoTracks().includes(source)) {
+      if (next) next.stop();
+      return;
+    }
+    if (next?.track.readyState === 'ended') {
+      next.stop();
+      throw new Error('The camera filter stopped during setup.');
+    }
+    cameraFilter = next;
+    cameraFilterName = name;
+    localVideoTrack = next ? next.track : source;
+    try {
+      await publishLocalMedia();
+    } catch (error) {
+      try {
+        if (generation === cameraFilterGeneration) {
+          cameraFilter = previous;
+          cameraFilterName = previousName;
+          localVideoTrack = previous ? previous.track : source;
+          await publishLocalMedia();
+        }
+      } finally {
+        if (next) next.stop();
+      }
+      throw error;
+    }
+    if (generation !== cameraFilterGeneration) {
+      if (previous) previous.stop();
+      return;
+    }
+    if (previous) previous.stop();
+    if (select) select.value = name;
+    applyCameraMirror();
+    if (name.startsWith('background-')) {
+      updateLocalMediaControls('Background is visible to viewers. Edges may be imperfect; do not rely on it to hide private details.');
+    }
+  } catch (error) {
+    if (generation !== cameraFilterGeneration) return;
+    console.error('Unable to apply live camera filter:', error);
+    if (select) select.value = previousName;
+    showLiveError('Unable to change the camera filter. Please try again.');
+    if (name.startsWith('background-')) {
+      updateLocalMediaControls('The background could not be applied. Your previous video remains visible.');
+    }
+  } finally {
+    if (cameraFilterSetup === setup) {
+      cameraFilterSetup = null;
+      if (select) select.disabled = false;
+    }
+  }
 }
 
 let guestMuted = false;
@@ -1744,7 +1937,10 @@ export async function startBroadcasting(title, category, visibility = 'public', 
     refreshLiveStreams();
     stopLiveFrameGuard = startLiveFrameGuard(
       () => activeBroadcastSessionId,
-      () => [...document.querySelectorAll('video')].find(v => v.srcObject?.getVideoTracks?.().includes(localVideoTrack)),
+      () => {
+        const video = document.querySelector('.live-video-frame[data-peer-id="self"] .live-video-player');
+        return video?.srcObject?.getVideoTracks?.().includes(localVideoTrack) ? video : null;
+      },
       () => {
         exitBroadcasting();
         alert('Your live stream was ended because it appears to violate the Vynzo community guidelines.');
