@@ -73,11 +73,6 @@
     overflow-wrap: anywhere;
   }
 
-  .account-connection .account-search-avatar.is-live {
-    border: 2px solid #41ee89;
-    box-shadow: 0 0 0 2px #1dbb66, 0 0 16px rgba(37, 235, 124, 0.8);
-  }
-
   .account-profile-button,
   .account-follow-button {
     padding: 7px 9px;

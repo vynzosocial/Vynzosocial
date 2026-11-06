@@ -11,12 +11,21 @@ export function initAccountSearch() {
   const results = document.getElementById('account-search-results');
   if (!form || !input || !results) return;
 
+  let searchGeneration = 0;
+  let activeQuery = '';
+  const search = async (query, refresh = false) => {
+    const generation = ++searchGeneration;
+    await searchAccounts(query, results, () => generation === searchGeneration, refresh);
+  };
   form.addEventListener('submit', event => {
     event.preventDefault();
-    searchAccounts(input.value.trim(), results);
+    activeQuery = input.value.trim();
+    search(activeQuery);
   });
 
   input.addEventListener('input', () => {
+    activeQuery = '';
+    searchGeneration++;
     if (!input.value.trim()) {
       results.hidden = true;
       results.replaceChildren();
@@ -24,6 +33,15 @@ export function initAccountSearch() {
   });
 
   initConnections();
+  window.setInterval(() => {
+    if (!document.hidden && activeQuery && !results.contains(document.activeElement)) {
+      search(activeQuery, true);
+    }
+  }, 30000);
+}
+
+function liveFirst(users) {
+  return users.filter(user => user.is_live).concat(users.filter(user => !user.is_live));
 }
 
 function initConnections() {
@@ -31,15 +49,22 @@ function initConnections() {
   const tabs = document.querySelectorAll('.people-tab');
   if (!list || !tabs.length) return;
 
-  const load = async type => {
-    tabs.forEach(tab => {
-      const active = tab.dataset.type === type;
-      tab.classList.toggle('active', active);
-      tab.setAttribute('aria-selected', String(active));
-    });
-    renderSearchMessage(list, 'Loading...');
+  let activeType = 'friends';
+  let generation = 0;
+  const load = async (type, refresh = false) => {
+    activeType = type;
+    const request = ++generation;
+    if (!refresh) {
+      tabs.forEach(tab => {
+        const active = tab.dataset.type === type;
+        tab.classList.toggle('active', active);
+        tab.setAttribute('aria-selected', String(active));
+      });
+      renderSearchMessage(list, 'Loading...');
+    }
     try {
       const data = await apiRequest(`/users/connections?type=${type}`);
+      if (request !== generation) return;
       const users = type === 'followers' ? data.users.filter(user => !user.is_following) : data.users;
       list.replaceChildren();
       if (!users.length) {
@@ -48,38 +73,54 @@ function initConnections() {
           : 'No followers waiting for a follow back.');
         return;
       }
-      users.forEach(user => list.appendChild(createAccountResult(user, true)));
+      liveFirst(users).forEach(user => list.appendChild(createAccountResult(user, true)));
     } catch (err) {
       console.error('Could not load connections:', err);
-      renderSearchMessage(list, err.message || 'Log in to see your friends and followers.');
+      if (request === generation && !refresh) renderSearchMessage(list, err.message || 'Log in to see your friends and followers.');
     }
   };
 
   tabs.forEach(tab => tab.addEventListener('click', () => load(tab.dataset.type)));
   load('friends');
+  window.setInterval(() => {
+    if (!document.hidden && !list.contains(document.activeElement)) load(activeType, true);
+  }, 30000);
 }
 
-async function searchAccounts(query, container) {
+async function searchAccounts(query, container, isCurrent, refresh = false) {
   if (query.length < 2) {
     renderSearchMessage(container, 'Enter at least 2 characters to search.');
     return;
   }
 
   container.hidden = false;
-  renderSearchMessage(container, 'Searching accounts...');
+  if (!refresh) renderSearchMessage(container, 'Searching accounts...');
   try {
     const data = await apiRequest(`/users/search?q=${encodeURIComponent(query)}`);
+    if (!isCurrent()) return;
     container.replaceChildren();
     if (!data.users.length) {
       renderSearchMessage(container, 'No accounts found.');
       return;
     }
 
-    data.users.forEach(user => container.appendChild(createAccountResult(user)));
+    liveFirst(data.users).forEach(user => container.appendChild(createAccountResult(user)));
   } catch (err) {
     console.error('Account search failed:', err);
-    renderSearchMessage(container, err.message || 'Could not search accounts. Please try again.');
+    if (isCurrent() && !refresh) renderSearchMessage(container, err.message || 'Could not search accounts. Please try again.');
   }
+}
+
+function createLiveIndicator(user) {
+  const link = document.createElement('a');
+  link.className = 'account-live-indicator';
+  link.setAttribute('aria-label', `Watch ${user.display_name || user.username} live`);
+  link.title = 'Watch live';
+  const inPages = window.location.pathname.includes('/pages/');
+  link.href = `${inPages ? '' : 'pages/'}live.html?sessionId=${encodeURIComponent(user.live_session_id)}`;
+  link.addEventListener('click', event => event.stopPropagation());
+  link.addEventListener('keydown', event => event.stopPropagation());
+  return link;
 }
 
 // Red LIVE pill that opens the user's running stream.
@@ -112,15 +153,18 @@ function createAccountResult(user, isConnection = false) {
 
   const identity = document.createElement('span');
   identity.className = 'account-search-identity';
+  const nameRow = document.createElement('span');
+  nameRow.className = 'account-search-name-row';
   const name = document.createElement('strong');
   name.textContent = user.display_name || user.username;
+  nameRow.appendChild(name);
+  if (user.is_live) nameRow.appendChild(createLiveIndicator(user));
   const username = document.createElement('small');
   username.textContent = `@${user.username}`;
   const counts = document.createElement('small');
   counts.className = 'account-search-counts';
   counts.textContent = `${user.friends_count ?? 0} friends · ${user.followers_count ?? 0} followers`;
-  identity.append(name, username, counts);
-  if (user.is_live) identity.appendChild(createLiveBadge(user));
+  identity.append(nameRow, username, counts);
 
   const viewButton = document.createElement('button');
   viewButton.type = 'button';
