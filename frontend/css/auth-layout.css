@@ -1,0 +1,12 @@
+body {
+  height: auto;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 20px 16px;
+  align-items: flex-start;
+}
+
+.auth-card {
+  flex: 0 0 auto;
+  margin: auto;
+}
