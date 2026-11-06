@@ -1211,10 +1211,9 @@ function updateVideoGridLayout() {
   // Equal slots by tile count: 1, 2, 2x2, 3x3, then 4 across x 3 rows (12 tiles maximum, host included).
   const count = frames.length;
   const slots = count <= 1 ? 1 : count === 2 ? 2 : count <= 4 ? 4 : count <= 9 ? 9 : 12;
-  const narrow = window.innerWidth < 700;
-  const cols = slots === 1 ? 1 : slots === 2 ? (narrow ? 1 : 2) : slots === 4 ? 2 : slots === 9 ? 3 : 4;
+  const cols = slots === 1 ? 1 : slots === 2 ? 2 : slots === 4 ? 2 : slots === 9 ? 3 : 4;
   const rows = Math.ceil(slots / cols);
-  grid.dataset.layout = 'equal';
+  grid.dataset.layout = count === 2 ? 'two' : 'equal';
   grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
   grid.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
   grid.style.gridAutoRows = 'minmax(0, 1fr)';

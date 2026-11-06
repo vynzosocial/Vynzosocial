@@ -18,6 +18,14 @@
   grid-auto-rows: minmax(0, 1fr);
 }
 
+.live-video-grid[data-layout="two"] {
+  direction: ltr;
+}
+
+html[dir="rtl"] .live-video-grid[data-layout="two"] > * {
+  direction: rtl;
+}
+
 .live-video-frame,
 .live-video-empty {
   min-height: 0;
