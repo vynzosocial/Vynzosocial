@@ -48,7 +48,7 @@ function initConnections() {
           : 'No followers waiting for a follow back.');
         return;
       }
-      users.forEach(user => list.appendChild(createAccountResult(user)));
+      users.forEach(user => list.appendChild(createAccountResult(user, true)));
     } catch (err) {
       console.error('Could not load connections:', err);
       renderSearchMessage(list, err.message || 'Log in to see your friends and followers.');
@@ -91,15 +91,16 @@ function createLiveBadge(user) {
   badge.href = `${inPages ? '' : 'pages/'}live.html?sessionId=${encodeURIComponent(user.live_session_id)}`;
   badge.style.cssText = 'display:inline-block;margin-top:4px;padding:2px 10px;border-radius:12px;background:#e5334b;color:#fff;font-size:12px;font-weight:700;text-decoration:none;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:0 0 10px rgba(229,51,75,.7)';
   badge.addEventListener('click', event => event.stopPropagation());
+  badge.addEventListener('keydown', event => event.stopPropagation());
   return badge;
 }
 
-function createAccountResult(user) {
+function createAccountResult(user, isConnection = false) {
   const row = document.createElement('article');
-  row.className = 'account-search-result';
+  row.className = `account-search-result${isConnection ? ' account-connection' : ''}`;
 
   const avatar = document.createElement('span');
-  avatar.className = 'account-search-avatar';
+  avatar.className = `account-search-avatar${user.is_live ? ' is-live' : ''}`;
   if (user.avatar_url) {
     const image = document.createElement('img');
     image.src = /^https?:/i.test(user.avatar_url) ? user.avatar_url : `${MEDIA_BASE_URL}${user.avatar_url}`;
