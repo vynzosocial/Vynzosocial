@@ -31,6 +31,7 @@
 
     /* Landing page */
     'Log in': 'Inloggen',
+    'Sign up': 'Registreren',
     'Create account': 'Account maken',
     'YOUR PEOPLE. YOUR MOMENTS': 'JOUW MENSEN. JOUW MOMENTEN',
     'Make a little': 'Maak wat',

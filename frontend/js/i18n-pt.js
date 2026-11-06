@@ -32,6 +32,7 @@
 
     /* Landing page */
     'Log in': 'Entrar',
+    'Sign up': 'Cadastre-se',
     'Create account': 'Criar conta',
     'YOUR PEOPLE. YOUR MOMENTS': 'SUA GALERA. SEUS MOMENTOS',
     'Make a little': 'Faça um pouco',

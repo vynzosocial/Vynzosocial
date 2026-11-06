@@ -32,6 +32,7 @@
 
     /* Landing page */
     'Log in': 'لاگ ان کریں',
+    'Sign up': 'سائن اپ کریں',
     'Create account': 'اکاؤنٹ بنائیں',
     'YOUR PEOPLE. YOUR MOMENTS': 'آپ کے لوگ۔ آپ کے لمحات',
     'Make a little': 'تھوڑی سی',

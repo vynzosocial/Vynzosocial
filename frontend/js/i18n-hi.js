@@ -28,6 +28,7 @@
     'Just now': 'अभी अभी',
     'Vynzo — Social Media Platform': 'Vynzo - सोशल मीडिया प्लेटफॉर्म',
     'Log in': 'लॉग इन करें',
+    'Sign up': 'साइन अप करें',
     'Create account': 'खाता बनाएं',
     'YOUR PEOPLE. YOUR MOMENTS': 'आपके लोग। आपके क्षण',
     'Make a little': 'थोड़ा बनाओ',

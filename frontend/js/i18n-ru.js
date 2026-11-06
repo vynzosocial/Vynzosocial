@@ -32,6 +32,7 @@
 
     /* Landing page */
     'Log in': 'Войти',
+    'Sign up': 'Зарегистрироваться',
     'Create account': 'Создать аккаунт',
     'YOUR PEOPLE. YOUR MOMENTS': 'ВАШИ ЛЮДИ. ВАШИ МОМЕНТЫ',
     'Make a little': 'Добавьте немного',

@@ -116,6 +116,21 @@
   font-weight: 650;
 }
 
+.welcome-app-auth {
+  display: none;
+}
+
+.vynzo-android-app .welcome-web-auth {
+  display: none;
+}
+
+.vynzo-android-app .welcome-app-auth {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .welcome-login,
 .welcome-secondary {
   color: var(--welcome-muted);

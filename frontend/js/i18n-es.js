@@ -31,6 +31,7 @@
 
     /* Landing page */
     'Log in': 'Iniciar sesión',
+    'Sign up': 'Registrarse',
     'Create account': 'Crear cuenta',
     'YOUR PEOPLE. YOUR MOMENTS': 'TU GENTE. TUS MOMENTOS',
     'Make a little': 'Haz un poco',

@@ -31,6 +31,7 @@
 
     /* Landing page */
     'Log in': 'Se connecter',
+    'Sign up': "S'inscrire",
     'Create account': 'Créer un compte',
     'YOUR PEOPLE. YOUR MOMENTS': 'VOS PROCHES. VOS MOMENTS',
     'Make a little': 'Mettez un peu',

@@ -32,6 +32,7 @@
 
     /* Landing page */
     'Log in': 'تسجيل الدخول',
+    'Sign up': 'إنشاء حساب',
     'Create account': 'إنشاء حساب',
     'YOUR PEOPLE. YOUR MOMENTS': 'ناسك. لحظاتك',
     'Make a little': 'أضف القليل',
