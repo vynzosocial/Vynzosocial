@@ -3,7 +3,9 @@ import { API_ORIGIN } from './config.js?v=sb4';
 import { createRealtimeSocket } from './realtime.js?v=sb9';
 import { startLiveFrameGuard } from './content-guard.js?v=1';
 import { createCameraFilter } from './live-camera-filter.js?v=6';
-import { openShareDialog, SHARE_BASE_URL } from './share.js?v=3';
+import { openShareDialog, SHARE_BASE_URL } from './share.js?v=4';
+import { restoreSupabaseSession } from './supabase-client.js';
+import { shareLoginUrl } from './share-login.js?v=1';
 try { screen.orientation?.lock?.('portrait').catch(() => {}); } catch { /* unsupported */ }
 
 let stopLiveFrameGuard = null;
@@ -108,6 +110,19 @@ export function createTitleEditor({ value = '', onCommit, autoSave = false } = {
 export async function initLiveStudio() {
   const container = document.getElementById('live-streams-list');
   if (!container) return;
+  if (new URLSearchParams(window.location.search).has('sessionId') && !localStorage.getItem('vynzo_token')) {
+    try {
+      await restoreSupabaseSession();
+    } catch (error) {
+      console.error('Unable to restore the session:', error);
+      showLiveError('Unable to restore your session. Please try again.');
+      return;
+    }
+    if (!localStorage.getItem('vynzo_token')) {
+      window.location.href = shareLoginUrl(window.location);
+      return;
+    }
+  }
 
   const setScreenSecure = enabled => window.Capacitor?.Plugins?.ScreenGuard?.setSecure({ enabled })?.catch?.(() => {});
   setScreenSecure(true);

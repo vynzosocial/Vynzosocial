@@ -2,6 +2,7 @@ import './supabase-client.js';
 import { API_BASE_URL, API_ORIGIN } from './config.js?v=sb4';
 import { supabase } from './supabase-client.js';
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabase-config.js';
+import { shareLoginUrl } from './share-login.js?v=1';
 
 const API_TIMEOUT_MESSAGE = 'The request took too long. Check your connection and try again.';
 
@@ -109,7 +110,9 @@ export async function apiRequest(endpoint, options = {}) {
         localStorage.removeItem('vynzo_token');
         localStorage.removeItem('vynzo_user');
         if (!window.location.pathname.endsWith('login.html')) {
-          window.location.href = window.location.pathname.includes('/pages/') ? './login.html' : './pages/login.html';
+          const sharePath = ['/pages/shared-media.html', '/pages/live.html', '/pages/blogs.html'].includes(window.location.pathname);
+          window.location.href = sharePath ? shareLoginUrl(window.location)
+            : window.location.pathname.includes('/pages/') ? './login.html' : './pages/login.html';
         }
       } else if (refreshed?.session && !options._retried) {
         return apiRequest(endpoint, { ...options, _retried: true });

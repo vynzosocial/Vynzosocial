@@ -1,9 +1,12 @@
 import { apiRequest } from './api.js?v=sb6';
 import { API_ORIGIN } from './config.js?v=sb4';
-import { openShareDialog, SHARE_BASE_URL } from './share.js?v=3';
+import { openShareDialog, SHARE_BASE_URL } from './share.js?v=4';
 import { t, getLang, applyLang, toggleLang, setLang } from './blogs-i18n.js?v=9';
+import { shareLoginUrl } from './share-login.js?v=1';
 
-if (!localStorage.getItem('vynzo_token')) location.href = '../index.html';
+if (!localStorage.getItem('vynzo_token')) {
+  location.href = location.hash.startsWith('#/a/') ? shareLoginUrl(location) : '../index.html';
+}
 
 const view = document.getElementById('blogs-view');
 const state = { meta: null, user: (() => { try { return JSON.parse(localStorage.getItem('vynzo_user')) || {}; } catch { return {}; } })() };

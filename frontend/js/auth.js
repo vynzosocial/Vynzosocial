@@ -2,6 +2,7 @@ import { requireSupabase, syncLegacySession } from './supabase-client.js';
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabase-config.js';
 import { isValidUsername, USERNAME_MESSAGE } from './username-rules.js';
 import { canSelectSavedLogin, selectSavedLogin, offerToSaveLogin } from './password-manager.js?v=1';
+import { shareLoginDestination } from './share-login.js?v=1';
 
 const COUNTRY_CODES = 'AF AX AL DZ AS AD AO AI AQ AG AR AM AW AU AT AZ BS BH BD BB BY BE BZ BJ BM BT BO BA BW BV BR IO VG BN BG BF BI KH CM CA CV BQ KY CF TD CL CN CX CC CO KM CG CD CK CR CI HR CU CW CY CZ DK DJ DM DO EC EG SV GQ ER EE SZ ET FK FO FJ FI FR GF PF TF GA GM GE DE GH GI GR GL GD GP GU GT GG GN GW GY HT HM HN HK HU IS IN ID IR IQ IE IM IL IT JM JP JE JO KZ KE KI KW KG LA LV LB LS LR LY LI LT LU MO MG MW MY MV ML MT MH MQ MR MU YT MX FM MD MC MN ME MS MA MZ MM NA NR NP NL NC NZ NI NE NG NU NF KP MK MP NO OM PK PW PS PA PG PY PE PH PN PL PT PR QA RE RO RW WS SM ST SA SN RS SC SL SG SX SK SI SB SO ZA GS KR SS ES LK BL SH KN LC MF PM VC SD SR SJ SE CH SY TW TJ TZ TH TL TG TK TO TT TN TR TM TC TV UM VI UG UA AE GB US UY UZ VU VA VE VN WF EH YE ZM ZW';
 const REGION_NAMES = new Intl.DisplayNames(['en'], { type: 'region' });
@@ -33,6 +34,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const loginSubmit = document.getElementById('login-submit');
     const loginContinue = document.getElementById('login-continue');
     const errorEl = document.getElementById('error-message');
+    const destination = shareLoginDestination(window.location);
+    loginContinue.href = destination;
     savedLoginButton.hidden = !canSelectSavedLogin();
     savedLoginButton.addEventListener('click', async () => {
       savedLoginButton.disabled = true;
@@ -82,7 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
           }
         }
-        window.location.href = '../index.html';
+        window.location.href = destination;
       } catch (err) {
         if (errorEl) errorEl.textContent = err.message || 'Unable to sign in.';
       } finally {

@@ -9,11 +9,20 @@ export function absoluteMediaUrl(url) {
   return /^https?:/i.test(url) ? url : `${API_ORIGIN}${url}`;
 }
 
+export function externalShareUrl(url, preview) {
+  if (!preview?.r2) return url;
+  const link = new URL('/pages/shared-media.html', SHARE_BASE_URL);
+  link.searchParams.set('kind', preview.kind);
+  link.searchParams.set('id', preview.id);
+  link.searchParams.set('type', preview.type);
+  return link.toString();
+}
 
 export async function openShareDialog({ title = 'Share', text = '', url, preview }) {
   if (!url) return;
   document.getElementById('share-dialog-overlay')?.remove();
   const message = shareMessage(text, url, preview);
+  const externalUrl = externalShareUrl(url, preview);
 
   const overlay = document.createElement('div');
   overlay.id = 'share-dialog-overlay';
@@ -31,24 +40,45 @@ export async function openShareDialog({ title = 'Share', text = '', url, preview
   list.className = 'share-dialog-list';
   const footer = document.createElement('div');
   footer.className = 'share-dialog-footer';
+  const whatsapp = document.createElement('a');
+  whatsapp.className = 'share-dialog-external';
+  whatsapp.textContent = 'WhatsApp';
+  whatsapp.href = `https://wa.me/?text=${encodeURIComponent([text, externalUrl].filter(Boolean).join('\n'))}`;
+  whatsapp.target = '_blank';
+  whatsapp.rel = 'noopener noreferrer';
+  footer.append(whatsapp);
   const copy = document.createElement('button');
   copy.type = 'button';
   copy.textContent = 'Copy link';
   copy.addEventListener('click', async () => {
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(externalUrl);
       status.textContent = 'Link copied.';
     } catch {
-      window.prompt('Copy this link:', url);
+      window.prompt('Copy this link:', externalUrl);
     }
   });
   footer.append(copy);
   if (navigator.share) {
     const more = document.createElement('button');
     more.type = 'button';
-    more.textContent = 'More…';
-    more.addEventListener('click', () => navigator.share({ title, text, url }).catch(() => {}));
+    more.textContent = 'Snapchat / Instagram / More';
+    more.addEventListener('click', async () => {
+      try {
+        await navigator.share({ title, text, url: externalUrl });
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          console.error('Could not open the share sheet:', error);
+          status.textContent = 'Could not open sharing. Copy the link and paste it into your chat.';
+        }
+      }
+    });
     footer.append(more);
+  } else {
+    const hint = document.createElement('p');
+    hint.className = 'share-dialog-hint';
+    hint.textContent = 'For Snapchat or Instagram, copy the link and paste it into a chat.';
+    footer.append(hint);
   }
   const close = document.createElement('button');
   close.type = 'button';

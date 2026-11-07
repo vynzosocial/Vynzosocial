@@ -1,7 +1,7 @@
 import { apiRequest } from './api.js?v=sb6';
-import { openPostViewer } from './feed.js?v=share3';
+import { openPostViewer } from './feed.js?v=share4';
 import { protectMedia } from './media-protect.js';
-import { openUserStories } from './stories.js?v=share3';
+import { openUserStories } from './stories.js?v=share4';
 import { refreshExpiredMedia } from './r2-uploads.js';
 
 import { API_ORIGIN as MEDIA_BASE_URL } from './config.js?v=sb4';

@@ -6,7 +6,7 @@ import { downloadOriginal, refreshExpiredMedia } from './r2-uploads.js';
 import { openVideoOptions, initSharedVideoReceiver } from './video-create.js?v=vc1';
 import { attachEmojiPicker } from './emoji-picker.js';
 import { protectMedia } from './media-protect.js';
-import { openShareDialog, absoluteMediaUrl } from './share.js?v=3';
+import { openShareDialog, absoluteMediaUrl } from './share.js?v=4';
 
 export async function initFeed() {
   const container = document.getElementById('feed-container');

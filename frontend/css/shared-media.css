@@ -1,0 +1,6 @@
+body { margin: 0; background: #100e18; color: white; font: 16px system-ui, sans-serif; }
+.shared-page { display: flex; flex-direction: column; align-items: center; gap: 16px; max-width: 900px; margin: auto; padding: 24px; text-align: center; }
+.shared-page h1, .shared-page p { margin: 0; }
+.shared-page a { color: #e4b7ff; }
+#shared-content { width: 100%; }
+#shared-content img, #shared-content video { max-width: 100%; max-height: 75vh; object-fit: contain; }
