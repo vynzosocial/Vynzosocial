@@ -1,6 +1,6 @@
 import { apiRequest } from './api.js?v=sb6';
 import { API_ORIGIN } from './config.js?v=sb4';
-import { openShareDialog, SHARE_BASE_URL } from './share.js?v=4';
+import { openShareDialog, SHARE_BASE_URL } from './share.js?v=5';
 import { t, getLang, applyLang, toggleLang, setLang } from './blogs-i18n.js?v=9';
 import { shareLoginUrl } from './share-login.js?v=1';
 

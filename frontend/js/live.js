@@ -3,7 +3,7 @@ import { API_ORIGIN } from './config.js?v=sb4';
 import { createRealtimeSocket } from './realtime.js?v=sb9';
 import { startLiveFrameGuard } from './content-guard.js?v=1';
 import { createCameraFilter } from './live-camera-filter.js?v=6';
-import { openShareDialog, SHARE_BASE_URL } from './share.js?v=4';
+import { openShareDialog, SHARE_BASE_URL } from './share.js?v=5';
 import { restoreSupabaseSession } from './supabase-client.js';
 import { shareLoginUrl } from './share-login.js?v=1';
 try { screen.orientation?.lock?.('portrait').catch(() => {}); } catch { /* unsupported */ }

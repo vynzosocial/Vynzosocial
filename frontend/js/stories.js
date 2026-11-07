@@ -5,7 +5,7 @@ import { timeAgo } from './time-ago.js';
 import { protectMedia } from './media-protect.js';
 import { openCamera } from './camera-capture.js';
 import { attachEmojiPicker } from './emoji-picker.js';
-import { openShareDialog, absoluteMediaUrl } from './share.js?v=4';
+import { openShareDialog, absoluteMediaUrl } from './share.js?v=5';
 
 let viewerTimer = null;
 let currentStoryGroup = [];

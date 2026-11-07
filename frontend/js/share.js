@@ -10,7 +10,10 @@ export function absoluteMediaUrl(url) {
 }
 
 export function externalShareUrl(url, preview) {
-  if (!preview?.r2) return url;
+  if (!preview || !['post', 'story'].includes(preview.kind) || !['image', 'video'].includes(preview.type)) return url;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(preview.id || '')) {
+    throw new Error('Cannot share this media: its identifier is invalid.');
+  }
   const link = new URL('/pages/shared-media.html', SHARE_BASE_URL);
   link.searchParams.set('kind', preview.kind);
   link.searchParams.set('id', preview.id);

@@ -58,6 +58,21 @@ test('native share receives a stable privacy-checked R2 link rather than an expi
   assert.equal(link.searchParams.has('permit'), false);
 });
 
+test('older Supabase media shares use Vynzo links instead of storage links', async () => {
+  const { context } = setup();
+  for (const kind of ['post', 'story']) {
+    const url = context.externalShareUrl('https://storage.example.test/image.jpg', {
+      type: 'image', kind, id: 'a4e777de-3d68-4f4e-9e7a-843f3229dabc', r2: false
+    });
+    const link = new URL(url);
+    assert.equal(link.origin, 'https://www.vynzosocial.com');
+    assert.equal(link.pathname, '/pages/shared-media.html');
+    assert.equal(link.searchParams.get('kind'), kind);
+    assert.doesNotMatch(url, /storage\.example/);
+  }
+  assert.throws(() => context.externalShareUrl('https://storage.example/image', { type: 'image', kind: 'post', id: 'invalid' }), /invalid/);
+});
+
 test('sign-in returns to valid shared content but rejects external redirects', () => {
   const source = fs.readFileSync(path.join(__dirname, '../frontend/js/share-login.js'), 'utf8').replace(/export /g, '');
   const context = { URL, URLSearchParams, Set };

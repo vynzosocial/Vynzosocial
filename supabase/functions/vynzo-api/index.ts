@@ -2651,7 +2651,7 @@ Deno.serve(async request => {
       const context = kind === 'post' ? await getPostContext(id, viewer.id) : await getStoryContext(id, viewer.id)
       const item = context && ('post' in context ? context.post : context.story)
       const variant = endpointSegments[1] === 'original' ? 'original' : 'playback'
-      if (!item || (variant === 'original' && item.user_id !== viewer.id) || !parseR2MediaUrl(item.media_url)) {
+      if (!item || (variant === 'original' && (item.user_id !== viewer.id || !parseR2MediaUrl(item.media_url)))) {
         return jsonResponse(404, { error: 'Media not found.' }, headers)
       }
       const mediaUrl = await mediaPlaybackUrl(item.media_url, id, viewer.id, variant)

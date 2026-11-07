@@ -202,6 +202,23 @@ test('stages, publishes, serves, revokes and deletes a post through the API and 
     assert.deepEqual((await reconciliation.json()).orphaned, [ref]);
     assert.equal((await api(`/stories/${videoUpload.uploadId}`, 'DELETE', userId)).status, 200);
     assert.equal(media.size, 0);
+
+    const legacyPostId = '971c48cc-4358-4ed1-bafe-27571bedb81a';
+    const legacyStoryId = 'dc646b7f-69a7-4879-aebb-55191fce642b';
+    const legacyUrl = 'https://storage.example/public/legacy.jpg';
+    rows.posts.push({ id: legacyPostId, user_id: userId, media_type: 'image', media_url: legacyUrl, privacy: 'everyone' });
+    rows.stories.push({ id: legacyStoryId, user_id: userId, media_type: 'image', media_url: legacyUrl, privacy: 'everyone',
+      expires_at: new Date(Date.now() + 60000).toISOString() });
+    for (const [kind, id] of [['post', legacyPostId], ['story', legacyStoryId]]) {
+      const playback = await api(`/media/playback?kind=${kind}&id=${id}`, 'GET', viewerId);
+      assert.equal(playback.status, 200);
+      assert.equal((await playback.json()).url, legacyUrl);
+      assert.equal((await api(`/media/original?kind=${kind}&id=${id}`, 'GET', userId)).status, 404);
+    }
+    rows.posts[0].privacy = 'only_me';
+    rows.stories[0].expires_at = new Date(Date.now() - 1000).toISOString();
+    assert.equal((await api(`/media/playback?kind=post&id=${legacyPostId}`, 'GET', viewerId)).status, 404);
+    assert.equal((await api(`/media/playback?kind=story&id=${legacyStoryId}`, 'GET', viewerId)).status, 404);
   } finally {
     global.crypto = original.crypto;
     global.Deno = original.Deno;
