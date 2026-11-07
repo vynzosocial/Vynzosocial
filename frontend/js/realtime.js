@@ -316,6 +316,7 @@ export function createRealtimeSocket(options = {}) {
 
   const removeStageGuest = socketId => {
     if (!room) return;
+    room.invites.delete(socketId);
     if (room.pending.delete(socketId)) sendRoom('live_guest_request_cancel', { socketId });
     if (room.guests.delete(socketId)) {
       sendRoom('live_guest_count', { count: room.guests.size, max: MAX_LIVE_GUESTS });
@@ -337,12 +338,32 @@ export function createRealtimeSocket(options = {}) {
     const { event, data, from } = payload;
     if (event === 'cmd_guest_request') {
       if (!room.isHost) return;
+      if (!from || data.socketId !== from || !room.channel.presenceState()[from]) return;
       if (room.guests.size >= MAX_LIVE_GUESTS) {
         sendRoom('live_guest_denied', { reason: `The stage is full (${MAX_LIVE_GUESTS} guests maximum).` }, data.socketId);
         return;
       }
       room.pending.set(data.socketId, data);
+      if (data.acceptInvite && room.invites.delete(from)) {
+        commands.live_guest_decision({ socketId: from, accept: true });
+        return;
+      }
       dispatch('live_guest_request', data);
+      return;
+    }
+    if (event === 'live_host_invite') {
+      if (room.isHost || from !== hostSocketId()) return;
+      dispatch(event, data);
+      return;
+    }
+    if (event === 'live_camera_state') {
+      if (!room.channel.presenceState()[from] || typeof data?.enabled !== 'boolean') return;
+      dispatch(event, { socketId: from, enabled: data.enabled });
+      return;
+    }
+    if (event === 'live_chat_message') {
+      if (!room.channel.presenceState()[from]) return;
+      dispatch(event, { ...data, socketId: from });
       return;
     }
     if (event === 'cmd_guest_leave') {
@@ -365,7 +386,7 @@ export function createRealtimeSocket(options = {}) {
     dispatch('live_viewers_changed');
     if (meta.joinOrder > room.joinOrder) {
       dispatch('viewer_joined', { socketId: key });
-      if (!meta.isHost) dispatch('live_member_joined', { name: meta.name });
+      if (!meta.isHost) dispatch('live_member_joined', { name: meta.name, socketId: key });
     }
     if (meta.isHost && room.hostTimer) {
       clearTimeout(room.hostTimer);
@@ -441,6 +462,7 @@ export function createRealtimeSocket(options = {}) {
       style: null,
       pending: new Map(),
       guests: new Map(),
+      invites: new Set(),
       hostTimer: null,
       heartbeat: null
     };
@@ -531,15 +553,37 @@ export function createRealtimeSocket(options = {}) {
     sendRoom('live_layout', { layout, hostSocketId: socket.id });
   };
 
-  commands.live_guest_join = (_unused, ack) => {
+  commands.live_guest_join = (options, ack) => {
     if (!room) return ack({ ok: false, error: 'Log in and join a livestream first.' });
     if (room.isHost) return ack({ ok: true, approved: true });
     if (room.guests.has(socket.id)) return ack({ ok: true, approved: true });
     const host = hostSocketId();
     if (!host) return ack({ ok: false, error: 'This livestream is no longer active.' });
     const me = currentUser();
-    sendRoom('cmd_guest_request', { socketId: socket.id, name: displayName(me), avatar_url: me.avatar_url || null }, host);
+    sendRoom('cmd_guest_request', { socketId: socket.id, name: displayName(me), avatar_url: me.avatar_url || null, acceptInvite: options?.acceptInvite === true }, host);
     ack({ ok: true, approved: false });
+  };
+
+  commands.live_invite_guest = async ({ socketId } = {}, ack) => {
+    if (!room || !room.isHost) return ack({ ok: false, error: 'Only the host can invite viewers.' });
+    if (!socketId || socketId === socket.id || !room.channel.presenceState()[socketId]) {
+      return ack({ ok: false, error: 'This viewer is no longer in the live.' });
+    }
+    if (room.guests.has(socketId)) return ack({ ok: false, error: 'This viewer is already on stage.' });
+    if (room.guests.size >= MAX_LIVE_GUESTS) return ack({ ok: false, error: 'The stage is full.' });
+    room.invites.add(socketId);
+    const result = await sendRoom('live_host_invite', { name: displayName(currentUser()) }, socketId);
+    if (result !== 'ok') {
+      room.invites.delete(socketId);
+      return ack({ ok: false, error: 'Could not send the invitation. Please try again.' });
+    }
+    ack({ ok: true });
+  };
+
+  commands.live_camera_state = async ({ enabled, targetSocketId } = {}) => {
+    if (!room || typeof enabled !== 'boolean') return;
+    const result = await sendRoom('live_camera_state', { enabled }, targetSocketId);
+    if (result !== 'ok') throw new Error('Unable to notify viewers about the camera state.');
   };
 
   commands.live_guest_decision = ({ socketId, accept } = {}) => {

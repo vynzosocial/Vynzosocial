@@ -21,6 +21,7 @@ let peerConnections = {};
 let pendingIceCandidates = {};
 let peerSenders = {};
 let remoteMediaStreams = {};
+const remoteCameraStates = new Map();
 let peerNegotiationState = {};
 let pendingNegotiations = {};
 let activeBroadcastSessionId = null;
@@ -706,7 +707,7 @@ function attachLiveMediaControls() {
   const backgroundInput = document.getElementById('live-background-file');
   if (!cameraButton || !imageInput || !offButton) return;
 
-  cameraButton.addEventListener('click', enableLocalCamera);
+  cameraButton.addEventListener('click', () => enableLocalCamera());
   if (filterSelect) filterSelect.addEventListener('change', () => {
     if (filterSelect.value === 'background-image') {
       filterSelect.value = cameraFilterName;
@@ -815,9 +816,9 @@ function attachLiveMediaControls() {
   }
 }
 
-async function enableLocalCamera() {
+async function enableLocalCamera(acceptInvite = false) {
   const joiningStage = isGuestRole() && !guestOnStage;
-  if (!(await requestGuestSlot())) return;
+  if (!(await requestGuestSlot(acceptInvite))) return;
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     showLiveError('Camera access is not available in this browser.');
     return;
@@ -840,7 +841,7 @@ async function enableLocalCamera() {
     }
     const cameraBtn = document.getElementById('live-enable-camera-btn');
     if (cameraBtn) cameraBtn.textContent = '📷 Turn camera on';
-    updateLocalMediaControls('You are on stage with your camera off. Tap "Turn camera on" when you are ready.');
+    updateLocalMediaControls('');
     return;
   }
 
@@ -952,6 +953,9 @@ async function useLocalImage(file) {
 }
 
 async function publishLocalMedia() {
+  if (socket?.connected && activeRoomSessionId) {
+    socket.emit('live_camera_state', { enabled: Boolean(localVideoTrack) });
+  }
   await Promise.all(Object.entries(peerSenders).map(async ([socketId, senders]) => {
     const connection = peerConnections[socketId];
     if (!connection || connection.connectionState === 'closed') return;
@@ -989,7 +993,7 @@ function isGuestRole() {
 
 let guestRequestPending = false;
 
-function requestGuestSlot() {
+function requestGuestSlot(acceptInvite = false) {
   if (!isGuestRole() || guestOnStage) return Promise.resolve(true);
   if (guestRequestPending) {
     showLiveError('Your request is already waiting for the host.');
@@ -1009,7 +1013,7 @@ function requestGuestSlot() {
       else {
         if (message !== 'NOEMIT') socket.emit('live_guest_leave');
         showLiveError(message === 'NOEMIT' ? 'Could not send your request. Please try again.' : message);
-        updateLocalMediaControls('Tap "Request to Join" to ask the host again.');
+        updateLocalMediaControls('');
       }
       resolve(approved);
     };
@@ -1019,7 +1023,7 @@ function requestGuestSlot() {
     socket.on('live_guest_denied', onDenied);
     timer = setTimeout(() => finish(false, 'The host did not respond. Try again.'), 90000);
 
-    socket.timeout(30000).emit('live_guest_join', (err, result) => {
+    socket.timeout(30000).emit('live_guest_join', { acceptInvite }, (err, result) => {
       if (!err && result && result.ok && result.approved) {
         finish(true);
       } else if (!err && (!result || !result.ok)) {
@@ -1049,9 +1053,7 @@ async function stopLocalMedia() {
     const isGuest = !!document.querySelector('.live-role-badge.is-guest');
     const cameraBtn = document.getElementById('live-enable-camera-btn');
     if (isGuest && cameraBtn) cameraBtn.textContent = '🎤 Request to Join';
-    updateLocalMediaControls(isGuest
-      ? 'You are back in the chat. Tap "Request to Join" to ask the host again.'
-      : '');
+    updateLocalMediaControls('');
   } catch (err) {
     console.error('Unable to turn off live media:', err);
     showLiveError('Unable to stop sharing media with other participants.');
@@ -1276,6 +1278,7 @@ function ensureVideoTile(peerId, isLocal) {
   expandButton.className = 'live-expand-btn';
   expandButton.textContent = '⛶';
   expandButton.setAttribute('aria-label', 'Expand video');
+  expandButton.setAttribute('aria-pressed', 'false');
   expandButton.addEventListener('click', event => {
     event.stopPropagation();
     setTileExpanded(frame, !frame.classList.contains('is-expanded'));
@@ -1298,6 +1301,7 @@ function setTileExpanded(frame, expanded) {
   if (button) {
     button.textContent = expanded ? '← Back' : '⛶';
     button.setAttribute('aria-label', expanded ? 'Return to normal size' : 'Expand video');
+    button.setAttribute('aria-pressed', String(expanded));
   }
 }
 
@@ -1535,7 +1539,31 @@ function registerLiveListeners() {
     stageGuestIds.delete(socketId);
   });
   socket.off('live_member_joined');
-  socket.on('live_member_joined', ({ name }) => renderSystemChatMessage(`\u2728 ${name || 'A viewer'} joined the live`));
+  socket.on('live_member_joined', ({ name, socketId }) => renderSystemChatMessage(`\u2728 ${name || 'A viewer'} joined the live`, socketId, name));
+
+  socket.off('live_host_invite');
+  socket.on('live_host_invite', ({ name }) => {
+    if (!isGuestRole() || guestOnStage || guestRequestPending) return;
+    if (window.confirm(`${name || 'The host'} invited you to join the live. Accept?`)) {
+      enableLocalCamera(true).catch(error => {
+        console.error('Unable to accept live invitation:', error);
+        showLiveError('Unable to join the live. Please try again.');
+      });
+    }
+  });
+
+  socket.off('live_camera_state');
+  socket.on('live_camera_state', ({ socketId, enabled }) => {
+    if (socketId === socket.id) return;
+    remoteCameraStates.set(socketId, enabled);
+    const tile = ensureVideoTile(socketId, false);
+    if (!tile) return;
+    if (!enabled) {
+      tile.frame.classList.add('camera-off');
+    } else if (tile.video.srcObject?.getVideoTracks().some(track => track.readyState === 'live' && !track.muted)) {
+      tile.frame.classList.remove('camera-off');
+    }
+  });
 
   socket.off('live_guest_joined');
   socket.on('live_guest_joined', () => {});
@@ -1581,6 +1609,7 @@ function registerLiveListeners() {
 
   socket.off('viewer_joined');
   socket.on('viewer_joined', async ({ socketId }) => {
+    socket.emit('live_camera_state', { enabled: Boolean(localVideoTrack), targetSocketId: socketId });
     if (!socketId || peerConnections[socketId]) return;
     try {
       ensureVideoTile(socketId, false);
@@ -1682,13 +1711,34 @@ async function setRemoteDescriptionAndFlush(pc, socketId, description) {
   }
 }
 
-function renderSystemChatMessage(text) {
+function inviteLiveViewer(socketId, name) {
+  if (!socketId || isGuestRole() || !socket?.connected) return;
+  socket.timeout(5000).emit('live_invite_guest', { socketId }, (error, result) => {
+    if (error || !result?.ok) {
+      showLiveError(result?.error || 'Could not send the invitation. Please try again.');
+      return;
+    }
+    renderSystemChatMessage(`Invitation sent to ${name || 'viewer'}.`);
+  });
+}
+
+function renderSystemChatMessage(text, socketId, name) {
   const chatBox = document.getElementById('live-chat-messages');
   if (!chatBox) return;
   const div = document.createElement('div');
   div.className = 'live-chat-message live-chat-system';
   div.style.cssText = 'text-align:center;font-size:12px;font-weight:600;color:#ffd700;opacity:.95';
-  div.textContent = text;
+  if (socketId && !isGuestRole() && socketId !== socket?.id) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'live-chat-invite';
+    button.textContent = name || 'A viewer';
+    button.setAttribute('aria-label', `Invite ${name || 'viewer'} to join`);
+    button.addEventListener('click', () => inviteLiveViewer(socketId, name));
+    div.append('\u2728 ', button, ' joined the live');
+  } else {
+    div.textContent = text;
+  }
   chatBox.appendChild(div);
   chatBox.scrollTop = chatBox.scrollHeight;
 }
@@ -1714,9 +1764,16 @@ function renderChatMessage(msg) {
   } else {
     showInitial();
   }
-  const username = document.createElement('span');
+  const canInvite = msg.socketId && !isGuestRole() && msg.socketId !== socket?.id;
+  const username = document.createElement(canInvite ? 'button' : 'span');
   username.className = 'live-chat-user';
   username.textContent = name;
+  if (canInvite) {
+    username.type = 'button';
+    username.classList.add('live-chat-invite');
+    username.setAttribute('aria-label', `Invite ${name} to join`);
+    username.addEventListener('click', () => inviteLiveViewer(msg.socketId, name));
+  }
   const content = document.createElement('span');
   content.textContent = msg.content;
   div.append(avatar, username, content);
@@ -1812,7 +1869,7 @@ function createPeerConnection(socketId, addSendTransceivers = true) {
     if (!tile) return;
     tile.video.srcObject = remoteStream;
     const showVideo = () => {
-      if (!canShowTile(socketId)) return;
+      if (!canShowTile(socketId) || remoteCameraStates.get(socketId) === false) return;
       tile.status.hidden = true;
       tile.frame.classList.remove('camera-off');
       setTileVisible(tile.frame, true);
@@ -1830,6 +1887,7 @@ function createPeerConnection(socketId, addSendTransceivers = true) {
       }
       setTileVisible(tile.frame, false);
     };
+    event.track.onended = event.track.onmute;
     if (!event.track.muted) {
       showVideo();
     }
@@ -1918,6 +1976,7 @@ function bindPeerSenders(socketId, pc) {
 }
 
 function closePeerConnection(socketId) {
+  remoteCameraStates.delete(socketId);
   const connection = peerConnections[socketId];
   if (connection) connection.close();
   delete peerConnections[socketId];
