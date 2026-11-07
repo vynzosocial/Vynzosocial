@@ -1,0 +1,45 @@
+.app-download-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid #9c79e8;
+  border-radius: 12px;
+  background: #35205a;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.app-download-link:hover,
+.app-download-link:focus-visible {
+  background: #513179;
+  color: #fff;
+}
+
+.app-download-link span {
+  padding: 3px 6px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 11px;
+}
+
+.welcome-app-download {
+  position: relative;
+  z-index: 1;
+  align-self: flex-start;
+  margin-top: 20px;
+}
+
+.home-app-download {
+  padding: 12px 16px 0;
+  text-align: center;
+}
+
+.vynzo-android-app .welcome-app-download,
+.vynzo-android-app .home-app-download {
+  display: none;
+}
