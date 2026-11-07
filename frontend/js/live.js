@@ -261,6 +261,7 @@ async function joinLiveSession(stream) {
   document.querySelector('.live-container')?.classList.remove('live-stage-ended');
   if (goLiveButton && !activeBroadcastSessionId) goLiveButton.style.display = isHost ? '' : 'none';
   const mainView = document.getElementById('live-main-view');
+  document.body.classList.remove('live-tile-expanded');
   mainView.innerHTML = createLiveStage(
     'Say something in live chat...',
     isHost,
@@ -559,7 +560,7 @@ function createLiveStage(placeholder, isHost, hostUsername = '', title = '', hos
         </div>` : ''}        <div class="live-media-controls" aria-label="Camera and image sharing">
           <div class="live-media-description">
             <strong></strong>
-            <span id="live-media-status">${isHost ? '' : 'Tap "Request to Join" to ask the host to put you on camera. You can keep chatting meanwhile (up to 11 guests on camera).'}</span>
+            <span id="live-media-status"></span>
           </div>
           <div class="live-media-actions">
             <button type="button" class="live-media-button" id="live-enable-camera-btn">${isHost ? 'Open camera' : '🎤 Request to Join'}</button>
@@ -1268,13 +1269,42 @@ function ensureVideoTile(peerId, isLocal) {
   status.textContent = 'Camera is off or connecting...';
   const avatar = document.createElement('div');
   avatar.className = 'live-tile-avatar';
-  frame.append(video, avatar, label, status);
+  video.setAttribute('controlslist', 'nofullscreen');
+  video.disablePictureInPicture = true;
+  const expandButton = document.createElement('button');
+  expandButton.type = 'button';
+  expandButton.className = 'live-expand-btn';
+  expandButton.textContent = '⛶';
+  expandButton.setAttribute('aria-label', 'Expand video');
+  expandButton.addEventListener('click', event => {
+    event.stopPropagation();
+    setTileExpanded(frame, !frame.classList.contains('is-expanded'));
+  });
+  frame.append(video, avatar, label, status, expandButton);
   grid.appendChild(frame);
   setTileVisible(frame, isLocal);
   const knownInfo = isLocal ? null : (peerId === liveHostSocketId && liveHostInfo ? liveHostInfo : tileInfoCache[peerId]);
   if (knownInfo) showStageGuestTile(peerId, knownInfo, false);
   return { frame, video, status };
 }
+
+function setTileExpanded(frame, expanded) {
+  document.querySelectorAll('.live-video-frame.is-expanded').forEach(other => {
+    if (other !== frame) setTileExpanded(other, false);
+  });
+  frame.classList.toggle('is-expanded', expanded);
+  document.body.classList.toggle('live-tile-expanded', expanded);
+  const button = frame.querySelector('.live-expand-btn');
+  if (button) {
+    button.textContent = expanded ? '← Back' : '⛶';
+    button.setAttribute('aria-label', expanded ? 'Return to normal size' : 'Expand video');
+  }
+}
+
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') return;
+  document.querySelectorAll('.live-video-frame.is-expanded').forEach(frame => setTileExpanded(frame, false));
+});
 
 const tileInfoCache = {};
 const stageGuestIds = new Set();
@@ -1334,7 +1364,10 @@ function showStageGuestTile(peerId, info, isLocal) {
 function removeVideoTile(peerId) {
   const frame = Array.from(document.querySelectorAll('.live-video-frame'))
     .find(tile => tile.dataset.peerId === peerId);
-  if (frame) frame.remove();
+  if (frame) {
+    if (frame.classList.contains('is-expanded')) setTileExpanded(frame, false);
+    frame.remove();
+  }
   updateVideoGridLayout();
 }
 
@@ -1445,6 +1478,7 @@ function updateVideoGridLayout() {
 
 function setTileVisible(frame, visible) {
   if (!frame) return;
+  if (!visible && frame.classList.contains('is-expanded')) setTileExpanded(frame, false);
   frame.hidden = !visible;
   frame.style.display = visible ? '' : 'none';
   updateVideoGridLayout();
@@ -1918,6 +1952,7 @@ export async function startBroadcasting(title, category, visibility = 'public', 
     broadcastStartedAt = Date.now();
     const mainView = document.getElementById('live-main-view');
     const currentUser = JSON.parse(localStorage.getItem('vynzo_user') || '{}');
+    document.body.classList.remove('live-tile-expanded');
     mainView.innerHTML = createLiveStage(
       'Say something in live chat...',
       true,
