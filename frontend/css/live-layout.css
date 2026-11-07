@@ -473,7 +473,8 @@ html[dir="rtl"] .live-video-grid[data-layout="two"] > * {
 .live-tile-avatar img { width:min(45%, 120px); aspect-ratio:1; border-radius:50%; object-fit:cover; box-shadow:0 0 0 3px #ffd700, 0 0 22px rgba(255,60,170,.7); }
 .live-tile-avatar-name { font-size:clamp(12px, 2vw, 16px); font-weight:600; max-width:90%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .live-video-frame.camera-off .live-tile-avatar { display:flex; }
-.live-video-frame.camera-off .live-video-player { visibility:hidden; }
+.live-video-frame.camera-off .live-video-player,
+.live-video-frame .live-video-player[hidden] { display:none; }
 .live-video-frame { position:relative; }
 .live-video-label {
   z-index:2;

@@ -1010,6 +1010,31 @@ async function publishLocalMedia() {
   if (socket?.connected && activeRoomSessionId) {
     socket.emit('live_camera_state', { enabled: Boolean(localVideoTrack) });
   }
+  if (localVideoTrack) {
+    const tile = ensureVideoTile('self', true);
+    tile.video.srcObject = new MediaStream([localVideoTrack]);
+    tile.status.hidden = true;
+    setTileCameraOff(tile, false);
+    tile.video.play().catch((err) => {
+      console.error('Unable to start local media preview:', err);
+      showLiveError('Your media is being shared, but its preview could not start.');
+    });
+  } else if (guestOnStage && myStageInfo) {
+    const tile = ensureVideoTile('self', true);
+    tile.video.srcObject = null;
+    setTileCameraOff(tile, true);
+    showStageGuestTile('self', myStageInfo, true);
+  } else {
+    const tile = document.querySelector('.live-video-frame[data-peer-id="self"]');
+    if (tile) {
+      const video = tile.querySelector('video');
+      video.srcObject = null;
+      setTileCameraOff({ frame: tile, video }, true);
+    }
+    if (isGuestRole()) removeVideoTile('self');
+    else ensureHostPlaceholder();
+  }
+
   await Promise.all(Object.entries(peerSenders).map(async ([socketId, senders]) => {
     const connection = peerConnections[socketId];
     if (!connection || connection.connectionState === 'closed') return;
@@ -1019,24 +1044,6 @@ async function publishLocalMedia() {
     ]);
   }));
   await Promise.all(Object.keys(peerConnections).map(requestPeerNegotiation));
-
-  if (localVideoTrack) {
-    const tile = ensureVideoTile('self', true);
-    tile.video.srcObject = new MediaStream([localVideoTrack]);
-    tile.status.hidden = true;
-    tile.frame.classList.remove('camera-off');
-    tile.video.play().catch((err) => {
-      console.error('Unable to start local media preview:', err);
-      showLiveError('Your media is being shared, but its preview could not start.');
-    });
-  } else if (guestOnStage && myStageInfo) {
-    const tile = ensureVideoTile('self', true);
-    tile.video.srcObject = null;
-    showStageGuestTile('self', myStageInfo, true);
-  } else {
-    removeVideoTile('self');
-    ensureHostPlaceholder();
-  }
 }
 
 let guestOnStage = false;
@@ -1374,6 +1381,11 @@ document.addEventListener('keydown', event => {
 const tileInfoCache = {};
 const stageGuestIds = new Set();
 
+function setTileCameraOff(tile, cameraOff) {
+  tile.frame.classList.toggle('camera-off', cameraOff);
+  tile.video.hidden = cameraOff;
+}
+
 // Only the host and guests the host approved get a camera box; everyone else stays in the chat.
 function canShowTile(peerId) {
   return peerId === 'self' || peerId === liveHostSocketId || stageGuestIds.has(peerId);
@@ -1421,7 +1433,7 @@ function showStageGuestTile(peerId, info, isLocal) {
   nameEl.className = 'live-tile-avatar-name';
   nameEl.textContent = name;
   avatar.appendChild(nameEl);
-  if (!frame.querySelector('video')?.srcObject?.getVideoTracks().some(t => t.readyState === 'live' && !t.muted)) frame.classList.add('camera-off');
+  if (!tile.video.srcObject?.getVideoTracks().some(t => t.readyState === 'live' && !t.muted)) setTileCameraOff(tile, true);
   status.hidden = true;
   setTileVisible(frame, true);
 }
@@ -1620,9 +1632,9 @@ function registerLiveListeners() {
     const tile = ensureVideoTile(socketId, false);
     if (!tile) return;
     if (!enabled) {
-      tile.frame.classList.add('camera-off');
+      setTileCameraOff(tile, true);
     } else if (tile.video.srcObject?.getVideoTracks().some(track => track.readyState === 'live' && !track.muted)) {
-      tile.frame.classList.remove('camera-off');
+      setTileCameraOff(tile, false);
     }
   });
 
@@ -1932,7 +1944,7 @@ function createPeerConnection(socketId, addSendTransceivers = true) {
     const showVideo = () => {
       if (!canShowTile(socketId) || remoteCameraStates.get(socketId) === false) return;
       tile.status.hidden = true;
-      tile.frame.classList.remove('camera-off');
+      setTileCameraOff(tile, false);
       setTileVisible(tile.frame, true);
       tile.video.play().catch((err) => {
         console.error('Unable to play participant video:', err);
@@ -1943,7 +1955,7 @@ function createPeerConnection(socketId, addSendTransceivers = true) {
     event.track.onunmute = showVideo;
     event.track.onmute = () => {
       if (tile.frame.dataset.stageGuest) {
-        tile.frame.classList.add('camera-off');
+        setTileCameraOff(tile, true);
         return;
       }
       setTileVisible(tile.frame, false);
