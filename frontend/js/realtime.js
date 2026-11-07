@@ -386,7 +386,10 @@ export function createRealtimeSocket(options = {}) {
     dispatch('live_viewers_changed');
     if (meta.joinOrder > room.joinOrder) {
       dispatch('viewer_joined', { socketId: key });
-      if (!meta.isHost) dispatch('live_member_joined', { name: meta.name, socketId: key });
+    }
+    if (!meta.isHost && (room.isHost || meta.joinOrder > room.joinOrder) && !room.announcedViewers.has(key)) {
+      room.announcedViewers.add(key);
+      dispatch('live_member_joined', { name: meta.name, socketId: key });
     }
     if (meta.isHost && room.hostTimer) {
       clearTimeout(room.hostTimer);
@@ -401,8 +404,9 @@ export function createRealtimeSocket(options = {}) {
     }
   }
 
-  function onPresenceLeave(key, metas) {
+  function onPresenceLeave(key, metas, currentPresences) {
     if (!room || key === socket.id) return;
+    if (!currentPresences.length) room.announcedViewers.delete(key);
     dispatch('viewer_left', { socketId: key });
     dispatch('live_viewers_changed');
     if (room.isHost) {
@@ -463,6 +467,7 @@ export function createRealtimeSocket(options = {}) {
       pending: new Map(),
       guests: new Map(),
       invites: new Set(),
+      announcedViewers: new Set(),
       hostTimer: null,
       heartbeat: null
     };
@@ -470,7 +475,7 @@ export function createRealtimeSocket(options = {}) {
 
     channel.on('broadcast', { event: 'sig' }, ({ payload }) => onRoomSignal(payload));
     channel.on('presence', { event: 'join' }, ({ key, newPresences }) => onPresenceJoin(key, newPresences || []));
-    channel.on('presence', { event: 'leave' }, ({ key, leftPresences }) => onPresenceLeave(key, leftPresences || []));
+    channel.on('presence', { event: 'leave' }, ({ key, leftPresences, currentPresences }) => onPresenceLeave(key, leftPresences || [], currentPresences || []));
 
     try {
       await ensureRealtimeAuth();
