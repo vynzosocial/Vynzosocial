@@ -1,0 +1,66 @@
+workflows:
+  ios-app-store:
+    name: iOS - App Store and TestFlight
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    environment:
+      node: 22
+      xcode: latest
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.vynzosocial.app
+    scripts:
+      - name: Install dependencies
+        script: |
+          npm ci
+          npm ci --prefix android-app
+      - name: Build and sync web assets
+        script: |
+          npm run build
+          node -e "if (require('node:fs').readFileSync('dist/js/supabase-config.js', 'utf8').includes('__VYNZO_SUPABASE_PUBLISHABLE_KEY__')) throw new Error('Public Supabase key was not configured');"
+          node -e "const fs = require('node:fs'); fs.rmSync('android-app/www', {recursive:true, force:true}); fs.cpSync('dist', 'android-app/www', {recursive:true});"
+          cd android-app
+          npx cap sync ios
+      - name: Configure signing
+        script: xcode-project use-profiles --project "$CM_BUILD_DIR/android-app/ios/App/App.xcodeproj"
+      - name: Build signed IPA
+        script: |
+          xcode-project build-ipa \
+            --project "$CM_BUILD_DIR/android-app/ios/App/App.xcodeproj" \
+            --scheme App
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+  ios-ad-hoc:
+    name: iOS - Ad Hoc
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    environment:
+      node: 22
+      xcode: latest
+      ios_signing:
+        distribution_type: ad_hoc
+        bundle_identifier: com.vynzosocial.app
+    scripts:
+      - name: Install dependencies
+        script: |
+          npm ci
+          npm ci --prefix android-app
+      - name: Build and sync web assets
+        script: |
+          npm run build
+          node -e "if (require('node:fs').readFileSync('dist/js/supabase-config.js', 'utf8').includes('__VYNZO_SUPABASE_PUBLISHABLE_KEY__')) throw new Error('Public Supabase key was not configured');"
+          node -e "const fs = require('node:fs'); fs.rmSync('android-app/www', {recursive:true, force:true}); fs.cpSync('dist', 'android-app/www', {recursive:true});"
+          cd android-app
+          npx cap sync ios
+      - name: Configure signing
+        script: xcode-project use-profiles --project "$CM_BUILD_DIR/android-app/ios/App/App.xcodeproj"
+      - name: Build signed IPA
+        script: |
+          xcode-project build-ipa \
+            --project "$CM_BUILD_DIR/android-app/ios/App/App.xcodeproj" \
+            --scheme App
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
