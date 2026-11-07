@@ -5,7 +5,7 @@ import { timeAgo } from './time-ago.js';
 import { protectMedia } from './media-protect.js';
 import { openCamera } from './camera-capture.js';
 import { attachEmojiPicker } from './emoji-picker.js';
-import { openShareDialog, absoluteMediaUrl } from './share.js?v=2';
+import { openShareDialog, absoluteMediaUrl } from './share.js?v=3';
 
 let viewerTimer = null;
 let currentStoryGroup = [];
@@ -232,7 +232,8 @@ function ensureStoryViewer() {
     openShareDialog({
       title: 'Share story',
       text: `${story.media_type === 'video' ? '🎬' : '🖼'} Story by @${currentStoryUsername || 'user'}`,
-      url: absoluteMediaUrl(story.media_url)
+      url: absoluteMediaUrl(story.media_url),
+      preview: { type: story.media_type === 'video' ? 'video' : 'image', kind: 'story', id: story.id, r2: Boolean(story.has_original) }
     });
   });
   modal.querySelector('#story-comments-count').addEventListener('click', () => {

@@ -3,7 +3,7 @@ import { API_ORIGIN } from './config.js?v=sb4';
 import { createRealtimeSocket } from './realtime.js?v=sb9';
 import { startLiveFrameGuard } from './content-guard.js?v=1';
 import { createCameraFilter } from './live-camera-filter.js?v=6';
-import { openShareDialog, SHARE_BASE_URL } from './share.js?v=2';
+import { openShareDialog, SHARE_BASE_URL } from './share.js?v=3';
 try { screen.orientation?.lock?.('portrait').catch(() => {}); } catch { /* unsupported */ }
 
 let stopLiveFrameGuard = null;
@@ -463,8 +463,9 @@ function attachLiveHeader() {
       const liveTitle = document.getElementById('live-title-text')?.textContent?.trim();
       openShareDialog({
         title: 'Share this live',
-        text: `🔴 Join my live${liveTitle ? `: ${liveTitle}` : ''}`,
-        url: `${SHARE_BASE_URL}/pages/live.html?sessionId=${encodeURIComponent(sessionId)}`
+        text: `🔴 Invitation to join live${liveTitle ? `: ${liveTitle}` : ''}`,
+        url: `${SHARE_BASE_URL}/pages/live.html?sessionId=${encodeURIComponent(sessionId)}`,
+        preview: { type: 'live', name: liveHostInfo?.name || 'Host', avatar: liveHostInfo?.avatar_url || '' }
       });
     });
   }

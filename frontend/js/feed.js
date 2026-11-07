@@ -6,7 +6,7 @@ import { downloadOriginal, refreshExpiredMedia } from './r2-uploads.js';
 import { openVideoOptions, initSharedVideoReceiver } from './video-create.js?v=vc1';
 import { attachEmojiPicker } from './emoji-picker.js';
 import { protectMedia } from './media-protect.js';
-import { openShareDialog, absoluteMediaUrl } from './share.js?v=2';
+import { openShareDialog, absoluteMediaUrl } from './share.js?v=3';
 
 export async function initFeed() {
   const container = document.getElementById('feed-container');
@@ -382,7 +382,8 @@ function sharePost(post) {
   openShareDialog({
     title: `Share ${post.media_type === 'video' ? 'video' : 'image'}`,
     text: `${kind} by @${post.author_username || 'user'}${post.caption ? `: ${post.caption.slice(0, 120)}` : ''}`,
-    url: absoluteMediaUrl(post.media_url)
+    url: absoluteMediaUrl(post.media_url),
+    preview: { type: post.media_type === 'video' ? 'video' : 'image', kind: 'post', id: post.id, r2: Boolean(post.has_original) }
   });
 }
 

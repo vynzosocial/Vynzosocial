@@ -1,5 +1,6 @@
 import { apiRequest } from './api.js?v=sb6';
 import { API_ORIGIN } from './config.js?v=sb4';
+import { shareMessage } from './share-data.js?v=1';
 
 export const SHARE_BASE_URL = 'https://www.vynzosocial.com';
 
@@ -9,11 +10,10 @@ export function absoluteMediaUrl(url) {
 }
 
 
-// Sends `text` + `url` as an ordinary chat message to every conversation the user picks.
-export async function openShareDialog({ title = 'Share', text = '', url }) {
+export async function openShareDialog({ title = 'Share', text = '', url, preview }) {
   if (!url) return;
   document.getElementById('share-dialog-overlay')?.remove();
-  const message = [text, url].filter(Boolean).join('\n');
+  const message = shareMessage(text, url, preview);
 
   const overlay = document.createElement('div');
   overlay.id = 'share-dialog-overlay';

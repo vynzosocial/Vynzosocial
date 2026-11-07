@@ -4,6 +4,7 @@ import { supabase } from './supabase-client.js';
 import { createRealtimeSocket } from './realtime.js?v=sb9';
 import { attachEmojiPicker } from './emoji-picker.js?v=scope4';
 import { initCalls, startCall } from './calls.js?v=sb5';
+import { parseSharedMessage } from './share-data.js?v=1';
 
 let socket = null;
 let currentConversationMeta = null;
@@ -128,6 +129,7 @@ async function refreshCurrentConversation() {
     fragment.appendChild(wrapper.firstElementChild);
   }
   container.replaceChildren(fragment);
+  hydrateSharedPreviews(container);
   if (wasAtBottom) container.scrollTop = container.scrollHeight;
   if (hasNewIncoming && document.visibilityState === 'visible') markConversationRead(conversationId);
 }
@@ -294,6 +296,7 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
   `;
 
   const msgContainer = document.getElementById('chat-messages-container');
+  hydrateSharedPreviews(msgContainer);
   msgContainer.scrollTop = msgContainer.scrollHeight;
 
   const form = document.getElementById('chat-form');
@@ -332,6 +335,11 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
 
 
   msgContainer.addEventListener('click', async event => {
+    const sharedMedia = event.target.closest('.shared-media-preview');
+    if (sharedMedia) {
+      await openSharedMedia(sharedMedia);
+      return;
+    }
     const open = event.target.closest('.view-once-open');
     if (!open) return;
     const bubble = open.closest('.message-bubble');
@@ -861,6 +869,7 @@ function appendMessage(container, message, currentUser) {
   wrapper.innerHTML = messageMarkup(message, currentUser);
   const bubble = wrapper.firstElementChild;
   container.appendChild(bubble);
+  hydrateSharedPreviews(bubble);
   container.scrollTop = container.scrollHeight;
 }
 
@@ -872,6 +881,7 @@ function linkifyText(text) {
 function messageMarkup(message, currentUser) {
   const isOutgoing = message.sender_id === currentUser.id;
   const isSticker = message.content === STICKER_MESSAGE_CONTENT;
+  const shared = parseSharedMessage(message.content);
   const senderName = message.sender_display_name
     || message.display_name
     || message.sender_username
@@ -887,10 +897,10 @@ function messageMarkup(message, currentUser) {
         ${replyQuoteMarkup(message.reply_to)}
         ${mediaMarkup(message)}
         ${message.view_once ? viewOnceMarkup(message, isOutgoing) : ''}
-        ${message.content && !isSticker ? `<span class="message-content">${linkifyText(message.content)}</span>` : ''}
+        ${shared ? sharedMessageMarkup(shared, message, senderName, isOutgoing ? currentUser.avatar_url : '') : message.content && !isSticker ? `<span class="message-content">${linkifyText(message.content)}</span>` : ''}
         ${message.edited_at ? '<span class="message-edited">(edited)</span>' : ''}
         <button class="message-reply-button" type="button" aria-label="Reply to this message" title="Reply">↩</button>
-        ${isOutgoing && message.content && !isSticker && !message.view_once && message.can_unsend !== false ? '<button class="message-edit-button" type="button" aria-label="Edit message" title="Edit message">✎</button>' : ''}
+        ${isOutgoing && message.content && !shared && !isSticker && !message.view_once && message.can_unsend !== false ? '<button class="message-edit-button" type="button" aria-label="Edit message" title="Edit message">✎</button>' : ''}
         ${isOutgoing ? `<button class="message-delete-button" type="button" aria-label="Delete message" title="${message.can_unsend === false && !message.view_once ? 'Delete for me (already seen)' : 'Delete for everyone (only until it is seen)'}">×</button>` : ''}
         ${isOutgoing && readReceiptsEnabled ? `<span class="message-status ${message.seen ? 'seen' : ''}">${message.seen ? 'Seen' : 'Sent'}</span>` : ''}
       </div>
@@ -920,13 +930,113 @@ async function shrinkImage(file) {
 function replyText(message) {
   if (message.view_once) return '📷 View-once photo';
   if (message.content === STICKER_MESSAGE_CONTENT) return '✨ Sticker';
+  const shared = parseSharedMessage(message.content);
+  if (shared) return shared.text;
   const text = message.content || (message.media_url ? (VOICE_PATTERN.test(message.media_url) ? '🎤 Voice message' : '📎 Photo / video') : '');
   return text.length > 140 ? `${text.slice(0, 137)}…` : text;
 }
 
 function messagePreview(message) {
   if (message.content === STICKER_MESSAGE_CONTENT) return '✨ Sticker';
+  const shared = parseSharedMessage(message.content);
+  if (shared) return shared.text;
   return message.content || (message.view_once ? '📷 View-once photo' : message.media_url ? (VOICE_PATTERN.test(message.media_url) ? '🎤 Voice message' : '📎 Photo / video') : 'No messages');
+}
+
+function sharedMessageMarkup(shared, message, senderName, fallbackAvatar = '') {
+  const { preview, text, url } = shared;
+  if (preview.type === 'live') {
+    const name = typeof preview.name === 'string' ? preview.name : senderName;
+    const avatar = typeof preview.avatar === 'string' ? preview.avatar : message.sender_avatar_url || message.avatar_url || fallbackAvatar;
+    const safeAvatar = /^(https?:\/\/|\/)/i.test(avatar) && !avatar.startsWith('//') ? avatar : '';
+    return `<a class="shared-live-preview" href="${escapeHtml(url)}">
+      ${avatarMarkup(safeAvatar, name, 'shared-live-avatar')}
+      <span><strong>${escapeHtml(name)}</strong><span>${escapeHtml(text)}</span><b>Join live →</b></span>
+    </a>`;
+  }
+  const attrs = preview.r2 ? ` data-kind="${preview.kind}" data-id="${escapeHtml(preview.id)}"` : '';
+  return `<button type="button" class="shared-media-preview" data-url="${escapeHtml(url)}" data-type="${preview.type}"${attrs} aria-label="Open shared ${preview.type}">
+    <span class="shared-media-frame"><span class="shared-media-status">Loading ${preview.type}…</span></span>
+    <span class="shared-media-caption">${escapeHtml(text)}</span>
+  </button>`;
+}
+
+async function sharedMediaUrl(button) {
+  if (!button.dataset.kind) return button.dataset.url;
+  const result = await apiRequest(`/media/playback?kind=${encodeURIComponent(button.dataset.kind)}&id=${encodeURIComponent(button.dataset.id)}`);
+  const url = new URL(result.url);
+  if (url.protocol !== 'https:') throw new Error('The media URL is invalid.');
+  return url.toString();
+}
+
+function hydrateSharedPreviews(container) {
+  container.querySelectorAll('.shared-media-preview').forEach(async button => {
+    const frame = button.querySelector('.shared-media-frame');
+    try {
+      const url = await sharedMediaUrl(button);
+      if (!button.isConnected) return;
+      const media = document.createElement(button.dataset.type === 'video' ? 'video' : 'img');
+      media.src = url;
+      if (button.dataset.type === 'video') {
+        media.muted = true;
+        media.playsInline = true;
+        media.preload = 'metadata';
+        media.addEventListener('loadedmetadata', () => {
+          if (media.duration > 0) media.currentTime = Number.isFinite(media.duration) ? Math.min(0.1, media.duration / 2) : 0.1;
+        }, { once: true });
+      } else {
+        media.alt = '';
+        media.loading = 'lazy';
+      }
+      media.addEventListener('error', () => { frame.textContent = 'Preview unavailable. Tap to try opening.'; }, { once: true });
+      frame.replaceChildren(media);
+      if (button.dataset.type === 'video') {
+        const play = document.createElement('span');
+        play.className = 'shared-media-play';
+        play.textContent = '▶';
+        frame.append(play);
+      }
+    } catch (error) {
+      console.error('Could not load shared media preview:', error);
+      frame.textContent = 'Preview unavailable. Tap to try opening.';
+    }
+  });
+}
+
+async function openSharedMedia(button) {
+  const overlay = document.createElement('div');
+  overlay.className = 'shared-media-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-label', `Shared ${button.dataset.type}`);
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'shared-media-close';
+  close.textContent = 'Close';
+  const dismiss = () => { overlay.remove(); button.focus(); };
+  close.addEventListener('click', dismiss);
+  const status = document.createElement('p');
+  status.textContent = 'Loading media…';
+  overlay.append(close, status);
+  overlay.addEventListener('click', event => { if (event.target === overlay) dismiss(); });
+  overlay.addEventListener('keydown', event => { if (event.key === 'Escape') dismiss(); });
+  document.body.append(overlay);
+  close.focus();
+  try {
+    const url = await sharedMediaUrl(button);
+    if (!overlay.isConnected) return;
+    const media = document.createElement(button.dataset.type === 'video' ? 'video' : 'img');
+    media.src = url;
+    if (button.dataset.type === 'video') {
+      media.controls = true;
+      media.playsInline = true;
+    } else media.alt = 'Shared image';
+    media.addEventListener('error', () => { media.replaceWith(status); status.textContent = 'Could not open this media.'; }, { once: true });
+    status.replaceWith(media);
+  } catch (error) {
+    console.error('Could not open shared media:', error);
+    status.textContent = error.message || 'Could not open this media.';
+  }
 }
 
 function replyQuoteMarkup(reply) {
