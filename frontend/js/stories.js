@@ -1,10 +1,12 @@
 import { apiRequest } from './api.js?v=sb6';
+import { API_ORIGIN as MEDIA_BASE_URL, R2_UPLOADS_ENABLED } from './config.js?v=sb5';
+import { downloadOriginal, refreshExpiredMedia, uploadPublicMedia } from './r2-uploads.js';
 import { timeAgo } from './time-ago.js';
 import { protectMedia } from './media-protect.js';
 import { openCamera } from './camera-capture.js';
 import { attachEmojiPicker } from './emoji-picker.js';
+import { openShareDialog, absoluteMediaUrl } from './share.js?v=2';
 
-import { API_ORIGIN as MEDIA_BASE_URL } from './config.js?v=sb4';
 let viewerTimer = null;
 let currentStoryGroup = [];
 let currentStoryIndex = 0;
@@ -84,6 +86,7 @@ function renderStories(container, usersWithStories) {
     const latestStory = userGroup.stories[userGroup.stories.length - 1];
     if (latestStory.media_type === 'video') {
       const video = document.createElement('video');
+      refreshExpiredMedia(video, latestStory, 'story');
       video.className = 'story-preview-media';
       video.muted = true;
       video.playsInline = true;
@@ -96,6 +99,7 @@ function renderStories(container, usersWithStories) {
       ring.appendChild(playIcon);
     } else {
       const preview = document.createElement('img');
+      refreshExpiredMedia(preview, latestStory, 'story');
       preview.className = 'story-preview-media';
       preview.alt = 'Open story';
       preview.loading = 'lazy';
@@ -144,13 +148,21 @@ async function uploadStory(file, button) {
   status.textContent = 'Uploading...';
 
   try {
-    const formData = new FormData();
-    formData.append('media', file);
-    formData.append('protected', document.getElementById('story-protect')?.checked ? 'true' : 'false');
-    const data = await apiRequest('/stories/upload', {
-      method: 'POST',
-      body: formData
-    });
+    const isProtected = document.getElementById('story-protect')?.checked || false;
+    let data;
+    if (R2_UPLOADS_ENABLED) {
+      data = await uploadPublicMedia(file, {
+        kind: 'story', protected: isProtected, onProgress: message => { status.textContent = message; }
+      });
+    } else {
+      const formData = new FormData();
+      formData.append('media', file);
+      formData.append('protected', isProtected ? 'true' : 'false');
+      data = await apiRequest('/stories/upload', {
+        method: 'POST',
+        body: formData
+      });
+    }
 
     const groups = await refreshStoriesCarousel();
     const ownerStories = groups.find(group => group.user_id === data.story.user_id);
@@ -182,12 +194,14 @@ function ensureStoryViewer() {
           <option value="only_me">🔒 Only me</option>
         </select>
         <button class="story-delete-btn" id="story-delete-btn" type="button" hidden>Delete</button>
+        <button class="story-delete-btn" id="story-original-btn" type="button" hidden>Download original</button>
         <button class="story-close-btn" type="button" aria-label="Close story">&times;</button>
       </header>
       <div class="story-media-wrapper" id="story-media-wrapper"></div>
       <div class="story-viewer-actions">
         <button class="story-like-btn" id="story-like-btn" type="button"></button>
         <button class="story-comments-count" id="story-comments-count" type="button"></button>
+        <button class="story-share-btn" id="story-share-btn" type="button">Share</button>
       </div>
       <section class="story-comments-panel" aria-label="Story comments">
         <div class="story-comments-list" id="story-comments-list"></div>
@@ -211,10 +225,26 @@ function ensureStoryViewer() {
   modal.querySelector('#story-previous-btn').addEventListener('click', () => showStory(currentStoryIndex - 1));
   modal.querySelector('#story-next-btn').addEventListener('click', () => showStory(currentStoryIndex + 1));
   modal.querySelector('#story-like-btn').addEventListener('click', toggleCurrentStoryLike);
+  modal.querySelector('#story-share-btn').addEventListener('click', () => {
+    const story = currentStoryGroup?.[currentStoryIndex];
+    if (!story) return;
+    if (story.is_protected) { alert('Protected stories cannot be shared.'); return; }
+    openShareDialog({
+      title: 'Share story',
+      text: `${story.media_type === 'video' ? '🎬' : '🖼'} Story by @${currentStoryUsername || 'user'}`,
+      url: absoluteMediaUrl(story.media_url)
+    });
+  });
   modal.querySelector('#story-comments-count').addEventListener('click', () => {
     modal.querySelector('#story-comment-input').focus();
   });
   modal.querySelector('#story-delete-btn').addEventListener('click', deleteCurrentStory);
+  modal.querySelector('#story-original-btn').addEventListener('click', async () => {
+    const story = currentStoryGroup[currentStoryIndex];
+    if (!story?.is_owner) return;
+    try { await downloadOriginal('story', story.id); }
+    catch (error) { alert(error.message || 'Could not download the original.'); }
+  });
   modal.querySelector('#story-privacy-select').addEventListener('change', async event => {
     const story = currentStoryGroup[currentStoryIndex];
     const select = event.target;
@@ -281,6 +311,7 @@ function showStory(index) {
   privacySelect.value = story.privacy || 'everyone';
   deleteButton.hidden = !(story.is_owner || viewerIsAdmin);
   deleteButton.textContent = story.is_owner ? 'Delete' : 'Remove (admin)';
+  modal.querySelector('#story-original-btn').hidden = !story.is_owner || !story.has_original;
   modal.querySelector('#story-like-btn').textContent =
     `${story.is_liked ? '♥' : '♡'} ${Number(story.likes_count) || 0}`;
   modal.querySelector('#story-like-btn').classList.toggle('liked', Boolean(story.is_liked));
@@ -290,6 +321,7 @@ function showStory(index) {
     ? `<video class="story-media" src="${escapeHtml(mediaUrl(story.media_url))}" autoplay controls playsinline></video>`
     : `<img class="story-media" src="${escapeHtml(mediaUrl(story.media_url))}" alt="Story shared by ${escapeHtml(currentStoryGroup.username || 'user')}">`;
   const storyWrapper = modal.querySelector('#story-media-wrapper');
+  refreshExpiredMedia(storyWrapper.querySelector('.story-media'), story, 'story');
   if (story.is_protected) protectMedia(storyWrapper);
   else delete storyWrapper.dataset.protected;
 

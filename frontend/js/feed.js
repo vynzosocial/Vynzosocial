@@ -1,10 +1,12 @@
 import { apiRequest } from './api.js?v=sb6';
 import { timeAgo } from './time-ago.js';
 import { API_ORIGIN } from './config.js?v=sb4';
-import { uploadMedia } from './uploads.js?v=up1';
+import { uploadMedia } from './uploads.js?v=up2';
+import { downloadOriginal, refreshExpiredMedia } from './r2-uploads.js';
 import { openVideoOptions, initSharedVideoReceiver } from './video-create.js?v=vc1';
 import { attachEmojiPicker } from './emoji-picker.js';
 import { protectMedia } from './media-protect.js';
+import { openShareDialog, absoluteMediaUrl } from './share.js?v=2';
 
 export async function initFeed() {
   const container = document.getElementById('feed-container');
@@ -167,7 +169,7 @@ async function createPost(file) {
   status.textContent = 'Uploading post...';
   try {
     const caption = document.getElementById('post-caption').value.trim();
-    await uploadMedia(file, caption);
+    await uploadMedia(file, caption, message => { status.textContent = message; });
     document.getElementById('post-caption').value = '';
     status.textContent = 'Post added to the home feed.';
     await initFeed();
@@ -238,6 +240,7 @@ function createPostCard(post, reel = false) {
   mediaButton.setAttribute('aria-label', `Open ${isVideo ? 'video' : 'image'} post by @${authorUsername}`);
 
   const media = document.createElement(isVideo ? 'video' : 'img');
+  refreshExpiredMedia(media, post, 'post');
   media.className = 'post-media';
   if (isVideo) {
     media.preload = reel ? 'none' : 'metadata';
@@ -309,6 +312,7 @@ function createPostCard(post, reel = false) {
       ♥ <span class="action-count">${post.likes_count}</span>
     </button>
     <button class="post-action comment-count" type="button" aria-label="View comments">💬 <span class="action-count">${post.comments_count}</span></button>
+    ${reel ? '<button class="post-action share-btn" type="button" aria-label="Share post">Share</button>' : ''}
   `;
 
   if (reel) {
@@ -336,6 +340,17 @@ function createPostCard(post, reel = false) {
   }
   if (post.is_owner) {
     actions.appendChild(createPrivacySelect(post));
+    if (post.has_original) {
+      const download = document.createElement('button');
+      download.type = 'button';
+      download.className = 'post-action';
+      download.textContent = 'Download original';
+      download.addEventListener('click', async () => {
+        try { await downloadOriginal('post', post.id); }
+        catch (error) { alert(error.message || 'Could not download the original.'); }
+      });
+      actions.appendChild(download);
+    }
     const del = document.createElement('button');
     del.type = 'button';
     del.className = 'post-action post-delete-btn';
@@ -345,6 +360,7 @@ function createPostCard(post, reel = false) {
   }
   // Like Button Event Listener
   card.querySelector('.comment-count').addEventListener('click', () => openPostViewer(post));
+  card.querySelector('.share-btn')?.addEventListener('click', () => sharePost(post));
   const likeBtn = card.querySelector('.like-btn');
   likeBtn.addEventListener('click', async () => {
     try {
@@ -358,6 +374,16 @@ function createPostCard(post, reel = false) {
   });
 
   return card;
+}
+
+function sharePost(post) {
+  if (post.is_protected) { alert('Protected posts cannot be shared.'); return; }
+  const kind = post.media_type === 'video' ? '🎬 Video' : '🖼 Image';
+  openShareDialog({
+    title: `Share ${post.media_type === 'video' ? 'video' : 'image'}`,
+    text: `${kind} by @${post.author_username || 'user'}${post.caption ? `: ${post.caption.slice(0, 120)}` : ''}`,
+    url: absoluteMediaUrl(post.media_url)
+  });
 }
 
 export function openPostViewer(post, posts = null) {
@@ -386,6 +412,7 @@ function showPostViewer(post) {
         </div>
         <div class="post-viewer-social">
           <button class="post-viewer-like" id="post-viewer-like" type="button"></button>
+          <button class="post-viewer-share" id="post-viewer-share" type="button">Share</button>
           <div class="post-viewer-comments" id="post-viewer-comments" aria-live="polite"></div>
           <form class="post-viewer-comment-form" id="post-viewer-comment-form">
             <input id="post-viewer-comment-input" type="text" maxlength="500" placeholder="Add a comment..." aria-label="Add a comment" required>
@@ -396,6 +423,7 @@ function showPostViewer(post) {
     `;
     document.body.appendChild(modal);
     modal.querySelector('#post-viewer-like').addEventListener('click', togglePostViewerLike);
+    modal.querySelector('#post-viewer-share').addEventListener('click', () => viewerPost && sharePost(viewerPost));
     modal.querySelector('#post-viewer-comment-form').addEventListener('submit', submitPostViewerComment);
     attachEmojiPicker(modal.querySelector('#post-viewer-comment-form'), modal.querySelector('#post-viewer-comment-input'));
     modal.querySelector('.post-viewer-close').addEventListener('click', closePostViewer);
@@ -442,6 +470,7 @@ function showPostViewer(post) {
   mediaContainer.querySelector('video')?.pause();
   mediaContainer.replaceChildren();
   const media = document.createElement(post.media_type === 'video' ? 'video' : 'img');
+  refreshExpiredMedia(media, post, 'post');
   media.src = /^https?:/i.test(post.media_url) ? post.media_url : `${API_ORIGIN}${post.media_url}`;
   if (post.media_type === 'video') {
     media.controls = true;
@@ -497,6 +526,20 @@ function showPostViewer(post) {
     }
   };
   viewerDelete.hidden = !post.is_owner;
+  let viewerOriginal = modal.querySelector('#post-viewer-original');
+  if (!viewerOriginal) {
+    viewerOriginal = document.createElement('button');
+    viewerOriginal.id = 'post-viewer-original';
+    viewerOriginal.type = 'button';
+    viewerOriginal.textContent = 'Download original';
+    viewerOriginal.addEventListener('click', async () => {
+      if (!viewerPost) return;
+      try { await downloadOriginal('post', viewerPost.id); }
+      catch (error) { alert(error.message || 'Could not download the original.'); }
+    });
+    modal.querySelector('.post-viewer-details').appendChild(viewerOriginal);
+  }
+  viewerOriginal.hidden = !post.is_owner || !post.has_original;
   modal.querySelector('#post-viewer-author').textContent = `@${post.author_username || 'user'}`;
   modal.querySelector('#post-viewer-author').textContent = `@${post.author_username || 'user'} · ${timeAgo(post.created_at)}`;
   modal.querySelector('#post-viewer-avatar-slot').replaceChildren(createAuthorAvatar(post));

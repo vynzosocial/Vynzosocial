@@ -3,6 +3,8 @@ import { GUIDELINES_MESSAGE, suspensionMessage, violatesGuidelines } from './com
 import { MEDIA_WARNING, scanImages, toDataUrl } from './media-moderation.ts'
 import { handleBlogs } from './blogs.ts'
 import { startBlogAutoReview } from './blog-autoreview.ts'
+import { createDeliveryPermit, createUploadPermits, UploadValidationError } from './media-permits.mjs'
+import { authorizeMediaClaims } from './media-authorization.mjs'
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')
 const secretKeys = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') || '{}')
@@ -277,7 +279,7 @@ function canViewPost(
 async function getPostContext(postId: string, viewerId: string) {
   const { data: post, error: postError } = await admin
     .from('posts')
-    .select('id,user_id,media_url,privacy')
+    .select('id,user_id,media_url,media_type,privacy')
     .eq('id', postId)
     .maybeSingle()
   throwOnError(postError)
@@ -308,7 +310,7 @@ function canViewStory(
 
 async function getStoryContext(storyId: string, viewerId: string) {
   const { data: story, error: storyError } = await admin.from('stories')
-    .select('id,user_id,media_url,privacy,expires_at')
+    .select('id,user_id,media_url,media_type,privacy,expires_at')
     .eq('id', storyId)
     .gt('expires_at', new Date().toISOString())
     .maybeSingle()
@@ -324,6 +326,177 @@ async function getStoryContext(storyId: string, viewerId: string) {
   if (blocked.has(story.user_id)) return null
   if (!owner || !canViewStory(story, owner, viewerId, friends)) return null
   return { story, owner }
+}
+
+async function validMediaControl(request: Request): Promise<boolean> {
+  const expected = Deno.env.get('R2_MEDIA_CONTROL_SECRET')
+  const supplied = request.headers.get('X-Media-Control')
+  if (!expected || expected.length < 32 || !supplied || supplied.length > 512) return false
+  const encoder = new TextEncoder()
+  const key = await crypto.subtle.importKey('raw', encoder.encode(expected), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'])
+  const candidate = await crypto.subtle.importKey('raw', encoder.encode(supplied), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const message = encoder.encode('vynzo-media-control')
+  const signature = await crypto.subtle.sign('HMAC', candidate, message)
+  return await crypto.subtle.verify('HMAC', key, signature, message)
+}
+
+async function authorizeMediaDelivery(request: Request, headers: Record<string, string>) {
+  if (!await validMediaControl(request)) return jsonResponse(401, { error: 'Unauthorized.' }, headers)
+  let body
+  try {
+    body = await request.json()
+  } catch (error) {
+    if (error instanceof SyntaxError) return jsonResponse(400, { error: 'Invalid media request.' }, headers)
+    throw error
+  }
+  const result = await authorizeMediaClaims(body, getPostContext, getStoryContext)
+  if (!result.valid) return jsonResponse(400, { error: 'Invalid media request.' }, headers)
+  if (!result.allowed) return jsonResponse(403, { allowed: false }, headers)
+  return jsonResponse(200, { allowed: true, objectVariant: result.objectVariant }, headers)
+}
+
+async function reconcileMediaReferences(request: Request, headers: Record<string, string>) {
+  if (!await validMediaControl(request)) return jsonResponse(401, { error: 'Unauthorized.' }, headers)
+  let body
+  try {
+    body = await request.json()
+  } catch (error) {
+    if (error instanceof SyntaxError) return jsonResponse(400, { error: 'Invalid media request.' }, headers)
+    throw error
+  }
+  const refs = body?.refs
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (!Array.isArray(refs) || refs.length > 100 || refs.some(ref =>
+    !ref || !['post', 'story'].includes(ref.kind) ||
+    typeof ref.userId !== 'string' || !uuid.test(ref.userId) ||
+    typeof ref.uploadId !== 'string' || !uuid.test(ref.uploadId))) {
+    return jsonResponse(400, { error: 'Invalid media request.' }, headers)
+  }
+  const postIds = refs.filter(ref => ref.kind === 'post').map(ref => ref.uploadId)
+  const storyIds = refs.filter(ref => ref.kind === 'story').map(ref => ref.uploadId)
+  const [posts, stories] = await Promise.all([
+    postIds.length ? admin.from('posts').select('id,user_id,media_url').in('id', postIds) : Promise.resolve({ data: [], error: null }),
+    storyIds.length ? admin.from('stories').select('id,user_id,media_url,expires_at').in('id', storyIds) : Promise.resolve({ data: [], error: null })
+  ])
+  throwOnError(posts.error)
+  throwOnError(stories.error)
+  const byPostId = new Map((posts.data || []).map(post => [post.id, post]))
+  const byStoryId = new Map((stories.data || []).map(story => [story.id, story]))
+  const now = Date.now()
+  const orphaned = refs.filter(ref => {
+    const item = ref.kind === 'post' ? byPostId.get(ref.uploadId) : byStoryId.get(ref.uploadId)
+    if (!item || item.user_id !== ref.userId || item.media_url !== `r2://${ref.kind}/${ref.userId}/${ref.uploadId}`) return true
+    return ref.kind === 'story' && 'expires_at' in item && typeof item.expires_at === 'string'
+      && Number.isFinite(Date.parse(item.expires_at)) && Date.parse(item.expires_at) <= now
+  })
+  return jsonResponse(200, { orphaned }, headers)
+}
+
+type R2MediaReference = { kind: 'post' | 'story'; userId: string; uploadId: string }
+
+function parseR2MediaUrl(mediaUrl: string): R2MediaReference | null {
+  const match = /^r2:\/\/(post|story)\/([0-9a-f-]{36})\/([0-9a-f-]{36})$/i.exec(mediaUrl)
+  if (!match) return null
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (!uuid.test(match[2]) || !uuid.test(match[3])) return null
+  return { kind: match[1].toLowerCase() as 'post' | 'story', userId: match[2], uploadId: match[3] }
+}
+
+async function mediaPlaybackUrl(mediaUrl: string, itemId: string, viewerId: string, variant: 'playback' | 'original' = 'playback'): Promise<string> {
+  const ref = parseR2MediaUrl(mediaUrl)
+  if (!ref) return mediaUrl
+  const workerUrl = Deno.env.get('R2_MEDIA_WORKER_URL')
+  const secret = Deno.env.get('R2_DELIVERY_SECRET')
+  if (!workerUrl || !secret) throw new Error('R2 media delivery is not configured.')
+  const permit = await createDeliveryPermit({ ...ref, viewerId, itemId, variant, secret })
+  const url = new URL('/media', workerUrl)
+  url.searchParams.set('permit', permit)
+  return url.toString()
+}
+
+async function callMediaWorker(action: 'inspect' | 'read' | 'promote' | 'delete', payload: Record<string, unknown>) {
+  const workerUrl = Deno.env.get('R2_MEDIA_WORKER_URL')
+  const secret = Deno.env.get('R2_MEDIA_CONTROL_SECRET')
+  if (!workerUrl || !secret || secret.length < 32) throw new Error('R2 media control is not configured.')
+  const response = await fetch(new URL(`/internal/${action}`, workerUrl), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Media-Control': secret },
+    body: JSON.stringify(payload)
+  })
+  if (!response.ok) {
+    console.error('R2 media control failed:', action, response.status)
+    throw new Error(`R2 media ${action} failed (HTTP ${response.status}).`)
+  }
+  return response
+}
+
+async function publishStagedMedia(request: Request, viewerId: string, headers: Record<string, string>) {
+  let body
+  try {
+    body = await request.json()
+  } catch (error) {
+    if (error instanceof SyntaxError) return jsonResponse(400, { error: 'Invalid upload request.' }, headers)
+    throw error
+  }
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (!['post', 'story'].includes(body?.kind) || typeof body?.uploadId !== 'string' || !uuid.test(body.uploadId) ||
+      !['image', 'video'].includes(body?.mediaType) || typeof body?.protected !== 'boolean') {
+    return jsonResponse(400, { error: 'Invalid upload request.' }, headers)
+  }
+  const caption = typeof body.caption === 'string' ? body.caption.slice(0, 2200) : ''
+  if (violatesGuidelines(caption)) return jsonResponse(422, { error: GUIDELINES_MESSAGE, code: 'guidelines' }, headers)
+  const ref = { kind: body.kind, userId: viewerId, uploadId: body.uploadId }
+  const inspect = await callMediaWorker('inspect', ref)
+  const objects = await inspect.json()
+  const original = objects?.original
+  const playback = objects?.playback
+  const validObject = (value: { size?: unknown; contentType?: unknown }) =>
+    Number.isSafeInteger(value?.size) && Number(value.size) > 0 && Number(value.size) <= 50 * 1024 * 1024 &&
+    typeof value.contentType === 'string' && allowedMediaTypes.has(value.contentType)
+  if (!validObject(original) || !original.contentType.startsWith(`${body.mediaType}/`) ||
+      (body.mediaType === 'image' && playback) ||
+      (body.mediaType === 'video' && (!validObject(playback) || playback.contentType !== 'video/mp4'))) {
+    return jsonResponse(400, { error: 'The staged media is incomplete or invalid.' }, headers)
+  }
+  if (body.mediaType === 'image' && original.size <= 15 * 1024 * 1024) {
+    const response = await callMediaWorker('read', { ...ref, prefix: 'staging', variant: 'original' })
+    const file = new File([await response.arrayBuffer()], 'image', { type: original.contentType })
+    if (file.size !== original.size) throw new Error('Staged image size changed during moderation.')
+    const unsafe = await rejectUnsafeImage(file, viewerId, headers)
+    if (unsafe) return unsafe
+  }
+  const marker = `r2://${body.kind}/${viewerId}/${body.uploadId}`
+  const mediaUrl = await mediaPlaybackUrl(marker, body.uploadId, viewerId)
+  const table = body.kind === 'post' ? 'posts' : 'stories'
+  const row = body.kind === 'post'
+    ? { id: body.uploadId, user_id: viewerId, caption, media_type: body.mediaType, media_url: marker, is_protected: body.protected }
+    : { id: body.uploadId, user_id: viewerId, media_type: body.mediaType, media_url: marker, is_protected: body.protected,
+      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() }
+  const { data: item, error } = await admin.from(table).insert(row).select('*').single()
+  throwOnError(error)
+  try {
+    await callMediaWorker('promote', { ...ref, mediaType: body.mediaType })
+  } catch (promotionError) {
+    const { error: cleanupError } = await admin.from(table).delete().eq('id', body.uploadId).eq('user_id', viewerId)
+    if (cleanupError) console.error('Failed to remove a post or story after R2 promotion failed:', cleanupError)
+    throw promotionError
+  }
+  const { data: stillPublished, error: checkError } = await admin.from(table).select('id')
+    .eq('id', body.uploadId).eq('user_id', viewerId).eq('media_url', marker).maybeSingle()
+  throwOnError(checkError)
+  if (!stillPublished) {
+    await callMediaWorker('delete', { ...ref, prefix: 'media' })
+    throw new Error('The post or story was removed while media was being published.')
+  }
+  try {
+    await callMediaWorker('delete', { ...ref, prefix: 'staging' })
+  } catch (cleanupError) {
+    console.error('Failed to clean up staged media after publication:', cleanupError)
+  }
+  const result = { ...item, media_url: mediaUrl }
+  return jsonResponse(201, body.kind === 'post'
+    ? { message: 'Post created successfully', post: result }
+    : { message: 'Story published successfully', story: result }, headers)
 }
 
 async function updatePostCount(postId: string, column: 'likes_count' | 'comments_count') {
@@ -654,9 +827,13 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
         : { data: [], error: null }
       throwOnError(likesError)
       const likedIds = new Set((likes || []).map(row => row.post_id))
-      visiblePosts = (userPosts || []).filter(post => post.user_id === viewerId
+      visiblePosts = await Promise.all((userPosts || []).filter(post => post.user_id === viewerId
         || (post.privacy !== 'only_me' && (post.privacy !== 'friends' || isFriend)))
-        .map(post => ({ ...post, is_owner: post.user_id === viewerId, is_liked: likedIds.has(post.id) }))
+        .map(async post => ({
+          ...post, media_url: await mediaPlaybackUrl(post.media_url, post.id, viewerId),
+          has_original: Boolean(parseR2MediaUrl(post.media_url)),
+          is_owner: post.user_id === viewerId, is_liked: likedIds.has(post.id)
+        })))
     }
     const { data: liveRaw, error: liveError } = await admin.from('live_sessions')
       .select('id,title,visibility').eq('host_id', targetId).eq('is_active', true).gte('last_heartbeat', new Date(Date.now() - 90_000).toISOString()).order('created_at', { ascending: false }).limit(1).maybeSingle()
@@ -811,10 +988,17 @@ async function handleModeration(request: Request, viewerId: string, headers: Rec
     let removed = 0
     for (const item of todo.slice(0, 15)) {
       if (item.media_type === 'video') {
-        videos.push({ kind: item.kind, id: item.id, media_url: item.media_url })
+        videos.push({ kind: item.kind, id: item.id, media_url: await mediaPlaybackUrl(item.media_url, item.id, viewerId) })
         continue
       }
-      const flagged = await scanImages([item.media_url])
+      const ref = parseR2MediaUrl(item.media_url)
+      const image = ref
+        ? await callMediaWorker('read', { ...ref, prefix: 'media', variant: 'original' })
+        : null
+      const scanUrl = image
+        ? toDataUrl(new Uint8Array(await image.arrayBuffer()), image.headers.get('Content-Type') || 'image/jpeg')
+        : item.media_url
+      const flagged = await scanImages([scanUrl])
       if (flagged === null) break
       if (flagged) {
         await removeFlaggedItem(item.kind, item.id, viewerId, item.media_url)
@@ -852,7 +1036,11 @@ async function handleModeration(request: Request, viewerId: string, headers: Rec
     throwOnError(error)
     if (!session || !frame) return jsonResponse(200, { ended: false }, headers)
     if (!(await scanImages([frame]))) return jsonResponse(200, { ended: false }, headers)
-    await admin.from('live_sessions').update({ is_active: false }).eq('id', session.id).eq('host_id', viewerId)
+    const { error: deleteError } = await admin.from('live_sessions')
+      .delete()
+      .eq('id', session.id)
+      .eq('host_id', viewerId)
+    throwOnError(deleteError)
     await addModerationNotice(viewerId, 'Warning: your live stream was ended because it appears to violate the Vynzo community guidelines (nudity, hate, bullying or other material offensive to public decency).')
     return jsonResponse(200, { ended: true }, headers)
   }
@@ -974,7 +1162,8 @@ async function handleStories(request: Request, viewerId: string, headers: Record
       groups.get(story.user_id)!.stories.push({
         id: story.id,
         media_type: story.media_type,
-        media_url: story.media_url,
+        media_url: await mediaPlaybackUrl(story.media_url, story.id, viewerId),
+        has_original: Boolean(parseR2MediaUrl(story.media_url)),
         is_protected: story.is_protected,
         privacy: story.privacy || 'everyone',
         created_at: story.created_at,
@@ -989,6 +1178,9 @@ async function handleStories(request: Request, viewerId: string, headers: Record
   }
 
   if (route === '/stories/upload' && method === 'POST') {
+    if (Deno.env.get('R2_LEGACY_UPLOADS_DISABLED') === 'true') {
+      return jsonResponse(426, { error: 'Update Vynzo to upload stories using the new media service.' }, headers)
+    }
     const form = await request.formData()
     const file = form.get('media')
     if (!(file instanceof File) || file.size === 0) {
@@ -1049,11 +1241,7 @@ async function handleStories(request: Request, viewerId: string, headers: Record
       reason
     })
     if (logError) console.error('Story moderation log failed:', logError)
-    const path = storagePath(story.media_url)
-    if (path) {
-      const { error: storageError } = await admin.storage.from('uploads').remove([path])
-      if (storageError) console.error('Moderated story media cleanup error:', storageError)
-    }
+    await removeMedia(story.media_url)
     return jsonResponse(200, { success: true }, headers)
   }
   if (!storyMatch) return jsonResponse(404, { error: 'Endpoint not found' }, headers)
@@ -1068,11 +1256,7 @@ async function handleStories(request: Request, viewerId: string, headers: Record
     if (!story) return jsonResponse(404, { error: 'Story not found or you do not own it' }, headers)
     const { error: deleteError } = await admin.from('stories').delete().eq('id', storyId).eq('user_id', viewerId)
     throwOnError(deleteError)
-    const path = storagePath(story.media_url)
-    if (path) {
-      const { error: storageError } = await admin.storage.from('uploads').remove([path])
-      if (storageError) console.error('Deleted story media cleanup error:', storageError)
-    }
+    await removeMedia(story.media_url)
     return jsonResponse(200, { success: true }, headers)
   }
 
@@ -1167,12 +1351,9 @@ async function addModerationNotice(userId: string, message = MEDIA_WARNING) {
 }
 
 async function removeFlaggedItem(kind: 'post' | 'story', itemId: string, userId: string, mediaUrl: string) {
-  await admin.from(kind === 'post' ? 'posts' : 'stories').delete().eq('id', itemId).eq('user_id', userId)
-  const path = storagePath(mediaUrl)
-  if (path) {
-    const { error } = await admin.storage.from('uploads').remove([path])
-    if (error) console.error('Flagged media cleanup error:', error)
-  }
+  const { error } = await admin.from(kind === 'post' ? 'posts' : 'stories').delete().eq('id', itemId).eq('user_id', userId)
+  throwOnError(error)
+  await removeMedia(mediaUrl)
   await admin.from('media_moderation').upsert({ kind, item_id: itemId, user_id: userId, status: 'removed' })
   await addModerationNotice(userId)
 }
@@ -1194,6 +1375,19 @@ function storagePath(mediaUrl: string): string | null {
     if (mediaUrl.startsWith('/uploads/')) return mediaUrl.slice('/uploads/'.length)
   }
   return null
+}
+
+async function removeMedia(mediaUrl: string) {
+  const ref = parseR2MediaUrl(mediaUrl)
+  if (ref) {
+    await callMediaWorker('delete', { ...ref, prefix: 'media' })
+    return
+  }
+  const path = storagePath(mediaUrl)
+  if (path) {
+    const { error } = await admin.storage.from('uploads').remove([path])
+    if (error) console.error('Media cleanup error:', error)
+  }
 }
 
 async function handlePosts(request: Request, viewerId: string, headers: Record<string, string>) {
@@ -1255,10 +1449,12 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
     const likedIds = new Set((likedRows || []).map(row => row.post_id))
 
     return jsonResponse(200, {
-      posts: pagePosts.map(post => {
+      posts: await Promise.all(pagePosts.map(async post => {
         const owner = userById.get(post.user_id)!
         return {
           ...post,
+          media_url: await mediaPlaybackUrl(post.media_url, post.id, viewerId),
+          has_original: Boolean(parseR2MediaUrl(post.media_url)),
           is_owner: post.user_id === viewerId,
           is_liked: likedIds.has(post.id),
           author_id: owner.id,
@@ -1266,13 +1462,16 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
           author_display_name: owner.display_name,
           author_avatar_url: owner.avatar_url
         }
-      }),
+      })),
       limit,
       offset
     }, headers)
   }
 
   if (route === '/posts/upload' && method === 'POST') {
+    if (Deno.env.get('R2_LEGACY_UPLOADS_DISABLED') === 'true') {
+      return jsonResponse(426, { error: 'Update Vynzo to upload posts using the new media service.' }, headers)
+    }
     const form = await request.formData()
     const file = form.get('media')
     if (!(file instanceof File) || file.size === 0) {
@@ -1320,11 +1519,7 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
     if (!post) return jsonResponse(404, { error: 'Post not found or you do not own it' }, headers)
     const { error: deleteError } = await admin.from('posts').delete().eq('id', postId).eq('user_id', viewerId)
     throwOnError(deleteError)
-    const path = storagePath(post.media_url)
-    if (path) {
-      const { error: storageError } = await admin.storage.from('uploads').remove([path])
-      if (storageError) console.error('Deleted post media cleanup error:', storageError)
-    }
+    await removeMedia(post.media_url)
     return jsonResponse(200, { success: true }, headers)
   }
 
@@ -2085,6 +2280,17 @@ async function handleLive(request: Request, viewerId: string | undefined, header
   const method = request.method
 
   if (route === '/live' && method === 'GET') {
+    const staleBefore = new Date(Date.now() - 90_000).toISOString()
+    const { error: endedSessionsError } = await admin.from('live_sessions')
+      .delete()
+      .eq('is_active', false)
+    throwOnError(endedSessionsError)
+    const { error: staleSessionsError } = await admin.from('live_sessions')
+      .delete()
+      .eq('is_active', true)
+      .lt('last_heartbeat', staleBefore)
+    throwOnError(staleSessionsError)
+
     const { data: sessions, error } = await admin.from('live_sessions')
       .select('id,host_id,title,category,viewer_count,created_at,visibility')
       .eq('is_active', true)
@@ -2188,7 +2394,7 @@ async function handleLive(request: Request, viewerId: string | undefined, header
     }
 
     const { error: endPreviousError } = await admin.from('live_sessions')
-      .update({ is_active: false })
+      .delete()
       .eq('host_id', viewerId)
       .eq('is_active', true)
       .neq('id', session.id)
@@ -2236,7 +2442,7 @@ async function handleLive(request: Request, viewerId: string | undefined, header
   if (endMatch && method === 'POST' && viewerId) {
     const [, sessionId] = endMatch
     const { error } = await admin.from('live_sessions')
-      .update({ is_active: false })
+      .delete()
       .eq('id', sessionId)
       .eq('host_id', viewerId)
     throwOnError(error)
@@ -2353,11 +2559,19 @@ Deno.serve(async request => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers })
 
   try {
-    const viewer = await getViewer(request)
     const pathSegments = new URL(request.url).pathname.split('/').filter(Boolean)
     const functionIndex = pathSegments.indexOf('vynzo-api')
     const endpointSegments = functionIndex >= 0 ? pathSegments.slice(functionIndex + 1) : pathSegments
     if (endpointSegments[0] === 'api') endpointSegments.shift()
+    if (endpointSegments.length === 2 && endpointSegments[0] === 'media'
+      && endpointSegments[1] === 'authorize' && request.method === 'POST') {
+      return await authorizeMediaDelivery(request, headers)
+    }
+    if (endpointSegments.length === 2 && endpointSegments[0] === 'media'
+      && endpointSegments[1] === 'reconcile' && request.method === 'POST') {
+      return await reconcileMediaReferences(request, headers)
+    }
+    const viewer = await getViewer(request)
     if (endpointSegments[0] === 'auth' && endpointSegments[1] === 'login' && request.method === 'POST') {
       return await handlePhoneLogin(request, headers)
     }
@@ -2373,6 +2587,76 @@ Deno.serve(async request => {
     }
     if (endpointSegments[0] === 'live') return await handleLive(request, viewer?.id, headers)
     if (!viewer) return jsonResponse(401, { error: 'Invalid or expired session.' }, headers)
+    if (endpointSegments.length === 2 && endpointSegments[0] === 'media'
+      && endpointSegments[1] === 'stage' && request.method === 'POST') {
+      if (Deno.env.get('R2_UPLOADS_ENABLED') !== 'true') {
+        return jsonResponse(503, { error: 'R2 media uploads are not enabled.' }, headers)
+      }
+      const secret = Deno.env.get('R2_UPLOAD_PERMIT_SECRET')
+      const workerUrl = Deno.env.get('R2_MEDIA_WORKER_URL')
+      if (!secret || !workerUrl) return jsonResponse(503, { error: 'R2 media uploads are not configured.' }, headers)
+      let body
+      try {
+        body = await request.json()
+      } catch (error) {
+        if (error instanceof SyntaxError) return jsonResponse(400, { error: 'Invalid upload request.' }, headers)
+        throw error
+      }
+      try {
+        const upload = await createUploadPermits({
+          userId: viewer.id, kind: body?.kind, original: body?.original,
+          playback: body?.playback, secret
+        })
+        return jsonResponse(200, { ...upload, workerUrl }, headers)
+      } catch (error) {
+        if (error instanceof UploadValidationError) return jsonResponse(400, { error: error.message }, headers)
+        throw error
+      }
+    }
+    if (endpointSegments.length === 2 && endpointSegments[0] === 'media'
+      && endpointSegments[1] === 'publish' && request.method === 'POST') {
+      if (Deno.env.get('R2_UPLOADS_ENABLED') !== 'true') {
+        return jsonResponse(503, { error: 'R2 media uploads are not enabled.' }, headers)
+      }
+      return await publishStagedMedia(request, viewer.id, headers)
+    }
+    if (endpointSegments.length === 2 && endpointSegments[0] === 'media'
+      && endpointSegments[1] === 'abort' && request.method === 'POST') {
+      if (Deno.env.get('R2_UPLOADS_ENABLED') !== 'true') {
+        return jsonResponse(503, { error: 'R2 media uploads are not enabled.' }, headers)
+      }
+      let body
+      try {
+        body = await request.json()
+      } catch (error) {
+        if (error instanceof SyntaxError) return jsonResponse(400, { error: 'Invalid upload request.' }, headers)
+        throw error
+      }
+      const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      if (!['post', 'story'].includes(body?.kind) || typeof body?.uploadId !== 'string' || !uuid.test(body.uploadId)) {
+        return jsonResponse(400, { error: 'Invalid upload request.' }, headers)
+      }
+      await callMediaWorker('delete', { kind: body.kind, userId: viewer.id, uploadId: body.uploadId, prefix: 'staging' })
+      return jsonResponse(200, { deleted: true }, headers)
+    }
+    if (endpointSegments.length === 2 && endpointSegments[0] === 'media'
+      && ['original', 'playback'].includes(endpointSegments[1]) && request.method === 'GET') {
+      const url = new URL(request.url)
+      const kind = url.searchParams.get('kind')
+      const id = url.searchParams.get('id')
+      const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      if (!id || !uuid.test(id) || (kind !== 'post' && kind !== 'story')) {
+        return jsonResponse(400, { error: 'Invalid media request.' }, headers)
+      }
+      const context = kind === 'post' ? await getPostContext(id, viewer.id) : await getStoryContext(id, viewer.id)
+      const item = context && ('post' in context ? context.post : context.story)
+      const variant = endpointSegments[1] === 'original' ? 'original' : 'playback'
+      if (!item || (variant === 'original' && item.user_id !== viewer.id) || !parseR2MediaUrl(item.media_url)) {
+        return jsonResponse(404, { error: 'Media not found.' }, headers)
+      }
+      const mediaUrl = await mediaPlaybackUrl(item.media_url, id, viewer.id, variant)
+      return jsonResponse(200, { url: mediaUrl }, headers)
+    }
     if (endpointSegments[0] === 'blogs') return await handleBlogs(request, viewer.id, headers, admin)
     if (endpointSegments[0] === 'posts') return await handlePosts(request, viewer.id, headers)
     if (endpointSegments[0] === 'users') return await handleUsers(request, viewer.id, headers)

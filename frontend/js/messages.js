@@ -864,6 +864,11 @@ function appendMessage(container, message, currentUser) {
   container.scrollTop = container.scrollHeight;
 }
 
+function linkifyText(text) {
+  return escapeHtml(text).replace(/https?:\/\/[^\s<]+/g, url =>
+    `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
+}
+
 function messageMarkup(message, currentUser) {
   const isOutgoing = message.sender_id === currentUser.id;
   const isSticker = message.content === STICKER_MESSAGE_CONTENT;
@@ -882,7 +887,7 @@ function messageMarkup(message, currentUser) {
         ${replyQuoteMarkup(message.reply_to)}
         ${mediaMarkup(message)}
         ${message.view_once ? viewOnceMarkup(message, isOutgoing) : ''}
-        ${message.content && !isSticker ? `<span class="message-content">${escapeHtml(message.content)}</span>` : ''}
+        ${message.content && !isSticker ? `<span class="message-content">${linkifyText(message.content)}</span>` : ''}
         ${message.edited_at ? '<span class="message-edited">(edited)</span>' : ''}
         <button class="message-reply-button" type="button" aria-label="Reply to this message" title="Reply">↩</button>
         ${isOutgoing && message.content && !isSticker && !message.view_once && message.can_unsend !== false ? '<button class="message-edit-button" type="button" aria-label="Edit message" title="Edit message">✎</button>' : ''}

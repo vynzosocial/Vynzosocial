@@ -7,9 +7,11 @@ const appRoot = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(appRoot, '..');
 const www = path.join(appRoot, 'www');
 
+require(path.join(repoRoot, 'scripts', 'check-frontend-text'))(path.join(repoRoot, 'frontend'));
 fs.rmSync(www, { recursive: true, force: true });
 fs.cpSync(path.join(repoRoot, 'frontend'), www, { recursive: true });
 require(path.join(repoRoot, 'scripts', 'copy-live-face-assets'))(www);
+require(path.join(repoRoot, 'scripts', 'copy-video-encoder-assets'))(www);
 fs.rmSync(path.join(www, '_headers'), { force: true });
 
 const homePath = path.join(www, 'index.html');

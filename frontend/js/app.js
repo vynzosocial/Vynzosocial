@@ -1,7 +1,8 @@
-﻿import { restoreSupabaseSession } from './supabase-client.js';
-import { initFeed } from './feed.js?v=report-reasons1';
-import { initStoriesCarousel } from './stories.js?v=up1';
-import { initHomeFriends } from './home-friends.js?v=report-reasons1';
+import { restoreSupabaseSession } from './supabase-client.js';
+try { screen.orientation?.lock?.('portrait').catch(() => {}); } catch { /* unsupported */ }
+import { initFeed } from './feed.js?v=share2';
+import { initStoriesCarousel } from './stories.js?v=share2';
+import { initHomeFriends } from './home-friends.js?v=share2';
 import { apiRequest } from './api.js?v=sb6';
 import { API_ORIGIN } from './config.js?v=sb4';
 

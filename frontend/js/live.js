@@ -1,8 +1,10 @@
-﻿import { apiRequest } from './api.js?v=sb6';
+import { apiRequest } from './api.js?v=sb6';
 import { API_ORIGIN } from './config.js?v=sb4';
 import { createRealtimeSocket } from './realtime.js?v=sb9';
 import { startLiveFrameGuard } from './content-guard.js?v=1';
-import { createCameraFilter } from './live-camera-filter.js?v=5';
+import { createCameraFilter } from './live-camera-filter.js?v=6';
+import { openShareDialog, SHARE_BASE_URL } from './share.js?v=2';
+try { screen.orientation?.lock?.('portrait').catch(() => {}); } catch { /* unsupported */ }
 
 let stopLiveFrameGuard = null;
 let socket = null;
@@ -453,6 +455,20 @@ function attachLiveHeader() {
     });
   }
 
+  const shareBtn = document.getElementById('live-share-btn');
+  if (shareBtn) {
+    shareBtn.addEventListener('click', () => {
+      const sessionId = activeBroadcastSessionId || activeRoomSessionId || selectedLiveSessionId;
+      if (!sessionId) return;
+      const liveTitle = document.getElementById('live-title-text')?.textContent?.trim();
+      openShareDialog({
+        title: 'Share this live',
+        text: `🔴 Join my live${liveTitle ? `: ${liveTitle}` : ''}`,
+        url: `${SHARE_BASE_URL}/pages/live.html?sessionId=${encodeURIComponent(sessionId)}`
+      });
+    });
+  }
+
   const hostExit = document.getElementById('live-host-exit-btn');
   if (hostExit) {
     hostExit.addEventListener('click', () => {
@@ -520,8 +536,9 @@ function createLiveStage(placeholder, isHost, hostUsername = '', title = '', hos
         ${isHost
           ? '<button type="button" class="live-media-button live-header-btn" id="live-edit-title-btn" aria-label="Edit title">&#9998;</button>'
           : '<button type="button" class="live-media-button live-header-btn" id="live-add-friend-btn" hidden>+ Add friend</button>'}
+        <button type="button" class="live-media-button live-header-btn" id="live-share-btn" aria-label="Share this live">Share</button>
         <div class="live-viewers">
-          <button type="button" class="live-viewers-btn" id="live-viewers-btn" aria-haspopup="true" aria-expanded="false" aria-label="People watching">
+          <button type="button" class="live-viewers-btn" id="live-viewers-btn" aria-haspopup="true" aria-expanded="false"           aria-label="People watching">
             <span class="live-viewers-avatars" id="live-viewers-avatars"></span>
             <b id="live-viewers-total">0</b><span aria-hidden="true">&#9662;</span>
           </button>
@@ -543,12 +560,12 @@ function createLiveStage(placeholder, isHost, hostUsername = '', title = '', hos
         <form class="live-controls-bar" id="live-chat-form">
           <div class="live-chat-composer">
             <div class="live-chat-emoji-picker" id="live-chat-emoji-picker" role="group" aria-label="Choose an emoji" hidden>
-              ${['😀', '😂', '😍', '🥰', '😎', '😭', '🔥', '❤️', '👏', '🎉', '👍', '🙏'].map(emoji => `
+              ${['😀', '😂', '😍', '❤️', '🔥', '👏', '🎉', '👍', '🙏', '😮', '😢', '💯'].map(emoji => `
                 <button type="button" class="live-chat-emoji" aria-label="${emoji}" data-emoji="${emoji}">${emoji}</button>
               `).join('')}
             </div>
             <div class="live-chat-input-row">
-              <button type="button" class="live-chat-emoji-toggle" aria-label="Add emoji" aria-expanded="false" aria-controls="live-chat-emoji-picker">☺</button>
+              <button type="button" class="live-chat-emoji-toggle" aria-label="Add emoji" aria-expanded="false" aria-controls="live-chat-emoji-picker">😊</button>
               <input type="text" class="chat-input" id="live-chat-input" placeholder="${placeholder}" maxlength="500" required autocomplete="off">
               <button type="submit" class="btn-live">Send</button>
             </div>
@@ -564,7 +581,11 @@ function createLiveStage(placeholder, isHost, hostUsername = '', title = '', hos
             <span id="live-media-status"></span>
           </div>
           <div class="live-media-actions">
-            <button type="button" class="live-media-button" id="live-enable-camera-btn">${isHost ? 'Open camera' : '🎤 Request to Join'}</button>
+            ${isHost ? '' : '<button type="button" class="live-media-button" id="live-enable-camera-btn">🎤 Request to Join</button>'}
+            <div class="live-media-menu" id="live-media-menu">
+            <button type="button" class="live-media-button live-media-menu-toggle" id="live-media-menu-btn" aria-haspopup="true" aria-expanded="false" aria-controls="live-media-menu-panel">📷 Camera ▾</button>
+            <div class="live-media-menu-panel" id="live-media-menu-panel" role="menu" hidden>
+            ${isHost ? '<button type="button" class="live-media-button" id="live-enable-camera-btn">Open camera</button>' : ''}
             <button type="button" class="live-media-button" id="live-mirror-camera-btn" aria-pressed="false" title="Mirror your preview; viewers see the normal camera view" hidden>Mirror camera</button>
             <label class="live-camera-filter" id="live-camera-filter-control" title="Effects are processed on your device and visible to live viewers" hidden>
               <span>Filter</span>
@@ -573,25 +594,8 @@ function createLiveStage(placeholder, isHost, hostUsername = '', title = '', hos
                 <option value="warm">Warm</option>
                 <option value="cool">Cool</option>
                 <option value="vivid">Vivid</option>
-                <option value="mono">Black &amp; white</option>
-                <option value="lipstick">Lipstick</option>
-                <option value="blush">Blush</option>
                 <option value="skin">Skin smoothing</option>
-                <option value="eyeshadow">Eyeshadow</option>
-                <option value="eyeliner">Eyeliner</option>
-                <option value="lashes">Eyelashes</option>
-                <option value="eyebrows">Eyebrows</option>
-                <option value="eyes-blue">Blue eyes</option>
-                <option value="eyes-green">Green eyes</option>
-                <option value="eyes-violet">Violet eyes</option>
-                <option value="glasses">Glasses</option>
-                <option value="hat">Party hat</option>
-                <option value="stars">Star stickers</option>
-                <option value="party">Party look</option>
-                <option value="background-blue">Blue background</option>
-                <option value="background-purple">Purple background</option>
-                <option value="background-dark">Dark background</option>
-                <option value="background-image">Choose background image...</option>
+                <option value="background-image">Background image...</option>
               </select>
             </label>
             <input id="live-background-file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
@@ -599,11 +603,13 @@ function createLiveStage(placeholder, isHost, hostUsername = '', title = '', hos
             <input id="live-image-file" type="file" accept="image/*" hidden>
             <button type="button" class="live-media-button live-media-off-button" id="live-turn-media-off-btn" hidden>${isHost ? 'Turn media off' : 'Leave stage'}</button>
             ${isHost ? '' : '<button type="button" class="live-media-button" id="live-self-mute-btn" hidden>&#128263; Mute me</button>'}
-          </div>
+                        </div>
+                        </div>
+                      </div>
         </div>
         <div class="live-video-grid" id="live-video-grid">
           <div class="live-video-empty" id="live-video-empty">
-            <span aria-hidden="true">◉</span>
+            <span aria-hidden="true">📹</span>
           </div>
         </div>
       </div>
@@ -707,7 +713,35 @@ function attachLiveMediaControls() {
   const backgroundInput = document.getElementById('live-background-file');
   if (!cameraButton || !imageInput || !offButton) return;
 
-  cameraButton.addEventListener('click', () => enableLocalCamera());
+  const menu = document.getElementById('live-media-menu');
+  const menuButton = document.getElementById('live-media-menu-btn');
+  const menuPanel = document.getElementById('live-media-menu-panel');
+  const setMenuOpen = (open) => {
+    if (!menuPanel || !menuButton) return;
+    menuPanel.hidden = !open;
+    menuButton.setAttribute('aria-expanded', String(open));
+  };
+  if (menu && menuButton && menuPanel) {
+    menuButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      setMenuOpen(menuPanel.hidden);
+    });
+    menuPanel.addEventListener('click', (event) => {
+      if (event.target.closest('button')) setMenuOpen(false);
+    });
+    menuPanel.addEventListener('change', () => setMenuOpen(false));
+    document.addEventListener('click', (event) => {
+      if (!menu.contains(event.target)) setMenuOpen(false);
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    });
+  }
+
+  cameraButton.addEventListener('click', () => {
+    if (localVideoTrack && (!isGuestRole() || guestOnStage)) turnCameraOff();
+    else enableLocalCamera();
+  });
   if (filterSelect) filterSelect.addEventListener('change', () => {
     if (filterSelect.value === 'background-image') {
       filterSelect.value = cameraFilterName;
@@ -745,8 +779,10 @@ function attachLiveMediaControls() {
     }
   });
   if (mirrorButton) {
-    mirrorButton.addEventListener('click', () => {
+    mirrorButton.addEventListener('click', async () => {
       cameraMirrored = !cameraMirrored;
+      if (cameraFilter && cameraFilterName !== 'none') cameraFilter.setMirror(cameraMirrored);
+      else await applyLocalCameraFilter('none');
       applyCameraMirror();
     });
   }
@@ -816,6 +852,27 @@ function attachLiveMediaControls() {
   }
 }
 
+async function turnCameraOff() {
+  stopCameraFilter();
+  stopImageSource();
+  if (cameraStream) {
+    cameraStream.getVideoTracks().forEach(track => {
+      track.stop();
+      cameraStream.removeTrack(track);
+    });
+    localAudioTrack = cameraStream.getAudioTracks()[0] || null;
+    if (!localAudioTrack) cameraStream = null;
+  }
+  localVideoTrack = null;
+  try {
+    await publishLocalMedia();
+    updateLocalMediaControls('');
+  } catch (err) {
+    console.error('Unable to turn off the camera:', err);
+    showLiveError('Unable to turn off the camera. Please try again.');
+  }
+}
+
 async function enableLocalCamera(acceptInvite = false) {
   const joiningStage = isGuestRole() && !guestOnStage;
   if (!(await requestGuestSlot(acceptInvite))) return;
@@ -861,11 +918,8 @@ async function enableLocalCamera(acceptInvite = false) {
     localVideoTrack = stream.getVideoTracks()[0] || null;
     localAudioTrack = stream.getAudioTracks()[0] || null;
     await publishLocalMedia();
-    updateLocalMediaControls(
-      localAudioTrack
-        ? 'Your camera and microphone are being shared with everyone.'
-        : 'Your camera is being shared without microphone audio.'
-    );
+    if (cameraMirrored) await applyLocalCameraFilter('none');
+    updateLocalMediaControls('');
   } catch (err) {
     console.error('Unable to access the live camera:', err);
     showLiveError('Unable to open the camera. Check browser permissions, or choose an image instead.');
@@ -1080,6 +1134,12 @@ function updateLocalMediaControls(message) {
   const offButton = document.getElementById('live-turn-media-off-btn');
   if (status) status.textContent = message;
   if (offButton) offButton.hidden = !localVideoTrack && !localAudioTrack;
+  const cameraButton = document.getElementById('live-enable-camera-btn');
+  if (cameraButton && (!isGuestRole() || guestOnStage)) {
+    cameraButton.textContent = localVideoTrack
+      ? '📷 Turn camera off'
+      : (isGuestRole() ? '📷 Turn camera on' : 'Open camera');
+  }
   applyCameraMirror();
   applyMute();
   updateVideoGridLayout();
@@ -1099,7 +1159,7 @@ function applyCameraMirror() {
     mirrorButton.hidden = !hasCameraTrack;
     mirrorButton.setAttribute('aria-pressed', String(cameraMirrored));
   }
-  if (preview) preview.classList.toggle('is-mirrored', hasCameraTrack && cameraMirrored);
+  if (preview) preview.classList.remove('is-mirrored');
 }
 
 function stopCameraFilter() {
@@ -1125,7 +1185,7 @@ async function applyLocalCameraFilter(name, backgroundImage) {
     return;
   }
   const generation = ++cameraFilterGeneration;
-  if (cameraFilter && name !== 'none' && cameraFilter.supportsFilter(name)) {
+  if (cameraFilter && (name !== 'none' || cameraMirrored) && cameraFilter.supportsFilter(name)) {
     cameraFilter.setFilter(name);
     cameraFilterName = name;
     return;
@@ -1143,7 +1203,7 @@ async function applyLocalCameraFilter(name, backgroundImage) {
   }
   try {
     let next;
-    next = name === 'none' ? null : await createCameraFilter(source, name, (error) => {
+    next = (name === 'none' && !cameraMirrored) ? null : await createCameraFilter(source, name, (error) => {
       if (!next || cameraFilter !== next) return;
       console.error('Live camera filter failed:', error);
       stopCameraFilter();
@@ -1158,7 +1218,7 @@ async function applyLocalCameraFilter(name, backgroundImage) {
       updateLocalMediaControls(!wasBackground && source.readyState === 'live'
         ? 'Your camera is being shared without a filter.'
         : 'Your camera is off. Turn it on to share video.');
-    }, setup.signal, backgroundImage);
+    }, setup.signal, backgroundImage, cameraMirrored);
     if (generation !== cameraFilterGeneration || !cameraStream?.getVideoTracks().includes(source)) {
       if (next) next.stop();
       return;
@@ -1268,7 +1328,8 @@ function ensureVideoTile(peerId, isLocal) {
   label.hidden = !isLocal;
   const status = document.createElement('p');
   status.className = 'live-video-status';
-  status.textContent = 'Camera is off or connecting...';
+  status.textContent = '';
+  status.hidden = true;
   const avatar = document.createElement('div');
   avatar.className = 'live-tile-avatar';
   video.setAttribute('controlslist', 'nofullscreen');

@@ -98,6 +98,8 @@ function controlEnvironment(createCameraFilter) {
     let cameraFilterName = 'none';
     let cameraFilterSetup = null;
     let cameraFilterGeneration = 0;
+    let cameraMirrored = false;
+    let backgroundImage = null;
     ${controls}
   `, Object.assign(context, { source }));
   return { context, source, select, published, errors };
@@ -108,8 +110,8 @@ test('publishes the processed track and restores the original when disabled', as
   const env = controlEnvironment(async () => processed);
   await env.context.applyLocalCameraFilter('warm');
   assert.equal(env.published[0], processed.track);
-  await env.context.applyLocalCameraFilter('mono');
-  assert.equal(processed.name, 'mono');
+  await env.context.applyLocalCameraFilter('cool');
+  assert.equal(processed.name, 'cool');
   await env.context.applyLocalCameraFilter('none');
   assert.equal(env.published[1], env.source);
   assert.equal(processed.stopped, true);
@@ -123,7 +125,7 @@ test('a later processing failure restores the original track after changing filt
     return processed;
   });
   await env.context.applyLocalCameraFilter('warm');
-  await env.context.applyLocalCameraFilter('mono');
+  await env.context.applyLocalCameraFilter('cool');
   onError(new Error('rendering failed'));
   await Promise.resolve();
   assert.equal(env.published[1], env.source);
@@ -140,7 +142,7 @@ test('background failure stops camera video instead of exposing the original fee
     return processed;
   });
   env.source.stop = function () { this.readyState = 'ended'; };
-  await env.context.applyLocalCameraFilter('background-blue');
+  await env.context.applyLocalCameraFilter('background-image');
   onError(new Error('segmentation failed'));
   await Promise.resolve();
   assert.equal(env.source.readyState, 'ended');
@@ -150,7 +152,7 @@ test('background failure stops camera video instead of exposing the original fee
 });
 
 test('background controls validate local image uploads and warn about imperfect edges', () => {
-  for (const name of ['background-blue', 'background-purple', 'background-dark', 'background-image']) {
+  for (const name of ['background-image']) {
     assert.ok(liveSource.includes(`value="${name}"`));
   }
   assert.match(liveSource, /image\/jpeg.*image\/png.*image\/webp/);
@@ -241,7 +243,7 @@ test('face models and runtime are pinned, self-hosted and copied into both build
   }
   assert.match(faceSource, /modelBasePath: new URL\('\.\.\/vendor\/human\/models\/'/);
   assert.match(faceSource, /cacheModels: false/);
-  for (const effect of ['eyeshadow', 'eyeliner', 'lashes', 'eyebrows', 'eyes-blue', 'eyes-green', 'eyes-violet', 'hat', 'stars', 'skin']) {
+  for (const effect of ['warm', 'cool', 'vivid', 'skin', 'background-image']) {
     assert.ok(liveSource.includes(`value="${effect}"`), `${effect} must be available to hosts and guests`);
   }
 });
@@ -302,7 +304,7 @@ test('switching from a non-iris effect to eye colors replaces the outgoing track
   let count = 0;
   const env = controlEnvironment(async () => count++ ? second : first);
   await env.context.applyLocalCameraFilter('lipstick');
-  await env.context.applyLocalCameraFilter('eyes-blue');
+  await env.context.applyLocalCameraFilter('skin');
   assert.equal(env.published[1], second.track);
   assert.equal(first.stopped, true);
 });

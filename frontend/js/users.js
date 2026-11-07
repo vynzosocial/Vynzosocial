@@ -1,7 +1,8 @@
-﻿import { apiRequest } from './api.js?v=sb6';
-import { openPostViewer } from './feed.js?v=report-reasons1';
+import { apiRequest } from './api.js?v=sb6';
+import { openPostViewer } from './feed.js?v=share2';
 import { protectMedia } from './media-protect.js';
-import { openUserStories } from './stories.js?v=up1';
+import { openUserStories } from './stories.js?v=share2';
+import { refreshExpiredMedia } from './r2-uploads.js';
 
 import { API_ORIGIN as MEDIA_BASE_URL } from './config.js?v=sb4';
 
@@ -498,7 +499,7 @@ function renderUserProfile(container, profile, posts) {
   const storyButton = document.createElement('button');
   storyButton.type = 'button';
   storyButton.className = 'account-story-button';
-  storyButton.textContent = '▶ View story';
+  storyButton.textContent = '? View story';
   storyButton.hidden = true;
   storyButton.addEventListener('click', () => openUserStories(profile.id));
   container.appendChild(storyButton);
@@ -578,12 +579,17 @@ function renderUserProfile(container, profile, posts) {
     button.className = 'account-profile-post';
     button.setAttribute('aria-label', `Open ${post.media_type} post by @${profile.username}`);
     const media = document.createElement(post.media_type === 'video' ? 'video' : 'img');
+    refreshExpiredMedia(media, post, 'post');
     media.src = /^https?:/i.test(post.media_url) ? post.media_url : `${MEDIA_BASE_URL}${post.media_url}`;
     media.className = 'account-profile-post-media';
     if (post.media_type === 'video') {
       media.muted = true;
       media.playsInline = true;
       media.preload = 'metadata';
+      media.addEventListener('loadedmetadata', () => {
+        button.classList.remove('preview-unavailable');
+        button.setAttribute('aria-label', `Open video post by @${profile.username}`);
+      });
       media.addEventListener('loadedmetadata', () => {
         if (media.duration > 0) {
           media.currentTime = Math.min(0.1, media.duration / 2);

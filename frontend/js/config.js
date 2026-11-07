@@ -1,6 +1,7 @@
 ﻿// The app uses Supabase only. There is no separate backend server.
 export const API_ORIGIN = '';
 export const API_BASE_URL = '';
+export const R2_UPLOADS_ENABLED = true;
 
 // Realtime (live rooms, calls, instant message push) was served by the removed
 // backend. This inert socket keeps those screens from crashing until they are

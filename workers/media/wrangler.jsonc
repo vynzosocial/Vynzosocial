@@ -1,0 +1,15 @@
+{
+  "name": "vynzo-media",
+  "main": "index.mjs",
+  "compatibility_date": "2026-11-02",
+  "workers_dev": true,
+  "triggers": { "crons": ["30 3 * * *"] },
+  "vars": {
+    "MEDIA_AUTH_URL": "https://qyfphwrmwvnwsklfsbbo.supabase.co/functions/v1/vynzo-api/api/media/authorize",
+    "MEDIA_RECONCILE_URL": "https://qyfphwrmwvnwsklfsbbo.supabase.co/functions/v1/vynzo-api/api/media/reconcile",
+    "MEDIA_AUTH_KEY": "sb_publishable_i-NMgPe43-Tt-Afc9aQXoQ_dsBx6RwR"
+  },
+  "r2_buckets": [
+    { "binding": "MEDIA", "bucket_name": "vynzo-media" }
+  ]
+}

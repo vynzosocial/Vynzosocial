@@ -1,0 +1,9 @@
+{
+  "name": "vynzo-app-download",
+  "main": "index.mjs",
+  "compatibility_date": "2026-11-02",
+  "workers_dev": true,
+  "r2_buckets": [
+    { "binding": "DOWNLOADS", "bucket_name": "vynzo-app-downloads" }
+  ]
+}

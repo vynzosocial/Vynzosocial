@@ -28,9 +28,9 @@
       update();
     });
     audio.addEventListener('timeupdate', update);
-    audio.addEventListener('play', () => { btn.textContent = '?'; });
-    audio.addEventListener('pause', () => { btn.textContent = '?'; });
-    audio.addEventListener('ended', () => { btn.textContent = '?'; audio.currentTime = 0; update(); });
+    audio.addEventListener('play', () => { btn.textContent = '❚❚'; });
+    audio.addEventListener('pause', () => { btn.textContent = '▶'; });
+    audio.addEventListener('ended', () => { btn.textContent = '▶'; audio.currentTime = 0; update(); });
     audio.addEventListener('error', () => { time.textContent = 'Unavailable'; });
     seek.addEventListener('input', () => {
       seeking = true;

@@ -1,5 +1,6 @@
 import { apiRequest } from './api.js?v=sb6';
 import { API_ORIGIN } from './config.js?v=sb4';
+import { openShareDialog, SHARE_BASE_URL } from './share.js?v=2';
 import { t, getLang, applyLang, toggleLang, setLang } from './blogs-i18n.js?v=9';
 
 if (!localStorage.getItem('vynzo_token')) location.href = '../index.html';
@@ -206,9 +207,8 @@ async function renderArticle(id) {
       if (act === 'like') { const r = await post(`/${a.id}/like`); a.is_liked = r.liked; a.likes_count = r.count; draw(); }
       if (act === 'bookmark') { const r = await post(`/${a.id}/bookmark`); a.is_bookmarked = r.bookmarked; draw(); }
       if (act === 'share') {
-        const url = `${location.origin}${location.pathname}#/a/${a.id}`;
-        if (navigator.share) { try { await navigator.share({ title: a.title, url }); } catch { /* cancelled */ } }
-        else { await navigator.clipboard?.writeText(url); toast(t('copied')); }
+        const url = `${SHARE_BASE_URL}/pages/blogs.html#/a/${a.id}`;
+        openShareDialog({ title: t('share'), text: `📝 ${a.title}`, url });
         const r = await post(`/${a.id}/share`); a.shares_count = r.shares_count; draw();
       }
       if (act === 'edit') location.hash = '#/write/' + a.id;

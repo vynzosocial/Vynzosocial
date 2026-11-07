@@ -1,4 +1,5 @@
 const FILTERS = {
+  none: 'none',
   warm: 'sepia(0.18) saturate(1.12)',
   cool: 'saturate(0.9) hue-rotate(10deg)',
   vivid: 'contrast(1.08) saturate(1.3)',
@@ -11,7 +12,7 @@ const FACE_FILTERS = new Set([
 const IRIS_FILTERS = new Set(['eyes-blue', 'eyes-green', 'eyes-violet']);
 const BACKGROUNDS = { 'background-blue': '#385f96', 'background-purple': '#694888', 'background-dark': '#212231' };
 
-export async function createCameraFilter(track, name, onError, signal, backgroundImage) {
+export async function createCameraFilter(track, name, onError, signal, backgroundImage, initialMirror = false) {
   const isBackground = name in BACKGROUNDS || name === 'background-image';
   if (!FILTERS[name] && !FACE_FILTERS.has(name) && !isBackground) throw new Error('Unknown camera filter.');
   if (name === 'background-image' && !backgroundImage) throw new Error('Choose a background image.');
@@ -30,6 +31,19 @@ export async function createCameraFilter(track, name, onError, signal, backgroun
   let frame = null;
   let stopped = false;
   let filter = name;
+  let mirrored = Boolean(initialMirror);
+  const render = () => {
+    if (mirrored) {
+      context.save();
+      context.translate(canvas.width, 0);
+      context.scale(-1, 1);
+    }
+    context.filter = FILTERS[filter] || 'none';
+    if (backgroundRenderer) backgroundRenderer.draw(context, canvas.width, canvas.height);
+    else context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    if (faceTracker) faceTracker.draw(context, filter, canvas.width, canvas.height);
+    if (mirrored) context.restore();
+  };
   let faceTracker = null;
   let backgroundRenderer = null;
   const stop = () => {
@@ -92,10 +106,7 @@ export async function createCameraFilter(track, name, onError, signal, backgroun
       if (stopped) return;
       try {
         if (time - lastDraw >= 1000 / 24) {
-          context.filter = FILTERS[filter] || 'none';
-          if (backgroundRenderer) backgroundRenderer.draw(context, canvas.width, canvas.height);
-          else context.drawImage(video, 0, 0, canvas.width, canvas.height);
-          if (faceTracker) faceTracker.draw(context, filter, canvas.width, canvas.height);
+          render();
           lastDraw = time;
         }
         frame = requestAnimationFrame(draw);
@@ -104,9 +115,7 @@ export async function createCameraFilter(track, name, onError, signal, backgroun
         onError(error);
       }
     };
-    context.filter = FILTERS[filter] || 'none';
-    if (backgroundRenderer) backgroundRenderer.draw(context, canvas.width, canvas.height);
-    else context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    render();
     output = canvas.captureStream(24);
     const outputTrack = output.getVideoTracks()[0];
     if (!outputTrack) throw new Error('The browser could not create filtered video.');
@@ -122,6 +131,9 @@ export async function createCameraFilter(track, name, onError, signal, backgroun
           throw new Error('Unknown or unsupported camera filter.');
         }
         filter = value;
+      },
+      setMirror(value) {
+        mirrored = Boolean(value);
       },
       stop
     };

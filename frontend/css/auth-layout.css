@@ -10,3 +10,60 @@ body {
   flex: 0 0 auto;
   margin: auto;
 }
+
+@media (max-height: 500px) {
+  body:has(#login-form :is(#email, #password):focus) {
+    padding-block: 4px;
+  }
+
+  body:has(#login-form :is(#email, #password):focus) .auth-card {
+    margin-block: 0;
+    padding-block: 8px;
+  }
+
+  body:has(#login-form :is(#email, #password):focus) .auth-card h2 {
+    display: none;
+  }
+
+  body:has(#login-form :is(#email, #password):focus) .form-group {
+    margin-bottom: 4px;
+  }
+
+  body:has(#login-form :is(#email, #password):focus) .form-group label {
+    margin-bottom: 2px;
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  body:has(#login-form :is(#email, #password):focus) .form-group input {
+    padding-block: 6px;
+  }
+
+  body:has(#register-form :is(#first_name, #last_name):focus) {
+    padding-block: 4px;
+  }
+
+  body:has(#register-form :is(#first_name, #last_name):focus) .auth-card {
+    margin-block: 0;
+    padding-block: 8px;
+  }
+
+  body:has(#register-form :is(#first_name, #last_name):focus) .auth-card h2,
+  body:has(#register-form :is(#first_name, #last_name):focus) #username-hint {
+    display: none;
+  }
+
+  body:has(#register-form :is(#first_name, #last_name):focus) .form-group {
+    margin-bottom: 4px;
+  }
+
+  body:has(#register-form :is(#first_name, #last_name):focus) .form-group label {
+    margin-bottom: 2px;
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  body:has(#register-form :is(#first_name, #last_name):focus) .form-group input {
+    padding-block: 6px;
+  }
+}

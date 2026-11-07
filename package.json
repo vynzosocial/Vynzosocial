@@ -16,7 +16,9 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@vladmandic/human": "3.3.6"
+    "@capacitor/ios": "^8.6.0",
+    "@vladmandic/human": "3.3.6",
+    "mediabunny": "1.65.2"
   },
   "devDependencies": {
     "wrangler": "^4.156.1"
