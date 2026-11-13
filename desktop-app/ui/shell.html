@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
+  <title>VynzoSocial</title>
+  <link rel="stylesheet" href="shell.css">
+  <script src="shell.js" defer></script>
+</head>
+<body>
+  <header class="titlebar">
+    <button class="brand" data-section="home" aria-label="VynzoSocial home" title="Home">
+      <span class="brand-mark" aria-hidden="true">v<span>.</span></span>
+      <span>VynzoSocial</span>
+    </button>
+    <div class="history" aria-label="Page navigation">
+      <button id="back" data-action="back" aria-label="Go back" title="Back" disabled><svg viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></svg></button>
+      <button id="forward" data-action="forward" aria-label="Go forward" title="Forward" disabled><svg viewBox="0 0 24 24"><path d="m10 6 6 6-6 6"/></svg></button>
+      <button data-action="reload" aria-label="Reload current section" title="Reload (Ctrl+R)"><svg viewBox="0 0 24 24"><path d="M20 7v5h-5M20 12a8 8 0 1 0-2 5M20 7l-3-3"/></svg></button>
+    </div>
+    <span id="section-title" class="section-title">Home</span>
+    <p id="shell-error" class="shell-error" role="alert" hidden></p>
+    <button id="desktop-update" class="update-button" data-action="update" aria-label="Update VynzoSocial" hidden>Update</button>
+    <div class="connection" title="Website connection"><span id="connection-dot"></span><span id="connection-label" role="status">Connecting</span></div>
+    <button class="menu-button" data-action="menu" aria-label="Open application menu" title="Application menu"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+  </header>
+  <nav class="navigation-rail" aria-label="Application sections">
+    <div class="primary-sections">
+      <button data-section="home" aria-label="Home" aria-current="page" title="Home"><svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10H3zM9 20v-7h6v7"/></svg><span>Home</span></button>
+      <button data-section="messages" aria-label="Messages" title="Messages"><svg viewBox="0 0 24 24"><path d="M21 11a8 8 0 0 1-8 8H5l-3 3V11a9 9 0 0 1 19 0Z"/><path d="M7 10h10M7 14h6"/></svg><span>Messages</span></button>
+      <button data-section="live" aria-label="Live studio" title="Live studio"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="12" height="13" rx="3"/><path d="m15 10 6-3v11l-6-3M7 3h4"/></svg><span>Live</span></button>
+      <button data-section="blogs" aria-label="Blogs" title="Blogs"><svg viewBox="0 0 24 24"><path d="M4 3h12l4 4v14H4zM15 3v5h5M8 12h8M8 16h6"/></svg><span>Blogs</span></button>
+      <button data-section="people" aria-label="People" title="Find people"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21v-2a7 7 0 0 1 14 0v2M17 4a4 4 0 0 1 0 8M18 15a6 6 0 0 1 4 6"/></svg><span>People</span></button>
+    </div>
+    <div class="rail-footer">
+      <button data-section="settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24"><path d="m9 3-1 3-3 1-2 5 2 5 3 1 1 3h6l1-3 3-1 2-5-2-5-3-1-1-3z"/><circle cx="12" cy="12" r="3"/></svg><span>Settings</span></button>
+      <span id="version" class="version"></span>
+    </div>
+  </nav>
+  <main class="workspace" aria-label="VynzoSocial content">
+    <div class="startup-card"><span class="startup-mark">v<span>.</span></span><h1>Your people. Your space.</h1><p>Opening VynzoSocial...</p></div>
+  </main>
+  <div id="loading-bar" class="loading-bar" aria-hidden="true"></div>
+</body>
+</html>

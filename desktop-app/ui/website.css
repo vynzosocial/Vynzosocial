@@ -1,0 +1,18 @@
+#app-container > .sidebar.desktop-nav,
+.mobile-nav,
+.home-app-download,
+.welcome-app-download,
+.welcome-logo,
+.app-download-link {
+  display: none !important;
+}
+
+.welcome-header {
+  justify-content: flex-end !important;
+}
+
+#app-container > .main-content,
+#app-container > .messaging-container {
+  margin-left: 0 !important;
+  padding-bottom: 0 !important;
+}
