@@ -7,6 +7,7 @@ const dist = path.join(root, 'dist');
 require('./check-frontend-text')(path.join(root, 'frontend'));
 fs.rmSync(dist, { recursive: true, force: true });
 fs.cpSync(path.join(root, 'frontend'), dist, { recursive: true });
+require('./web-build-version')(dist);
 require('./copy-live-face-assets')(dist);
 require('./copy-video-encoder-assets')(dist);
 

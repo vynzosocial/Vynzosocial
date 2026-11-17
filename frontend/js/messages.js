@@ -1,10 +1,16 @@
-﻿import { apiRequest, apiBlobRequest } from './api.js?v=sb6';
+import { apiRequest, apiBlobRequest } from './api.js?v=view-once-lifecycle1';
 import { API_ORIGIN } from './config.js?v=sb4';
 import { supabase } from './supabase-client.js';
-import { createRealtimeSocket } from './realtime.js?v=sb9';
-import { attachEmojiPicker } from './emoji-picker.js?v=scope4';
-import { initCalls, startCall } from './calls.js?v=sb5';
-import { parseSharedMessage } from './share-data.js?v=1';
+import { createRealtimeSocket } from './realtime.js?v=sb15';
+import { attachEmojiPicker } from './emoji-picker.js?v=multiline1';
+import { attachChatComposer } from './chat-composer.js?v=1';
+import { initCalls, startCall } from './calls.js?v=audio3';
+import { parseSharedMessage } from './share-data.js?v=2';
+import { setScreenGuard } from './screen-guard.js';
+import { createImageCover } from './image-cover.js';
+import { encodePlaybackVideo } from './video-encoder.js';
+import { chooseMessageCamera, recordMessageVideo, MAX_CAMERA_VIDEO_SECONDS } from './message-camera.js';
+import { createCameraSwitcher } from './camera-devices.js';
 
 let socket = null;
 let currentConversationMeta = null;
@@ -14,6 +20,12 @@ let replyingTo = null;
 let conversationRefreshInterval = null;
 let backgroundRefreshInProgress = false;
 let readReceiptsEnabled = true;
+let messageRefreshRequest = 0;
+let conversationRefreshRequest = 0;
+const messageRenderSignatures = new WeakMap();
+const conversationRenderData = new WeakMap();
+const latestMessageMediaSources = new WeakMap();
+const pendingMessages = new Map();
 const MAX_VIDEO_SECONDS = 60;
 const MAX_VOICE_SECONDS = 300;
 const VOICE_PATTERN = /\.(weba|m4a|ogg)(\?.*)?$/i;
@@ -108,12 +120,13 @@ async function refreshCurrentConversation() {
   const container = document.getElementById('chat-messages-container');
   if (!conversationId || !container) return;
 
+  const request = ++messageRefreshRequest;
   const data = await apiRequest(`/messages/${encodeURIComponent(conversationId)}/messages`);
-  if (currentConversationId !== conversationId) return;
+  if (request !== messageRefreshRequest || currentConversationId !== conversationId || document.getElementById('chat-messages-container') !== container) return;
 
   const currentUser = JSON.parse(localStorage.getItem('vynzo_user') || '{}');
   const existingIds = new Set(
-    [...container.querySelectorAll('.message-bubble')].map(bubble => bubble.dataset.messageId)
+    [...container.querySelectorAll('.message-bubble')].filter(bubble => !bubble.closest('[data-pending-id]')).map(bubble => bubble.dataset.messageId)
   );
   const hasNewIncoming = data.messages.some(message =>
     message.sender_id !== currentUser.id && !existingIds.has(message.id)
@@ -122,20 +135,153 @@ async function refreshCurrentConversation() {
   readReceiptsEnabled = data.read_receipts !== false;
   conversationMembers = data.members || conversationMembers;
 
-  const fragment = document.createDocumentFragment();
+  const rows = new Map([...container.querySelectorAll('.message-bubble')].filter(bubble => !bubble.closest('[data-pending-id]')).map(bubble =>
+    [bubble.dataset.messageId, bubble.closest('.message-row')]
+  ));
+  const orderedRows = [];
+  const newRows = [];
   for (const message of data.messages) {
-    const wrapper = document.createElement('div');
-    wrapper.innerHTML = messageMarkup(message, currentUser);
-    fragment.appendChild(wrapper.firstElementChild);
+    const next = createMessageRow(message, currentUser);
+    const signature = messageContentSignature(next);
+    let row = rows.get(message.id);
+    rows.delete(message.id);
+    if (!row || messageRenderSignatures.get(row) !== signature) {
+      if (row) {
+        row.querySelector('.voice-player')?._audio?.pause();
+        row.replaceWith(next);
+      }
+      row = next;
+      messageRenderSignatures.set(row, signature);
+      newRows.push(row);
+    } else {
+      syncMessageMetadata(row, next);
+      refreshMessageMediaSources(row, next);
+    }
+    orderedRows.push(row);
   }
-  container.replaceChildren(fragment);
-  hydrateSharedPreviews(container);
+  for (const row of rows.values()) {
+    row.querySelector('.voice-player')?._audio?.pause();
+    row.remove();
+  }
+  placeMessageItems(container, [...orderedRows, ...pendingRows(conversationId)]);
+  for (const row of newRows) hydrateSharedPreviews(row);
   if (wasAtBottom) container.scrollTop = container.scrollHeight;
   if (hasNewIncoming && document.visibilityState === 'visible') markConversationRead(conversationId);
 }
 
+function createMessageRow(message, currentUser) {
+  // Inert parsing keeps snapshot comparisons from requesting the media again.
+  const template = document.createElement('template');
+  template.innerHTML = messageMarkup(message, currentUser);
+  return template.content.firstElementChild;
+}
+
+function messageContentSignature(row) {
+  const copy = row.cloneNode(true);
+  copy.querySelectorAll('.message-edit-button, .message-delete-button, .message-status').forEach(node => node.remove());
+  copy.querySelectorAll('[src], [data-src]').forEach(node => {
+    for (const attribute of ['src', 'data-src']) {
+      if (node.hasAttribute(attribute)) node.setAttribute(attribute, messageMediaIdentity(node.getAttribute(attribute)));
+    }
+  });
+  copy.querySelector('.message-bubble')?.removeAttribute('data-seen');
+  return copy.outerHTML;
+}
+
+function syncMessageMetadata(row, next) {
+  for (const selector of ['.message-edit-button', '.message-delete-button', '.message-status']) {
+    const current = row.querySelector(selector);
+    const replacement = next.querySelector(selector);
+    if (current?.outerHTML === replacement?.outerHTML) continue;
+    if (current && replacement) current.replaceWith(replacement);
+    else if (current) current.remove();
+    else row.querySelector('.message-bubble').append(replacement);
+  }
+}
+
+function refreshMessageMediaSources(current, next) {
+  const sources = new Map([...next.querySelectorAll('img[src], video[src]')].map(media =>
+    [messageMediaIdentity(media.getAttribute('src')), media.getAttribute('src')]
+  ));
+  current.querySelectorAll('img[src], video[src]').forEach(media => {
+    const source = sources.get(messageMediaIdentity(media.getAttribute('src')));
+    if (source) {
+      latestMessageMediaSources.set(media, source);
+      if (media instanceof HTMLImageElement && media.complete && !media.naturalWidth && media.getAttribute('src') !== source) {
+        media.src = source;
+      }
+    }
+  });
+  const player = current.querySelector('.voice-player');
+  const nextPlayer = next.querySelector('.voice-player');
+  if (player && nextPlayer) player.dataset.src = nextPlayer.dataset.src;
+}
+
+function placeMessageItems(container, items) {
+  const wanted = new Set(items);
+  for (const node of [...container.children]) {
+    if (!wanted.has(node)) node.remove();
+  }
+  let cursor = container.firstElementChild;
+  for (const item of items) {
+    if (item !== cursor) container.insertBefore(item, cursor);
+    cursor = item.nextElementSibling;
+  }
+}
+
+function pendingRows(conversationId) {
+  return [...pendingMessages.values()].filter(entry => entry.conversationId === conversationId).map(entry => entry.row);
+}
+
+function beginPendingMessage(conversationId, currentUser, { content = '', file = null, viewOnce = false, reply = null } = {}) {
+  const id = `pending-${crypto.randomUUID()}`;
+  const url = file && !viewOnce ? URL.createObjectURL(file) : null;
+  const row = createMessageRow({
+    id, sender_id: currentUser.id, content, created_at: new Date().toISOString(),
+    media_url: url, local_media_type: file?.type, view_once: viewOnce, pending: true,
+    reply_to: reply ? { id: reply.id, sender_name: reply.name, text: reply.text } : null
+  }, currentUser);
+  row.dataset.pendingId = id;
+  row.setAttribute('aria-busy', 'true');
+  row.querySelectorAll('button').forEach(button => { button.disabled = true; });
+  const entry = { id, conversationId, row, url };
+  pendingMessages.set(id, entry);
+  if (currentConversationId === conversationId) {
+    const container = document.getElementById('chat-messages-container');
+    if (container) { container.append(row); container.scrollTop = container.scrollHeight; }
+  }
+  return entry;
+}
+
+function endPendingMessage(entry) {
+  if (!entry || !pendingMessages.delete(entry.id)) return;
+  entry.row.remove();
+  if (entry.url) URL.revokeObjectURL(entry.url);
+}
+
+async function prepareMessageBody(conversationId, { content = '', file = null, replyId = null } = {}) {
+  if (file && file.size <= 6 * 1024 * 1024) {
+    const body = new FormData();
+    body.append('content', content);
+    body.append('media', file);
+    if (replyId) body.append('reply_to_id', replyId);
+    return body;
+  }
+  if (!file) return JSON.stringify({ content, reply_to_id: replyId });
+  const upload = await apiRequest(`/messages/${encodeURIComponent(conversationId)}/upload-url`, {
+    method: 'POST',
+    body: JSON.stringify({ content_type: file.type })
+  });
+  const { error } = await supabase.storage.from('uploads')
+    .uploadToSignedUrl(upload.path, upload.token, file, { contentType: file.type });
+  if (error) throw new Error(`Upload failed: ${error.message || 'please check your connection and try again.'}`);
+  return JSON.stringify({ content, reply_to_id: replyId, media_path: upload.path });
+}
+
 async function refreshConversations() {
+  const request = ++conversationRefreshRequest;
   const data = await apiRequest('/messages');
+  if (request !== conversationRefreshRequest) return data.conversations;
   const currentUser = JSON.parse(localStorage.getItem('vynzo_user') || '{}');
   renderConversations(data.conversations, currentUser);
   return data.conversations;
@@ -163,14 +309,19 @@ function renderConversations(conversations, currentUser) {
     return;
   }
 
-  container.innerHTML = '';
+  const existing = new Map([...container.querySelectorAll('.conversation-item')].map(item =>
+    [item.dataset.conversationId, item]
+  ));
+  const orderedItems = [];
   conversations.forEach(conv => {
-    const item = document.createElement('div');
-    item.className = 'conversation-item';
-    item.dataset.conversationId = conv.id;
+    let item = existing.get(conv.id);
     const conversationName = getConversationName(conv);
     const unread = unreadOf(conv);
-    item.innerHTML = `
+    if (!item) {
+      item = document.createElement('div');
+      item.className = 'conversation-item';
+      item.dataset.conversationId = conv.id;
+      item.innerHTML = `
       ${avatarMarkup(conv.other_avatar_url, conversationName, 'author-avatar')}
       <div>
         <div style="font-weight:${unread ? 800 : 600};">${escapeHtml(conversationName)}</div>
@@ -178,17 +329,50 @@ function renderConversations(conversations, currentUser) {
       </div>
       ${unread ? `<span class="unread-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
     `;
+      item.addEventListener('click', () => {
+        selectConversation(conversationRenderData.get(item), currentUser);
+      });
+    } else {
+      const previous = conversationRenderData.get(item);
+      if (messageMediaIdentity(previous.other_avatar_url || '') !== messageMediaIdentity(conv.other_avatar_url || '')) {
+        const template = document.createElement('template');
+        template.innerHTML = avatarMarkup(conv.other_avatar_url, conversationName, 'author-avatar');
+        item.firstElementChild.replaceWith(template.content.firstElementChild);
+      } else {
+        const image = item.querySelector('.author-avatar img');
+        if (image && conv.other_avatar_url) {
+          latestMessageMediaSources.set(image, /^https?:/i.test(conv.other_avatar_url) ? conv.other_avatar_url : `${API_ORIGIN}${conv.other_avatar_url}`);
+        }
+        if (!conv.other_avatar_url && previous && getConversationName(previous) !== conversationName) {
+          item.firstElementChild.textContent = conversationName.replace(/^@/, '').charAt(0).toUpperCase() || '?';
+        }
+      }
+      const details = item.children[1];
+      if (details.children[0].textContent !== conversationName) details.children[0].textContent = conversationName;
+      details.children[0].style.fontWeight = unread ? '800' : '600';
+      const preview = conv.last_message ? messagePreview(conv.last_message) : 'No messages';
+      if (details.children[1].textContent !== preview) details.children[1].textContent = preview;
+      let badge = item.querySelector('.unread-badge');
+      if (!unread) badge?.remove();
+      else {
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'unread-badge';
+          item.append(badge);
+        }
+        const count = unread > 99 ? '99+' : String(unread);
+        if (badge.textContent !== count) badge.textContent = count;
+      }
+    }
+    conversationRenderData.set(item, conv);
     item.classList.toggle('active', conv.id === currentConversationId);
-
-    item.addEventListener('click', () => {
-      selectConversation(conv, currentUser);
-    });
-
-    container.appendChild(item);
+    orderedItems.push(item);
   });
+  placeMessageItems(container, orderedItems);
 }
 
 const mobileChatQuery = window.matchMedia('(max-width: 700px)');
+let stickerViewer = null;
 
 function openChatView() {
   const container = document.querySelector('.messaging-container');
@@ -213,7 +397,12 @@ function goBackToList() {
   else closeChatView();
 }
 
-window.addEventListener('popstate', () => {
+window.addEventListener('popstate', event => {
+  if (stickerViewer) {
+    stickerViewer.dismiss();
+    return;
+  }
+  if (event.state?.vynzoStickerViewer) return;
   if (document.querySelector('.messaging-container')?.classList.contains('chat-open')) closeChatView();
 });
 
@@ -246,7 +435,7 @@ async function loadConversation(conversationId, currentUser, conversationName = 
 }
 
 function notifyPeer(conversationId) {
-  const peerId = currentConversationMeta?.other_user_id;
+  const peerId = currentConversationMeta?.id === conversationId ? currentConversationMeta.other_user_id : null;
   if (peerId && socket) socket.emit('notify_peer', { userId: peerId, conversation_id: conversationId });
 }
 
@@ -289,23 +478,33 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
       <input type="file" id="chat-camera-input" accept="image/*" capture="environment" hidden>
       <button class="attach-btn" type="button" id="voice-btn" aria-label="Record a voice message" title="Record a voice message">🎤</button>
       <input type="file" id="chat-file-input" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" hidden>
-      <input type="text" class="chat-input" id="chat-input-field" placeholder="Type a message..." autocomplete="off">
+      <textarea class="chat-input" id="chat-input-field" rows="1" placeholder="Type a message..." aria-label="Type a message"></textarea>
       <button type="submit" class="send-btn"><span>Send</span><span aria-hidden="true">➤</span></button>
     </form>
     <p class="chat-send-status" id="chat-send-status" role="status" aria-live="polite" hidden></p>
   `;
 
   const msgContainer = document.getElementById('chat-messages-container');
+  for (const row of msgContainer.querySelectorAll('.message-row')) {
+    const template = document.createElement('template');
+    template.innerHTML = row.outerHTML;
+    messageRenderSignatures.set(row, messageContentSignature(template.content.firstElementChild));
+  }
   hydrateSharedPreviews(msgContainer);
+  msgContainer.append(...pendingRows(currentConversationId));
   msgContainer.scrollTop = msgContainer.scrollHeight;
 
   const form = document.getElementById('chat-form');
   const input = document.getElementById('chat-input-field');
+  const resizeComposer = attachChatComposer(input, form);
   const status = document.getElementById('chat-send-status');
   const fileInput = document.getElementById('chat-file-input');
   const preview = document.getElementById('chat-attachment-preview');
   let attachment = null;
   let viewOnce = false;
+  let sending = false;
+  let preparingAttachment = false;
+  let preparation = 0;
   attachEmojiPicker(form, input);
   document.getElementById('sticker-open-btn').addEventListener('click', () => {
     openStickerPicker(currentUser.id, async sticker => {
@@ -326,8 +525,13 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     }));
   });
   const clearAttachment = () => {
+    preview.querySelectorAll('audio, video, img').forEach(media => {
+      if (typeof media.pause === 'function') media.pause();
+      if (media.src.startsWith('blob:')) URL.revokeObjectURL(media.src);
+    });
     attachment = null;
     viewOnce = false;
+    status.hidden = true;
     fileInput.value = '';
     preview.replaceChildren();
     preview.hidden = true;
@@ -335,6 +539,11 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
 
 
   msgContainer.addEventListener('click', async event => {
+    const sticker = event.target.closest('.sticker-media-link');
+    if (sticker) {
+      openStickerViewer(sticker);
+      return;
+    }
     const sharedMedia = event.target.closest('.shared-media-preview');
     if (sharedMedia) {
       await openSharedMedia(sharedMedia);
@@ -351,7 +560,11 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     } catch (err) {
       status.textContent = err.message || 'This photo is no longer available.';
       status.hidden = false;
-      open.replaceWith(Object.assign(document.createElement('span'), { className: 'view-once-chip opened', textContent: '📷 Photo · Opened' }));
+      if (err.code === 'view_once_temporarily_unavailable') {
+        open.disabled = false;
+      } else {
+        open.replaceWith(Object.assign(document.createElement('span'), { className: 'view-once-chip opened', textContent: '📷 Photo · Opened' }));
+      }
     }
   });
 
@@ -369,11 +582,14 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
   document.getElementById('attach-btn').addEventListener('click', () => fileInput.click());
   const cameraInput = document.getElementById('chat-camera-input');
   document.getElementById('camera-btn').addEventListener('click', () => {
-    if (window.matchMedia('(pointer: coarse)').matches || !navigator.mediaDevices?.getUserMedia) cameraInput.click();
-    else openCameraCapture(file => useFile(file), message => {
+    const error = message => {
       status.textContent = message;
       status.hidden = false;
-    });
+    };
+    chooseMessageCamera(() => {
+      if (!navigator.mediaDevices?.getUserMedia) cameraInput.click();
+      else openCameraCapture(file => useFile(file), error);
+    }, () => recordMessageVideo(file => useFile(file, { cameraVideo: true }), error));
   });
   cameraInput.addEventListener('change', () => {
     const file = cameraInput.files?.[0];
@@ -391,20 +607,22 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
   const stopTracks = stream => stream.getTracks().forEach(track => track.stop());
 
   function showAudioPreview(file) {
+    clearAttachment();
     attachment = file;
-    viewOnce = false;
-    preview.replaceChildren();
     const audio = document.createElement('audio');
     audio.src = URL.createObjectURL(file);
     audio.controls = true;
     audio.controlsList = 'nodownload noplaybackrate';
     audio.addEventListener('contextmenu', e => e.preventDefault());
+    const remove = document.createElement('button');
     remove.type = 'button';
     remove.textContent = '×';
     remove.setAttribute('aria-label', 'Remove voice message');
     remove.addEventListener('click', clearAttachment);
     preview.append(audio, remove);
     preview.hidden = false;
+    status.textContent = 'Voice message ready. Press Send.';
+    status.hidden = false;
   }
 
   function resetVoiceButton() {
@@ -427,7 +645,9 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     }
     let stream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }
+      });
     } catch {
       status.textContent = 'Microphone access was denied. Allow the microphone to record voice messages.';
       status.hidden = false;
@@ -437,7 +657,7 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
       .find(type => MediaRecorder.isTypeSupported(type));
     const chunks = [];
     try {
-      recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      recorder = new MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: 64_000 });
     } catch {
       stopTracks(stream);
       status.textContent = 'Voice messages are not supported on this device.';
@@ -453,7 +673,13 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
       const baseType = (active.mimeType || mimeType || 'audio/webm').split(';')[0];
       const blob = new Blob(chunks, { type: baseType });
       const seconds = (Date.now() - recordStarted) / 1000;
-      if (!blob.size || seconds < 0.7) return;
+      if (!blob.size || seconds < 0.7) {
+        status.textContent = !blob.size
+          ? 'No audio was recorded. Please try again.'
+          : 'Recording too short. Please record a longer voice message.';
+        status.hidden = false;
+        return;
+      }
       const ext = { 'audio/webm': 'weba', 'audio/mp4': 'm4a', 'audio/ogg': 'ogg' }[baseType] || 'weba';
       showAudioPreview(new File([blob], `voice-${Date.now()}.${ext}`, { type: baseType }));
     });
@@ -470,25 +696,31 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     recordTimer = setInterval(tick, 500);
   });
 
-  async function useFile(file) {
-    status.hidden = true;
+  async function useFile(file, { cameraVideo = false } = {}) {
+    const request = ++preparation;
+    preparingAttachment = true;
+    const sendButton = form.querySelector('.send-btn');
+    sendButton.disabled = true;
+    status.textContent = 'Preparing attachment...';
+    status.hidden = false;
     try {
       if (!file.type) {
         const guessed = { mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif' }[(file.name.split('.').pop() || '').toLowerCase()];
         if (guessed) file = new File([file], file.name, { type: guessed });
       }
       if (file.type.startsWith('video/')) {
-        const duration = await getVideoDuration(file).catch(() => null);
-        if (duration && duration > MAX_VIDEO_SECONDS + 0.5) {
-          throw new Error(`Videos can be at most ${MAX_VIDEO_SECONDS} seconds. This one is ${Math.round(duration)} seconds.`);
-        }
         if (file.size > 50 * 1024 * 1024) throw new Error('This video is larger than 50 MB. Choose a shorter one.');
+        const { playback } = await encodePlaybackVideo(file, progress => {
+          if (request === preparation) status.textContent = `Compressing video... ${Math.round(progress * 100)}%`;
+        }, cameraVideo ? { trimToSeconds: MAX_CAMERA_VIDEO_SECONDS } : {});
+        if (cameraVideo || playback.size < file.size) file = playback;
       } else if (file.size > 50 * 1024 * 1024) {
         throw new Error('File is too large (max 50MB).');
       }
-      if (file.type.startsWith('image/') && file.type !== 'image/gif') file = await shrinkImage(file);
+      if (file.type.startsWith('image/')) file = await shrinkImage(file);
+      if (request !== preparation || !form.isConnected) return;
+      clearAttachment();
       attachment = file;
-      preview.replaceChildren();
       const url = URL.createObjectURL(file);
       const media = document.createElement(file.type.startsWith('video/') ? 'video' : 'img');
       media.src = url;
@@ -509,10 +741,18 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
         preview.append(label);
       }
       preview.hidden = false;
+      status.textContent = 'Attachment ready. Press Send.';
+      status.hidden = false;
     } catch (err) {
+      if (request !== preparation) return;
       clearAttachment();
       status.textContent = err.message || 'Could not use this file.';
       status.hidden = false;
+    } finally {
+      if (request === preparation) {
+        preparingAttachment = false;
+        sendButton.disabled = sending;
+      }
     }
   }
 
@@ -694,29 +934,29 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (sending || preparingAttachment) return;
     const content = input.value.trim();
     if (!content && !attachment) return;
-    if (attachment) {
-      const isVoice = attachment.type.startsWith('audio/');
-      const kind = isVoice ? 'voice message' : attachment.type.startsWith('video/') ? 'video' : 'photo';
-      const mb = (attachment.size / (1024 * 1024)).toFixed(1);
-      const target = currentConversationMeta ? getConversationName(currentConversationMeta) : 'this chat';
-      if (!window.confirm(`Send this ${kind} (${mb} MB) to ${target}?${viewOnce ? '\nIt can be viewed only once.' : ''}`)) return;
-    }
-
     const conversationId = currentConversationId;
+    const file = attachment;
+    const once = viewOnce;
+    const reply = replyingTo;
     const sendButton = form.querySelector('.send-btn');
+    sending = true;
     sendButton.disabled = true;
     status.hidden = true;
+    let pending;
     try {
-      if (attachment && viewOnce) {
+      pending = beginPendingMessage(conversationId, currentUser, { content, file, viewOnce: once, reply });
+      if (file && once) {
         const photoBody = new FormData();
-        photoBody.append('photo', attachment);
+        photoBody.append('photo', file);
         const sent = await apiRequest(`/messages/${encodeURIComponent(conversationId)}/view-once`, { method: 'POST', body: photoBody });
+        endPendingMessage(pending);
         if (currentConversationId === conversationId) appendMessage(msgContainer, sent.message, currentUser);
-        attachment = null;
-        viewOnce = false;
+        if (attachment === file && !preparingAttachment) clearAttachment();
         if (content) {
+          pending = beginPendingMessage(conversationId, currentUser, { content });
           const text = await apiRequest(`/messages/${encodeURIComponent(conversationId)}/messages`, {
             method: 'POST',
             body: JSON.stringify({ content })
@@ -724,37 +964,27 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
           if (currentConversationId === conversationId) appendMessage(msgContainer, text.message, currentUser);
         }
         if (currentConversationId === conversationId) {
-          input.value = '';
-          clearAttachment();
+          if (input.value.trim() === content) input.value = '';
+          resizeComposer();
         }
         notifyPeer(conversationId);
         refreshConversations().catch(() => {});
         return;
       }
-      let body;
-      const replyId = replyingTo?.id;
-      if (attachment) {
-        const upload = await apiRequest(`/messages/${encodeURIComponent(conversationId)}/upload-url`, {
-          method: 'POST',
-          body: JSON.stringify({ content_type: attachment.type })
-        });
-        const { error: uploadError } = await supabase.storage.from('uploads')
-          .uploadToSignedUrl(upload.path, upload.token, attachment, { contentType: attachment.type });
-        if (uploadError) throw new Error(`Upload failed: ${uploadError.message || 'please check your connection and try again.'}`);
-        body = JSON.stringify({ content, reply_to_id: replyId, media_path: upload.path });
-      } else {
-        body = JSON.stringify({ content, reply_to_id: replyId });
-      }
+      const body = await prepareMessageBody(conversationId, { content, file, replyId: reply?.id });
       const result = await apiRequest(`/messages/${encodeURIComponent(conversationId)}/messages`, {
         method: 'POST',
         body
       });
       if (currentConversationId === conversationId) {
         appendMessage(msgContainer, result.message, currentUser);
-        input.value = '';
-        clearAttachment();
-        replyingTo = null;
-        renderReplyBar();
+        if (input.value.trim() === content) input.value = '';
+        resizeComposer();
+        if (attachment === file && !preparingAttachment) clearAttachment();
+        if (replyingTo === reply) {
+          replyingTo = null;
+          renderReplyBar();
+        }
       }
       notifyPeer(conversationId);
       refreshConversations().catch(err => {
@@ -765,7 +995,9 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
       status.textContent = err.message || 'Message was not sent. Your text is still here; try again.';
       status.hidden = false;
     } finally {
-      sendButton.disabled = false;
+      endPendingMessage(pending);
+      sending = false;
+      sendButton.disabled = preparingAttachment;
     }
   });
 
@@ -785,6 +1017,7 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
     if (event.conversation_id !== currentConversationId || event.reader_id === currentUser.id) return;
     const readAt = new Date(event.read_at).getTime();
     msgContainer.querySelectorAll('.message-bubble.outgoing').forEach(bubble => {
+      if (bubble.closest('[data-pending-id]')) return;
       if (new Date(bubble.dataset.createdAt).getTime() > readAt) return;
       const del = bubble.querySelector('.message-delete-button');
       if (del) del.title = 'Delete for me (already seen)';
@@ -800,6 +1033,7 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
   socket.off('message_deleted');
   socket.on('message_deleted', event => {
     if (event.conversation_id !== currentConversationId) return;
+    messageRefreshRequest++;
     msgContainer.querySelector(`[data-message-id="${event.message_id}"]`)?.closest('.message-row')?.remove();
     refreshConversations().catch(err => {
       console.error('Could not refresh conversation preview:', err);
@@ -807,7 +1041,7 @@ function renderChatWindow(chatArea, messages, currentUser, conversationName, ava
   });
 }
 
-// Desktop camera: live preview in an overlay, returns the captured frame as a JPEG File.
+// Live preview returns the captured frame as a JPEG File.
 async function openCameraCapture(onCapture, onError) {
   let stream;
   try {
@@ -825,15 +1059,34 @@ async function openCameraCapture(onCapture, onError) {
   video.srcObject = stream;
   video.style.cssText = 'max-width:100%;max-height:70vh;border-radius:12px;background:#000';
   const bar = document.createElement('div');
-  bar.style.cssText = 'display:flex;gap:12px';
+  bar.style.cssText = 'display:flex;flex-wrap:wrap;justify-content:center;gap:12px';
   const shoot = document.createElement('button');
   shoot.type = 'button';
   shoot.textContent = '📸 Take photo';
   const cancel = document.createElement('button');
   cancel.type = 'button';
   cancel.textContent = 'Cancel';
-  [shoot, cancel].forEach(b => { b.style.cssText = 'padding:10px 18px;border-radius:999px;border:0;font:inherit;cursor:pointer'; });
+  const flip = document.createElement('button');
+  flip.type = 'button';
+  flip.textContent = 'Switch camera';
+  let closed = false;
+  const cameraSwitcher = createCameraSwitcher({
+    getStream: () => closed ? null : stream,
+    onChanged: () => { video.srcObject = stream; },
+    onError
+  });
+  flip.addEventListener('click', async () => {
+    flip.disabled = true;
+    shoot.disabled = true;
+    try { await cameraSwitcher.switchCamera(); }
+    finally {
+      flip.disabled = false;
+      shoot.disabled = false;
+    }
+  });
+  [shoot, flip, cancel].forEach(b => { b.style.cssText = 'padding:10px 18px;border-radius:999px;border:0;font:inherit;cursor:pointer'; });
   const close = () => {
+    closed = true;
     stream.getTracks().forEach(track => track.stop());
     overlay.remove();
   };
@@ -849,7 +1102,7 @@ async function openCameraCapture(onCapture, onError) {
       if (blob) onCapture(new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' }));
     }, 'image/jpeg', 0.9);
   });
-  bar.append(shoot, cancel);
+  bar.append(shoot, flip, cancel);
   overlay.append(video, bar);
   document.body.appendChild(overlay);
 }
@@ -863,11 +1116,16 @@ function joinConversation(conversationId) {
 }
 
 function appendMessage(container, message, currentUser) {
+  if (!container.isConnected) {
+    if (message.conversation_id !== currentConversationId) return;
+    container = document.getElementById('chat-messages-container');
+    if (!container) return;
+  }
   if (container.querySelector(`[data-message-id="${message.id}"]`)) return;
+  messageRefreshRequest++;
 
-  const wrapper = document.createElement('div');
-  wrapper.innerHTML = messageMarkup(message, currentUser);
-  const bubble = wrapper.firstElementChild;
+  const bubble = createMessageRow(message, currentUser);
+  messageRenderSignatures.set(bubble, messageContentSignature(bubble));
   container.appendChild(bubble);
   hydrateSharedPreviews(bubble);
   container.scrollTop = container.scrollHeight;
@@ -902,7 +1160,7 @@ function messageMarkup(message, currentUser) {
         <button class="message-reply-button" type="button" aria-label="Reply to this message" title="Reply">↩</button>
         ${isOutgoing && message.content && !shared && !isSticker && !message.view_once && message.can_unsend !== false ? '<button class="message-edit-button" type="button" aria-label="Edit message" title="Edit message">✎</button>' : ''}
         ${isOutgoing ? `<button class="message-delete-button" type="button" aria-label="Delete message" title="${message.can_unsend === false && !message.view_once ? 'Delete for me (already seen)' : 'Delete for everyone (only until it is seen)'}">×</button>` : ''}
-        ${isOutgoing && readReceiptsEnabled ? `<span class="message-status ${message.seen ? 'seen' : ''}">${message.seen ? 'Seen' : 'Sent'}</span>` : ''}
+        ${message.pending ? '<span class="message-status">Sending...</span>' : isOutgoing && readReceiptsEnabled ? `<span class="message-status ${message.seen ? 'seen' : ''}">${message.seen ? 'Seen' : 'Sent'}</span>` : ''}
       </div>
     </div>
   `;
@@ -910,21 +1168,19 @@ function messageMarkup(message, currentUser) {
 
 // Phone photos are often 5 MB+; resizing keeps uploads quick on mobile data.
 async function shrinkImage(file) {
-  if (file.size <= 300 * 1024) return file;
+  let bytes;
   try {
-    const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(bitmap.width * scale);
-    canvas.height = Math.round(bitmap.height * scale);
-    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close?.();
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.82));
-    if (!blob || blob.size >= file.size) return file;
-    return new File([blob], `${file.name.replace(/\.[^.]+$/, '') || 'photo'}.jpg`, { type: 'image/jpeg' });
-  } catch {
-    return file;
+    bytes = await file.arrayBuffer();
+    if (!file.size || bytes.byteLength !== file.size) throw new Error('Selected image read was incomplete.');
+  } catch (error) {
+    console.error('Could not read the selected message image:', error);
+    throw new Error('The app could not read this photo from Gallery. Select it again or choose it from My Files.');
   }
+  file = new File([bytes], file.name, { type: file.type, lastModified: file.lastModified });
+  if (file.type === 'image/gif' || file.size <= 300 * 1024) return file;
+  const compressed = await createImageCover(file);
+  if (compressed.size >= file.size) return file;
+  return new File([compressed], `${file.name.replace(/\.[^.]+$/, '') || 'photo'}.jpg`, { type: compressed.type });
 }
 
 function replyText(message) {
@@ -932,7 +1188,7 @@ function replyText(message) {
   if (message.content === STICKER_MESSAGE_CONTENT) return '✨ Sticker';
   const shared = parseSharedMessage(message.content);
   if (shared) return shared.text;
-  const text = message.content || (message.media_url ? (VOICE_PATTERN.test(message.media_url) ? '🎤 Voice message' : '📎 Photo / video') : '');
+  const text = message.content || (message.media_url ? (VOICE_PATTERN.test(messageMediaPath(message.media_url)) ? '🎤 Voice message' : '📎 Photo / video') : '');
   return text.length > 140 ? `${text.slice(0, 137)}…` : text;
 }
 
@@ -940,11 +1196,17 @@ function messagePreview(message) {
   if (message.content === STICKER_MESSAGE_CONTENT) return '✨ Sticker';
   const shared = parseSharedMessage(message.content);
   if (shared) return shared.text;
-  return message.content || (message.view_once ? '📷 View-once photo' : message.media_url ? (VOICE_PATTERN.test(message.media_url) ? '🎤 Voice message' : '📎 Photo / video') : 'No messages');
+  return message.content || (message.view_once ? '📷 View-once photo' : message.media_url ? (VOICE_PATTERN.test(messageMediaPath(message.media_url)) ? '🎤 Voice message' : '📎 Photo / video') : 'No messages');
 }
 
 function sharedMessageMarkup(shared, message, senderName, fallbackAvatar = '') {
   const { preview, text, url } = shared;
+  if (preview.type === 'blog') {
+    return `<a class="shared-blog-preview" href="blogs.html#/a/${escapeHtml(preview.id)}" data-id="${escapeHtml(preview.id)}">
+      <span class="shared-media-frame"><span class="shared-media-status">Loading blog…</span></span>
+      <span class="shared-media-caption">${escapeHtml(text)}</span>
+    </a>`;
+  }
   if (preview.type === 'live') {
     const name = typeof preview.name === 'string' ? preview.name : senderName;
     const avatar = typeof preview.avatar === 'string' ? preview.avatar : message.sender_avatar_url || message.avatar_url || fallbackAvatar;
@@ -970,6 +1232,27 @@ async function sharedMediaUrl(button) {
 }
 
 function hydrateSharedPreviews(container) {
+  container.querySelectorAll('.shared-blog-preview').forEach(async link => {
+    const frame = link.querySelector('.shared-media-frame');
+    try {
+      const { article } = await apiRequest(`/blogs/${encodeURIComponent(link.dataset.id)}`);
+      if (!link.isConnected) return;
+      link.querySelector('.shared-media-caption').textContent = article.title;
+      if (!article.cover_url) {
+        frame.textContent = '📝';
+        return;
+      }
+      const image = document.createElement('img');
+      image.alt = '';
+      image.loading = 'lazy';
+      image.addEventListener('error', () => { frame.textContent = 'Preview unavailable.'; }, { once: true });
+      image.src = article.cover_url.startsWith('/uploads/') ? API_ORIGIN + article.cover_url : article.cover_url;
+      frame.replaceChildren(image);
+    } catch (error) {
+      console.error('Could not load shared blog preview:', error);
+      frame.textContent = 'Preview unavailable. Tap to open.';
+    }
+  });
   container.querySelectorAll('.shared-media-preview').forEach(async button => {
     const frame = button.querySelector('.shared-media-frame');
     try {
@@ -1051,18 +1334,105 @@ function viewOnceMarkup(message, isOutgoing) {
   return '<button type="button" class="view-once-chip view-once-open">📷 Photo · tap to view once</button>';
 }
 
+function messageMediaPath(value) {
+  const { url, claims } = messageMediaReference(value);
+  if (claims?.storage === 'legacy-file' && claims.scope === 'message' && typeof claims.path === 'string') {
+    return claims.path;
+  }
+  return url.pathname;
+}
+
+function messageMediaReference(value) {
+  const url = new URL(value, API_ORIGIN || location.href);
+  const permit = url.searchParams.get('permit');
+  if (permit) {
+    try {
+      const payload = permit.split('.')[0].replace(/-/g, '+').replace(/_/g, '/');
+      const claims = JSON.parse(atob(payload));
+      // Presentation only; the media server still verifies the permit and access.
+      return { url, claims };
+    } catch (error) {
+      console.error('Could not identify the message attachment:', error);
+    }
+  }
+  return { url, claims: null };
+}
+
+function messageMediaIdentity(value) {
+  if (!value) return '';
+  const { url, claims } = messageMediaReference(value);
+  if (claims?.storage === 'legacy-file' && ['message', 'avatar'].includes(claims.scope) && typeof claims.path === 'string') {
+    const { expires, ...reference } = claims;
+    url.searchParams.set('permit', JSON.stringify(reference));
+    return url.href;
+  }
+  return value;
+}
+
 function mediaMarkup(message) {
   if (message.view_once) return '';
   if (!message.media_url) return '';
-  const src = /^https?:/i.test(message.media_url) ? message.media_url : `${API_ORIGIN}${message.media_url}`;
-  if (VOICE_PATTERN.test(message.media_url)) {
+  const src = /^(https?:|blob:)/i.test(message.media_url) ? message.media_url : `${API_ORIGIN}${message.media_url}`;
+  const path = messageMediaPath(message.media_url);
+  if (message.local_media_type?.startsWith('audio/') || VOICE_PATTERN.test(path)) {
     return `<div class="voice-player" data-src="${escapeHtml(src)}"><button type="button" class="voice-play" aria-label="Play voice message">▶</button><input class="voice-seek" type="range" min="0" max="100" value="0" step="0.1" aria-label="Seek"><span class="voice-time">0:00</span></div>`;
   }
-  if (/\.(mp4|webm|mov)$/i.test(message.media_url)) {
+  if (message.local_media_type?.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(path)) {
     return `<video class="message-media" src="${escapeHtml(src)}" controls preload="metadata" playsinline></video>`;
   }
   const isSticker = message.content === STICKER_MESSAGE_CONTENT;
-  return `<a${isSticker ? ' class="sticker-media-link"' : ''} href="${escapeHtml(src)}" target="_blank" rel="noopener"><img class="message-media${isSticker ? ' sticker-media' : ''}" src="${escapeHtml(src)}" alt="${isSticker ? 'Sticker' : 'Shared photo'}"></a>`;
+  if (isSticker) return `<button type="button" class="sticker-media-link" aria-label="Open sticker"><img class="message-media sticker-media" src="${escapeHtml(src)}" alt="Sticker"></button>`;
+  return `<button type="button" class="sticker-media-link photo-media-link" aria-label="Open photo"><img class="message-media photo-thumb" src="${escapeHtml(src)}" alt="Shared photo" loading="lazy"></button>`;
+}
+
+function openStickerViewer(button) {
+  if (stickerViewer) return;
+  const image = button.querySelector('img');
+  if (!image) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'shared-media-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-label', image.alt || 'Sticker');
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'shared-media-close';
+  close.textContent = 'Back to messages';
+  const preview = document.createElement('img');
+  preview.alt = image.alt || 'Sticker';
+  preview.src = image.currentSrc || image.src;
+  preview.addEventListener('error', () => {
+    const error = document.createElement('p');
+    error.textContent = 'Could not open this image.';
+    preview.replaceWith(error);
+  }, { once: true });
+  const keydown = event => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      back();
+    }
+  };
+  const dismiss = () => {
+    document.removeEventListener('keydown', keydown);
+    overlay.remove();
+    stickerViewer = null;
+    if (button.isConnected) button.focus();
+  };
+  let closing = false;
+  const back = () => {
+    if (closing) return;
+    closing = true;
+    if (history.state?.vynzoStickerViewer) history.back();
+    else dismiss();
+  };
+  close.addEventListener('click', back);
+  overlay.addEventListener('click', event => { if (event.target === overlay) back(); });
+  document.addEventListener('keydown', keydown);
+  overlay.append(close, preview);
+  document.body.append(overlay);
+  stickerViewer = { dismiss };
+  history.pushState({ ...history.state, vynzoStickerViewer: true }, '');
+  close.focus();
 }
 
 function openStickerPicker(userId, onSelect) {
@@ -1089,8 +1459,7 @@ function openStickerPicker(userId, onSelect) {
   picker.className = 'sticker-picker';
   const pickerActions = document.createElement('div');
   pickerActions.className = 'sticker-picker-actions';
-  const createButton = document.createElement('button');
-  createButton.type = 'button';
+  const createButton = document.createElement('label');
   createButton.className = 'sticker-create-button';
   createButton.textContent = '＋ Create sticker';
   const deleteModeButton = document.createElement('button');
@@ -1109,14 +1478,16 @@ function openStickerPicker(userId, onSelect) {
   pickerActions.append(createButton, deleteModeButton);
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
-  fileInput.accept = 'image/jpeg,image/png,image/gif';
-  fileInput.hidden = true;
+  fileInput.accept = 'image/*';
+  fileInput.className = 'sticker-file-input';
+  fileInput.setAttribute('aria-label', 'Choose image for sticker');
+  createButton.appendChild(fileInput);
   const grid = document.createElement('div');
   grid.className = 'sticker-grid';
   const status = document.createElement('p');
   status.className = 'sticker-status';
   status.setAttribute('role', 'status');
-  picker.append(pickerActions, fileInput, grid, status);
+  picker.append(pickerActions, grid, status);
 
   const editor = document.createElement('div');
   editor.className = 'sticker-editor';
@@ -1142,18 +1513,19 @@ function openStickerPicker(userId, onSelect) {
 
   const send = async (sticker, options = {}) => {
     status.textContent = '';
-    createButton.disabled = true;
+    fileInput.disabled = true;
     for (const button of grid.querySelectorAll('button')) button.disabled = true;
     try {
-      await onSelect(sticker);
-      createButton.disabled = false;
+      const sending = onSelect(sticker);
+      if (!options.keepOpen) close();
+      await sending;
+      fileInput.disabled = false;
       for (const button of grid.querySelectorAll('button')) button.disabled = false;
       if (options.keepOpen) status.textContent = 'Sticker saved and sent.';
-      else close();
     } catch (err) {
       console.error('Could not send sticker:', err);
       status.textContent = err.message || 'Could not send the sticker. Please try again.';
-      createButton.disabled = false;
+      fileInput.disabled = false;
       for (const button of grid.querySelectorAll('button')) button.disabled = false;
     }
   };
@@ -1222,22 +1594,23 @@ function openStickerPicker(userId, onSelect) {
       status.textContent = err.message || 'Could not load your saved stickers.';
     }
   };
-  createButton.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', async () => {
     const file = fileInput.files?.[0];
-    fileInput.value = '';
     if (!file) return;
-    if (!['image/jpeg', 'image/png', 'image/gif'].includes(file.type)) {
-      status.textContent = 'Choose a JPG, PNG, or GIF image.';
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      status.textContent = 'Sticker images must be 10 MB or smaller.';
-      return;
-    }
+    status.textContent = '';
+    fileInput.disabled = true;
     try {
+      if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
+        throw new Error('Choose a JPG, PNG, GIF, or WebP image.');
+      }
+      if (!file.size || file.size > 10 * 1024 * 1024) {
+        throw new Error('Choose a non-empty image no larger than 10 MB.');
+      }
+      const bytes = await file.arrayBuffer();
+      if (bytes.byteLength !== file.size) throw new Error('The selected image could not be read completely.');
+      const selected = new File([bytes], file.name, { type: file.type, lastModified: file.lastModified });
       disposeEditor?.();
-      disposeEditor = await showStickerEditor(editor, picker, file, async blob => {
+      disposeEditor = await showStickerEditor(editor, picker, selected, async blob => {
         const stickerName = file.name.replace(/\.[^.]+$/, '').slice(0, 60) || 'Custom sticker';
         await saveSticker(userId, blob, stickerName);
         editor.hidden = true;
@@ -1248,7 +1621,12 @@ function openStickerPicker(userId, onSelect) {
       });
     } catch (err) {
       console.error('Could not open sticker editor:', err);
+      editor.hidden = true;
+      picker.hidden = false;
       status.textContent = err.message || 'Could not open this image.';
+    } finally {
+      fileInput.value = '';
+      fileInput.disabled = false;
     }
   });
 
@@ -1284,13 +1662,17 @@ async function showStickerEditor(editor, picker, file, onSave) {
   canvas.height = height;
   canvas.className = 'sticker-editor-canvas';
   const context = canvas.getContext('2d', { willReadFrequently: true });
-  if (!context) throw new Error('Sticker editor is not supported by this browser.');
+  if (!context) {
+    if (source.close) source.close();
+    if (sourceUrl) URL.revokeObjectURL(sourceUrl);
+    throw new Error('Sticker editor is not supported by this browser.');
+  }
 
   const note = document.createElement('p');
   note.className = 'sticker-editor-note';
   note.textContent = file.type === 'image/gif'
-    ? 'GIF preview shows its first frame. If you edit it, the saved sticker will be a PNG.'
-    : 'Edit your image, then save it to your sticker tray.';
+    ? 'Draw an area to keep. GIF edits are saved as a PNG; an unedited GIF stays animated.'
+    : 'Draw an area to keep. The rest of the photo will not be sent.';
   const canvasWrap = document.createElement('div');
   canvasWrap.className = 'sticker-canvas-wrap';
   canvasWrap.appendChild(canvas);
@@ -1315,7 +1697,7 @@ async function showStickerEditor(editor, picker, file, onSave) {
   const selectionTools = document.createElement('div');
   selectionTools.className = 'sticker-selection-tools';
   const selectionHint = document.createElement('span');
-  selectionHint.textContent = 'Draw an area to keep, or choose Move text and drag your text on the image.';
+  selectionHint.textContent = 'Draw a free line around the area to keep. Lift your finger to connect the ends.';
   const selectionModes = document.createElement('div');
   selectionModes.className = 'sticker-selection-modes';
   const selectionModeButtons = new Map();
@@ -1329,7 +1711,9 @@ async function showStickerEditor(editor, picker, file, onSave) {
       selectionMode = mode;
       selectionHint.textContent = mode === 'text'
         ? 'Drag the text on the image to position it.'
-        : 'Draw an area to keep. Everything outside it will be transparent.';
+        : mode === 'free'
+          ? 'Draw a free line around the area to keep. Lift your finger to connect the ends.'
+          : 'Draw an area to keep. Everything outside it will be transparent.';
       selectionModeButtons.forEach((modeButton, modeName) => {
         modeButton.classList.toggle('is-active', modeName === mode);
         modeButton.setAttribute('aria-pressed', String(modeName === mode));
@@ -1516,9 +1900,12 @@ async function showStickerEditor(editor, picker, file, onSave) {
     if (showSelection && previewSelection) {
       targetContext.save();
       targetContext.beginPath();
-      traceStickerSelection(targetContext, previewSelection, width, height);
-      targetContext.fillStyle = 'rgba(255, 60, 170, .22)';
-      targetContext.fill();
+      const drawingFreeLine = Boolean(activeSelection && activeSelection.mode === 'free');
+      traceStickerSelection(targetContext, previewSelection, width, height, !drawingFreeLine);
+      if (!drawingFreeLine) {
+        targetContext.fillStyle = 'rgba(255, 60, 170, .22)';
+        targetContext.fill();
+      }
       targetContext.setLineDash([6, 4]);
       targetContext.lineWidth = Math.max(2, width / 180);
       targetContext.strokeStyle = '#ff3caa';
@@ -1592,7 +1979,7 @@ async function showStickerEditor(editor, picker, file, onSave) {
     if (event && selection.mode === 'free') {
       const point = selectionPoint(event);
       const last = selection.points[selection.points.length - 1];
-      if (Math.hypot(point.x - last.x, point.y - last.y) >= 2) selection.points.push(point);
+      if (point.x !== last.x || point.y !== last.y) selection.points.push(point);
       selection.end = point;
     }
     activeSelection = null;
@@ -1657,7 +2044,7 @@ async function showStickerEditor(editor, picker, file, onSave) {
         const exportContext = exportCanvas.getContext('2d');
         if (!exportContext) throw new Error('Sticker export is not supported by this browser.');
         drawSticker(exportContext);
-        blob = await canvasToBlob(exportCanvas);
+        blob = await canvasToBlob(currentSelection ? cropStickerCanvas(exportCanvas, exportContext) : exportCanvas);
       }
       if (blob.size > 10 * 1024 * 1024) throw new Error('The finished sticker must be 10 MB or smaller.');
       await onSave(blob);
@@ -1671,7 +2058,30 @@ async function showStickerEditor(editor, picker, file, onSave) {
   return dispose;
 }
 
-function traceStickerSelection(context, selection, width, height) {
+function cropStickerCanvas(canvas, context) {
+  const { width, height } = canvas;
+  const pixels = context.getImageData(0, 0, width, height).data;
+  let left = width, top = height, right = -1, bottom = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!pixels[(y * width + x) * 4 + 3]) continue;
+      left = Math.min(left, x);
+      right = Math.max(right, x);
+      top = Math.min(top, y);
+      bottom = Math.max(bottom, y);
+    }
+  }
+  if (right < left) throw new Error('The selected area is empty. Choose another area.');
+  const cropped = document.createElement('canvas');
+  cropped.width = right - left + 1;
+  cropped.height = bottom - top + 1;
+  const croppedContext = cropped.getContext('2d');
+  if (!croppedContext) throw new Error('Sticker export is not supported by this browser.');
+  croppedContext.drawImage(canvas, left, top, cropped.width, cropped.height, 0, 0, cropped.width, cropped.height);
+  return cropped;
+}
+
+function traceStickerSelection(context, selection, width, height, closeFreePath = true) {
   const { start, end, mode } = selection;
   if (mode === 'free') {
     const points = selection.points;
@@ -1679,7 +2089,7 @@ function traceStickerSelection(context, selection, width, height) {
     for (let index = 1; index < points.length; index++) {
       context.lineTo(points[index].x, points[index].y);
     }
-    context.closePath();
+    if (closeFreePath) context.closePath();
     return;
   }
   const left = Math.min(start.x, end.x);
@@ -1802,32 +2212,30 @@ async function sendSticker(sticker, conversationId, currentUser, status) {
   if (!conversationId) throw new Error('Select a conversation before sending a sticker.');
   if (!supabase) throw new Error('Supabase is not configured for sticker uploads.');
   status.hidden = true;
+  let pending;
+  const reply = replyingTo;
   try {
     const file = sticker.file instanceof File
       ? sticker.file
       : new File([sticker.file], 'sticker.png', { type: sticker.file.type || 'image/png' });
-    const upload = await apiRequest(`/messages/${encodeURIComponent(conversationId)}/upload-url`, {
-      method: 'POST',
-      body: JSON.stringify({ content_type: file.type })
-    });
-    const { error: uploadError } = await supabase.storage.from('uploads')
-      .uploadToSignedUrl(upload.path, upload.token, file, { contentType: file.type });
-    if (uploadError) throw new Error(`Sticker upload failed: ${uploadError.message || 'please try again.'}`);
+    pending = beginPendingMessage(conversationId, currentUser, { content: STICKER_MESSAGE_CONTENT, file, reply });
     const result = await apiRequest(`/messages/${encodeURIComponent(conversationId)}/messages`, {
       method: 'POST',
-      body: JSON.stringify({
+      body: await prepareMessageBody(conversationId, {
         content: STICKER_MESSAGE_CONTENT,
-        media_path: upload.path,
-        reply_to_id: replyingTo?.id || null
+        file,
+        replyId: reply?.id
       })
     });
     if (currentConversationId === conversationId) {
       const container = document.getElementById('chat-messages-container');
       if (container) appendMessage(container, result.message, currentUser);
-      replyingTo = null;
-      document.getElementById('reply-bar')?.replaceChildren();
-      const replyBar = document.getElementById('reply-bar');
-      if (replyBar) replyBar.hidden = true;
+      if (replyingTo === reply) {
+        replyingTo = null;
+        document.getElementById('reply-bar')?.replaceChildren();
+        const replyBar = document.getElementById('reply-bar');
+        if (replyBar) replyBar.hidden = true;
+      }
     }
     notifyPeer(conversationId);
     refreshConversations().catch(err => console.error('Could not refresh conversation preview:', err));
@@ -1835,14 +2243,16 @@ async function sendSticker(sticker, conversationId, currentUser, status) {
     status.textContent = err.message || 'Could not send this sticker.';
     status.hidden = false;
     throw err;
+  } finally {
+    endPendingMessage(pending);
   }
 }
 
 async function openViewOnce(conversationId, messageId) {
   const blob = await apiBlobRequest(`/messages/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/view-once`, { method: 'POST' });
   const url = URL.createObjectURL(blob);
-  const guard = window.Capacitor?.Plugins?.ScreenGuard;
-  guard?.setSecure?.({ enabled: true }).catch?.(() => {});
+  const guardOwner = Symbol('view-once');
+  setScreenGuard(guardOwner, true).catch(error => console.error('Could not protect view-once media:', error));
 
   const isVideo = blob.type.startsWith('video/');
   const overlay = document.createElement('div');
@@ -1877,7 +2287,7 @@ async function openViewOnce(conversationId, messageId) {
     img.removeAttribute('src');
     URL.revokeObjectURL(url);
     overlay.remove();
-    guard?.setSecure?.({ enabled: false }).catch?.(() => {});
+    setScreenGuard(guardOwner, false).catch(error => console.error('Could not release view-once protection:', error));
   }
   overlay.addEventListener('contextmenu', block);
   overlay.addEventListener('dragstart', block);
@@ -1909,6 +2319,11 @@ function avatarMarkup(url, name, className) {
 
 document.addEventListener('error', (event) => {
   const img = event.target;
+  const latest = latestMessageMediaSources.get(img);
+  if (latest && img.getAttribute('src') !== latest) {
+    img.src = latest;
+    return;
+  }
   if (!(img instanceof HTMLImageElement) || !img.dataset.initial) return;
   img.parentElement.textContent = img.dataset.initial;
 }, true);
@@ -1957,11 +2372,31 @@ function escapeHtml(str) {
 (() => {
   const fmt = s => (isFinite(s) && s >= 0) ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '0:00';
   let current = null;
+  let context = null;
+  let warnedAboutVolume = false;
   function audioFor(player) {
     if (player._audio) return player._audio;
     const audio = new Audio();
     audio.preload = 'metadata';
+    audio.crossOrigin = 'anonymous';
     audio.src = player.dataset.src;
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (AudioContext) {
+      if (!context) context = new AudioContext();
+      const source = context.createMediaElementSource(audio);
+      const gain = context.createGain();
+      gain.gain.value = 1.8;
+      const compressor = context.createDynamicsCompressor();
+      compressor.threshold.value = -12;
+      compressor.knee.value = 12;
+      compressor.ratio.value = 4;
+      compressor.attack.value = 0.003;
+      compressor.release.value = 0.2;
+      source.connect(gain).connect(compressor).connect(context.destination);
+    } else if (!warnedAboutVolume) {
+      warnedAboutVolume = true;
+      console.warn('Voice volume enhancement is unavailable; using normal playback volume.');
+    }
     const btn = player.querySelector('.voice-play');
     const seek = player.querySelector('.voice-seek');
     const time = player.querySelector('.voice-time');
@@ -1985,7 +2420,13 @@ function escapeHtml(str) {
     audio.addEventListener('play', () => { btn.textContent = '⏸'; });
     audio.addEventListener('pause', () => { btn.textContent = '▶'; });
     audio.addEventListener('ended', () => { btn.textContent = '▶'; audio.currentTime = 0; update(); });
-    audio.addEventListener('error', () => { time.textContent = 'Unavailable'; });
+    audio.addEventListener('error', () => {
+      if (audio.src !== player.dataset.src) {
+        audio.src = player.dataset.src;
+        return;
+      }
+      time.textContent = 'Unavailable';
+    });
     seek.addEventListener('input', () => {
       seeking = true;
       if (isFinite(audio.duration)) audio.currentTime = (seek.value / 100) * audio.duration;
@@ -1994,16 +2435,25 @@ function escapeHtml(str) {
     player._audio = audio;
     return audio;
   }
-  document.addEventListener('click', event => {
+  document.addEventListener('click', async event => {
     const btn = event.target.closest('.voice-play');
     if (!btn) return;
-    const audio = audioFor(btn.closest('.voice-player'));
-    if (audio.paused) {
-      if (current && current !== audio) current.pause();
-      current = audio;
-      audio.play().catch(() => {});
-    } else {
-      audio.pause();
+    const player = btn.closest('.voice-player');
+    try {
+      const audio = audioFor(player);
+      if (audio.paused) {
+        if (current && current !== audio) current.pause();
+        current = audio;
+        if (context?.state === 'suspended') await context.resume();
+        if (current !== audio) return;
+        await audio.play();
+      } else {
+        audio.pause();
+      }
+    } catch (error) {
+      console.error('Could not play voice message:', error);
+      player.querySelector('.voice-time').textContent = 'Tap to retry';
+      btn.textContent = '▶';
     }
   });
   document.addEventListener('contextmenu', event => {

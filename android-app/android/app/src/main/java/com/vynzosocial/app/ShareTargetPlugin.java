@@ -30,7 +30,7 @@ import java.util.UUID;
 public class ShareTargetPlugin extends Plugin {
 
     private static final String CAPCUT_PACKAGE = "com.lemon.lvoverseas";
-    private static final long MAX_BYTES = 50L * 1024 * 1024;
+    private static final long MAX_BYTES = 500L * 1024 * 1024;
     private static final long STALE_MS = 24L * 60 * 60 * 1000;
     private static final String SHARE_DIR = "shared-videos";
 
@@ -100,7 +100,7 @@ public class ShareTargetPlugin extends Plugin {
             if (cursor != null && cursor.moveToFirst()) {
                 if (!cursor.isNull(0)) name = cursor.getString(0);
                 if (!cursor.isNull(1) && cursor.getLong(1) > MAX_BYTES) {
-                    throw new Exception("The video is larger than 50 MB. Export it at a lower quality and share it again.");
+                    throw new Exception("The video is larger than 500 MB. Export it at a lower quality and share it again.");
                 }
             }
         }
@@ -118,7 +118,7 @@ public class ShareTargetPlugin extends Plugin {
             while ((read = in.read(buffer)) != -1) {
                 total += read;
                 if (total > MAX_BYTES) {
-                    throw new Exception("The video is larger than 50 MB. Export it at a lower quality and share it again.");
+                    throw new Exception("The video is larger than 500 MB. Export it at a lower quality and share it again.");
                 }
                 out.write(buffer, 0, read);
             }

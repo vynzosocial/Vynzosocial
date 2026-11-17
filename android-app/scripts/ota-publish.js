@@ -28,6 +28,10 @@ execFileSync(process.execPath, [path.join(__dirname, 'prepare-web.js')], { stdio
 const gradle = fs.readFileSync(path.join(appRoot, 'android', 'app', 'build.gradle'), 'utf8');
 const versionCode = Number((gradle.match(/versionCode\s+(\d+)/) || [])[1]);
 if (!versionCode) throw new Error('Could not read versionCode from build.gradle');
+const minBinaryVersionCode = Number((otaConfig.match(/<integer name="ota_min_binary_version_code">(\d+)<\/integer>/) || [])[1]);
+if (!Number.isSafeInteger(minBinaryVersionCode) || minBinaryVersionCode < 1 || minBinaryVersionCode > versionCode) {
+  throw new Error('ota_min_binary_version_code must be a positive integer no greater than the Android versionCode.');
+}
 
 const version = Date.now();
 const out = process.env.OTA_OUTPUT_DIR
@@ -47,7 +51,7 @@ fs.writeFileSync(path.join(out, bundleName), buffer);
 
 const manifest = JSON.stringify({
   version,
-  minBinaryVersionCode: versionCode,
+  minBinaryVersionCode,
   bundle: bundleName,
   sha256: crypto.createHash('sha256').update(buffer).digest('hex'),
   size: buffer.length

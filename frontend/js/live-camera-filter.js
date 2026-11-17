@@ -32,7 +32,9 @@ export async function createCameraFilter(track, name, onError, signal, backgroun
   let stopped = false;
   let filter = name;
   let mirrored = Boolean(initialMirror);
+  let changingSource = false;
   const render = () => {
+    if (changingSource || video.readyState < 2) return;
     if (mirrored) {
       context.save();
       context.translate(canvas.width, 0);
@@ -134,6 +136,24 @@ export async function createCameraFilter(track, name, onError, signal, backgroun
       },
       setMirror(value) {
         mirrored = Boolean(value);
+      },
+      async replaceSource(nextTrack) {
+        if (stopped) throw new Error('The camera filter has stopped.');
+        const previous = track;
+        changingSource = true;
+        video.srcObject = new MediaStream([nextTrack]);
+        try {
+          await video.play();
+          if (stopped || nextTrack.readyState !== 'live') throw new Error('The new camera is no longer available.');
+          previous.removeEventListener('ended', sourceEnded);
+          track = nextTrack;
+          track.addEventListener('ended', sourceEnded);
+        } catch (error) {
+          if (!stopped) video.srcObject = new MediaStream([previous]);
+          throw error;
+        } finally {
+          changingSource = false;
+        }
       },
       stop
     };

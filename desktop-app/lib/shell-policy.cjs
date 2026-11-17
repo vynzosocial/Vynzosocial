@@ -11,7 +11,7 @@ const ROUTES = Object.freeze({
 });
 const TITLE_HEIGHT = 52;
 const RAIL_WIDTH = 88;
-const ACTIONS = new Set(['back', 'forward', 'reload', 'menu', 'update']);
+const ACTIONS = new Set(['back', 'forward', 'reload', 'update']);
 
 function routeUrl(section) {
   if (typeof section !== 'string' || !Object.hasOwn(ROUTES, section)) {

@@ -1,8 +1,10 @@
 /*
   X-Frame-Options: DENY
-  Content-Security-Policy: frame-ancestors 'none'
-  Strict-Transport-Security: max-age=31536000
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; font-src 'self' data:; connect-src 'self' blob: data: https://*.supabase.co wss://*.supabase.co https://*.workers.dev https://www.vynzosocial.com https://cloudflareinsights.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
   Referrer-Policy: strict-origin-when-cross-origin
+  X-Content-Type-Options: nosniff
+  Permissions-Policy: camera=(self), microphone=(self), geolocation=(), payment=(), usb=()
 
 /
   Content-Type: text/html; charset=utf-8
@@ -34,5 +36,9 @@
   X-Content-Type-Options: nosniff
 
 /ota/manifest.json.sig
+  Cache-Control: no-store
+  X-Content-Type-Options: nosniff
+
+/web-version.json
   Cache-Control: no-store
   X-Content-Type-Options: nosniff

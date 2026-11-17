@@ -12,6 +12,15 @@ import {
   moderationMode,
   publicReasons,
 } from "./blog-moderation.ts";
+import { accountIsActive, inactiveAccountIds } from "./account-lifecycle-access.mjs";
+import { privateBlogImages, restoreBlogMediaReferences } from "./legacy-blog-media.mjs";
+import { UploadValidationError } from "./media-permits.mjs";
+
+async function inactiveBlogAuthors(admin: any, authorIds: string[]) {
+  return Deno.env.get("ACCOUNT_LIFECYCLE_ENABLED") === "true"
+    ? await inactiveAccountIds(admin, authorIds)
+    : new Set<string>();
+}
 
 const CATEGORIES = [
   "general",
@@ -267,6 +276,10 @@ async function loadArticle(
     await admin.from("blog_articles").select(fields).eq("id", id).maybeSingle(),
   );
   if (!row) return null;
+  if (
+    Deno.env.get("ACCOUNT_LIFECYCLE_ENABLED") === "true" &&
+    !await accountIsActive(admin, row.author_id)
+  ) return null;
   const isOwner = row.author_id === viewerId,
     isAdmin = await adminCheck(admin, viewerId);
   if (row.status !== "published" && !isOwner && !isAdmin) return null;
@@ -299,7 +312,9 @@ async function moderationResult(admin: any, article: any, actorId: string) {
   const mod = await moderateContent({
     title: article.title,
     text: article.content_text,
-    images,
+    images: Deno.env.get("LEGACY_MEDIA_GATEWAY_ENABLED") === "true"
+      ? await privateBlogImages(admin, images, new URL(Deno.env.get("SUPABASE_URL")!).origin)
+      : images,
     hasEmbeds: article.has_embeds,
   });
   const publicMod = publicReasons(mod);
@@ -388,6 +403,19 @@ export async function handleBlogs(
       ? {}
       : await parseBody(req);
   try {
+    if (Deno.env.get("LEGACY_MEDIA_GATEWAY_ENABLED") === "true" && (method === "POST" || method === "PUT")) {
+      const configuration = {
+        viewerId,
+        workerUrl: Deno.env.get("R2_MEDIA_WORKER_URL"),
+        storageOrigin: new URL(Deno.env.get("SUPABASE_URL")!).origin,
+        secret: Deno.env.get("R2_DELIVERY_SECRET"),
+      };
+      for (const field of ["content_html", "cover_url"]) {
+        if (typeof body[field] === "string") {
+          body[field] = await restoreBlogMediaReferences(body[field], configuration);
+        }
+      }
+    }
     if (method === "GET" && p.join("/") === "meta") {
       return done(200, {
         categories: CATEGORIES,
@@ -729,14 +757,19 @@ export async function handleBlogs(
     }
     if (method === "GET" && p.join("/") === "tags/trending") {
       const rows = check(
-        await admin.from("blog_articles").select("tags").eq(
+        await admin.from("blog_articles").select("tags,author_id").eq(
           "status",
           "published",
         ).gt("published_at", new Date(Date.now() - 30 * 86400000).toISOString())
           .limit(500),
       );
       const counts = new Map<string, number>();
+      const inactiveAuthors = await inactiveBlogAuthors(
+        admin,
+        rows.map((row: any) => row.author_id),
+      );
       for (const a of rows) {
+        if (inactiveAuthors.has(a.author_id)) continue;
         for (const tag of a.tags || []) {
           counts.set(tag, (counts.get(tag) || 0) + 1);
         }
@@ -802,11 +835,15 @@ export async function handleBlogs(
           x.blocker_id === viewerId ? x.blocked_id : x.blocker_id
         ),
       );
+      const inactiveAuthors = await inactiveBlogAuthors(
+        admin,
+        rows.map((row: any) => row.author_id),
+      );
       return done(200, {
         articles: await withEngagement(
           admin,
           ids.map((id: string) => map.get(id)).filter((r: any) =>
-            r && !hiddenAuthors.has(r.author_id)
+            r && !hiddenAuthors.has(r.author_id) && !inactiveAuthors.has(r.author_id)
           ),
           viewerId,
         ),
@@ -910,7 +947,13 @@ export async function handleBlogs(
           b.blocker_id === viewerId ? b.blocked_id : b.blocker_id
         ),
       );
-      rows = rows.filter((a: any) => !hidden.has(a.author_id));
+      const inactiveAuthors = await inactiveBlogAuthors(
+        admin,
+        rows.map((row: any) => row.author_id),
+      );
+      rows = rows.filter((a: any) =>
+        !hidden.has(a.author_id) && !inactiveAuthors.has(a.author_id)
+      );
       if (url.searchParams.get("sort") === "trending") {
         rows = rows.sort((a: any, b: any) => {
           const score = (x: any) =>
@@ -953,6 +996,9 @@ export async function handleBlogs(
     if (p[0] === "authors" && p[1]) {
       const authorId = p[1];
       if (!uuid(authorId)) return done(404, { error: "Author not found" });
+      if ((await inactiveBlogAuthors(admin, [authorId])).has(authorId)) {
+        return done(404, { error: "Author not found" });
+      }
       if (method === "GET" && p.length === 2) {
         const u = check(
           await admin.from("users").select(
@@ -1187,6 +1233,18 @@ export async function handleBlogs(
     }
     if (p.length === 2 && uuid(p[0])) {
       const [id, action] = p;
+      if (
+        Deno.env.get("ACCOUNT_LIFECYCLE_ENABLED") === "true" &&
+        ["like", "bookmark", "share", "comments"].includes(action)
+      ) {
+        const article = check(
+          await admin.from("blog_articles").select("author_id").eq("id", id)
+            .maybeSingle(),
+        );
+        if (!article || !await accountIsActive(admin, article.author_id)) {
+          return done(404, { error: "Article not found" });
+        }
+      }
       if (action === "publish" && method === "POST") {
         const w = await writerCheck(admin, viewerId);
         if (w) return done(w.status, w.body);
@@ -1337,9 +1395,13 @@ export async function handleBlogs(
             b.blocker_id === viewerId ? b.blocked_id : b.blocker_id
           ),
         );
+        const inactiveCommenters = await inactiveBlogAuthors(
+          admin,
+          comments.map((comment: any) => comment.user_id),
+        );
         return done(200, {
           comments: comments.filter((c: any) =>
-            !hiddenCommenters.has(c.user_id)
+            !hiddenCommenters.has(c.user_id) && !inactiveCommenters.has(c.user_id)
           ).map((c: any) => ({
             ...c,
             username: c.user?.username,
@@ -1421,6 +1483,7 @@ export async function handleBlogs(
     return done(404, { error: "Blog endpoint not found" });
   } catch (error) {
     console.error("Blog API error", error);
+    if (error instanceof UploadValidationError) return done(400, { error: error.message });
     return done(500, {
       error: "The blog service could not complete the request.",
     });

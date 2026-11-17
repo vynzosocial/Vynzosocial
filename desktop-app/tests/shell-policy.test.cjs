@@ -8,6 +8,7 @@ test('desktop navigation accepts only known app sections', () => {
     assert.throws(() => routeUrl(section), /Unknown desktop/);
   }
   assert.throws(() => validateAction('executeJavaScript'), /Unsupported/);
+  assert.throws(() => validateAction('menu'), /Unsupported/);
   assert.equal(validateAction('reload'), null);
   assert.equal(validateAction('update'), null);
 });

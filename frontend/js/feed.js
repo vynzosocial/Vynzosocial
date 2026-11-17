@@ -1,12 +1,13 @@
 import { apiRequest } from './api.js?v=sb6';
 import { timeAgo } from './time-ago.js';
 import { API_ORIGIN } from './config.js?v=sb4';
-import { uploadMedia } from './uploads.js?v=up2';
+import { uploadMedia } from './uploads.js?v=repost1';
 import { downloadOriginal, refreshExpiredMedia } from './r2-uploads.js';
-import { openVideoOptions, initSharedVideoReceiver } from './video-create.js?v=vc1';
+import { openVideoOptions, openPhotoOptions, initSharedVideoReceiver, reviewVideo } from './video-create.js?v=repost1';
 import { attachEmojiPicker } from './emoji-picker.js';
 import { protectMedia } from './media-protect.js';
 import { openShareDialog, absoluteMediaUrl } from './share.js?v=5';
+import { uploadSelectedFile } from './selected-file.js';
 
 export async function initFeed() {
   const container = document.getElementById('feed-container');
@@ -134,10 +135,10 @@ function initPostComposer() {
     openVideoOptions({ onFile: createPost, fileInput: videoInput });
   });
   initSharedVideoReceiver({ onPost: createPost, captionInput: document.getElementById('post-caption') });
-  [photoInput, videoInput].forEach(input => input.addEventListener('change', async () => {
-    const file = input.files?.[0];
-    input.value = '';
-    if (file) await createPost(file);
+  const captionInput = document.getElementById('post-caption');
+  photoInput.addEventListener('change', () => uploadSelectedFile(photoInput, createPost));
+  videoInput.addEventListener('change', () => uploadSelectedFile(videoInput, async file => {
+    reviewVideo(file, { onPost: createPost, captionInput });
   }));
 }
 
@@ -146,10 +147,10 @@ function openPostPicker(input) {
     window.location.href = './pages/login.html';
     return;
   }
-  input.click();
+  openPhotoOptions({ onFile: createPost, fileInput: input });
 }
 
-async function createPost(file) {
+async function createPost(file, options = {}) {
   const status = document.getElementById('post-upload-status');
   const buttons = [
     document.getElementById('add-photo-post-btn'),
@@ -169,7 +170,8 @@ async function createPost(file) {
   status.textContent = 'Uploading post...';
   try {
     const caption = document.getElementById('post-caption').value.trim();
-    await uploadMedia(file, caption, message => { status.textContent = message; });
+    const allowRepost = options.allowRepost ?? !document.getElementById('post-no-repost')?.checked;
+    await uploadMedia(file, caption, message => { status.textContent = message; }, allowRepost);
     document.getElementById('post-caption').value = '';
     status.textContent = 'Post added to the home feed.';
     await initFeed();
@@ -203,6 +205,42 @@ function createPrivacySelect(post, bind = true) {
   });
   select.dataset.postId = post.id;
   return select;
+}
+
+function createRepostPermission(post) {
+  const label = document.createElement('label');
+  label.className = 'protect-option';
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = post.allow_repost === false;
+  checkbox.addEventListener('change', async () => {
+    checkbox.disabled = true;
+    try {
+      await apiRequest(`/posts/${post.id}/repost-permission`, {
+        method: 'PATCH', body: JSON.stringify({ allowRepost: !checkbox.checked })
+      });
+      post.allow_repost = !checkbox.checked;
+    } catch (error) {
+      checkbox.checked = post.allow_repost === false;
+      alert(error.message || 'Could not change repost permission.');
+    } finally {
+      checkbox.disabled = false;
+    }
+  });
+  label.append(checkbox, document.createTextNode(' Do not allow reposting'));
+  return label;
+}
+
+async function repostPost(post, button) {
+  button.disabled = true;
+  try {
+    await apiRequest(`/posts/${post.id}/repost`, { method: 'POST' });
+    button.textContent = 'Reposted';
+    alert('Reposted to your profile.');
+  } catch (error) {
+    button.disabled = false;
+    alert(error.message || 'Could not repost this post.');
+  }
 }
 
 let reelObserver = null;
@@ -340,6 +378,7 @@ function createPostCard(post, reel = false) {
   }
   if (post.is_owner) {
     actions.appendChild(createPrivacySelect(post));
+    actions.appendChild(createRepostPermission(post));
     if (post.has_original) {
       const download = document.createElement('button');
       download.type = 'button';
@@ -350,6 +389,14 @@ function createPostCard(post, reel = false) {
         catch (error) { alert(error.message || 'Could not download the original.'); }
       });
       actions.appendChild(download);
+    }
+    if (!post.is_owner && post.allow_repost !== false) {
+      const repost = document.createElement('button');
+      repost.type = 'button';
+      repost.className = 'post-action';
+      repost.textContent = 'Repost';
+      repost.addEventListener('click', () => repostPost(post, repost));
+      actions.appendChild(repost);
     }
     const del = document.createElement('button');
     del.type = 'button';
@@ -476,6 +523,7 @@ function showPostViewer(post) {
   if (post.media_type === 'video') {
     media.controls = true;
     media.autoplay = true;
+    media.muted = true;
     media.playsInline = true;
     if (!viewerPosts) media.addEventListener('ended', () => closePostViewer());
   } else {
@@ -527,6 +575,35 @@ function showPostViewer(post) {
     }
   };
   viewerDelete.hidden = !post.is_owner;
+  modal.querySelector('#post-viewer-repost-controls')?.remove();
+  const repostControls = document.createElement('div');
+  repostControls.id = 'post-viewer-repost-controls';
+  if (post.is_owner) repostControls.appendChild(createRepostPermission(post));
+  if (!post.is_owner && post.allow_repost !== false) {
+    const repost = document.createElement('button');
+    repost.type = 'button';
+    repost.textContent = 'Repost';
+    repost.addEventListener('click', () => repostPost(post, repost));
+    repostControls.appendChild(repost);
+  }
+  if (post.can_remove_repost) {
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = 'Remove repost';
+    remove.addEventListener('click', async () => {
+      remove.disabled = true;
+      try {
+        await apiRequest(`/posts/${post.id}/repost`, { method: 'DELETE' });
+        closePostViewer();
+        document.querySelectorAll(`.account-profile-post[data-repost-id="${post.id}"]`).forEach(element => element.remove());
+      } catch (error) {
+        remove.disabled = false;
+        alert(error.message || 'Could not remove repost.');
+      }
+    });
+    repostControls.appendChild(remove);
+  }
+  modal.querySelector('.post-viewer-details').appendChild(repostControls);
   let viewerOriginal = modal.querySelector('#post-viewer-original');
   if (!viewerOriginal) {
     viewerOriginal = document.createElement('button');
@@ -542,7 +619,7 @@ function showPostViewer(post) {
   }
   viewerOriginal.hidden = !post.is_owner || !post.has_original;
   modal.querySelector('#post-viewer-author').textContent = `@${post.author_username || 'user'}`;
-  modal.querySelector('#post-viewer-author').textContent = `@${post.author_username || 'user'} · ${timeAgo(post.created_at)}`;
+  modal.querySelector('#post-viewer-author').textContent = `${post.is_repost ? 'Reposted · ' : ''}@${post.author_username || 'user'} · ${timeAgo(post.created_at)}`;
   modal.querySelector('#post-viewer-avatar-slot').replaceChildren(createAuthorAvatar(post));
   modal.querySelector('#post-viewer-caption').textContent = post.caption || '';
   viewerPost = post;
@@ -696,7 +773,7 @@ function makeAuthorLink(row, post) {
   const open = async event => {
     event.stopPropagation();
     try {
-      const { openUserProfile } = await import('./users.js?v=report-reasons1');
+      const { openUserProfile } = await import('./users.js?v=repost1');
       openUserProfile(post.author_id);
     } catch (err) {
       console.error('Could not open profile:', err);

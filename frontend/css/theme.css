@@ -41,6 +41,7 @@ html[data-theme="daylight"] .sidebar {
 }
 
 html[data-theme="daylight"] .home-page .top-bar,
+html[data-theme="daylight"] .home-page .home-user-chip,
 html[data-theme="daylight"] .chat-header,
 html[data-theme="daylight"] .home-page .home-post-composer > input,
 html[data-theme="daylight"] .people-page .account-search input,
@@ -264,6 +265,7 @@ html[data-theme="daylight"] .people-page,
 html[data-theme="daylight"] .home-page .main-content,
 html[data-theme="daylight"] .live-container,
 html[data-theme="daylight"] .messages-page .main-content,
+html[data-theme="daylight"] .messages-page .messaging-container,
 html[data-theme="daylight"] .settings-page {
   background:
     radial-gradient(circle at 12% 10%, rgba(255, 130, 200, 0.32), transparent 45%),
@@ -409,19 +411,34 @@ html[data-theme="daylight"] body .people-tab {
   border-color: rgba(140, 90, 255, 0.45);
 }
 
-html[data-theme="daylight"] body .people-tab.active { color: #fff; }
+html[data-theme="daylight"] body .people-tab.active {
+  color: #fff;
+  background: #6b49b8;
+}
+
+html[data-theme="daylight"] .people-page .account-search-identity strong {
+  color: #3a2f66;
+  background: none;
+  animation: none;
+}
+
+html[data-theme="daylight"] .account-follow-button.is-friend {
+  color: #216249;
+  background: #e2f5ec;
+  border-color: #469477;
+}
 
 html[data-theme="daylight"] body .account-message-button {
   color: #0b3d5c;
   background: linear-gradient(120deg, rgba(110, 205, 255, 0.45), rgba(220, 170, 255, 0.45));
 }
 
-html[data-theme="daylight"] body .home-page .home-user-name {
+html[data-theme="daylight"] body.home-page .home-user-name {
   color: #1b1535;
   text-shadow: none;
 }
 
-html[data-theme="daylight"] body .home-page .tab-btn:not(.active) {
+html[data-theme="daylight"] body.home-page .tab-btn:not(.active) {
   color: #3a2f66;
   text-shadow: none;
   border-color: rgba(140, 90, 255, 0.4);
@@ -436,15 +453,16 @@ html[data-theme="daylight"] body .post-placeholder {
   color: #4a4470;
 }
 
-html[data-theme="daylight"] body .home-page .post-action.liked,
-html[data-theme="daylight"] body .home-page .like-btn.liked { color: #d4155f; }
+html[data-theme="daylight"] body.home-page .post-action.liked,
+html[data-theme="daylight"] body.home-page .like-btn.liked { color: #d4155f; }
 
-html[data-theme="daylight"] body .messages-page .conversation-item .conversation-name {
-  color: #1b1535;
+html[data-theme="daylight"] body.messages-page .conversation-item .conversation-name,
+html[data-theme="daylight"] body.messages-page .conversation-item > div > div:first-child {
+  color: var(--text-dark);
   text-shadow: none;
 }
 
-html[data-theme="daylight"] body .messages-page .conversation-item div[style*="text-muted"] {
+html[data-theme="daylight"] body.messages-page .conversation-item div[style*="text-muted"] {
   color: #4a4470 !important;
 }
 
@@ -566,3 +584,55 @@ html[data-theme="daylight"] body .bl-editor { color: #1b1535; background-color: 
 html[data-theme="daylight"] body select.bl-input option { color: #1b1535; background: #ffffff; }
 html[data-theme="daylight"] body .bl-tags strong,
 html[data-theme="daylight"] body .bl-article h1 { color: #1b1535; -webkit-text-fill-color: #1b1535; background: none; }
+
+html[data-theme="daylight"] body.messages-page {
+  --text-dark: #3e3654;
+}
+
+html[data-theme="daylight"] .messages-page .message-bubble.outgoing {
+  color: var(--text-dark);
+  background: linear-gradient(120deg, #f4dff2, #e3dcff 54%, #d8eaff);
+  border-color: rgba(140, 90, 255, 0.3);
+}
+
+html[data-theme="daylight"] .messages-page .chat-input-form,
+html[data-theme="daylight"] .messages-page .reply-bar {
+  color: var(--text-dark);
+  background: linear-gradient(160deg, #ffffff, #f6efff);
+}
+
+html[data-theme="daylight"] .messages-page :is(.sidebar-header, .chat-input, .chat-back-btn, .message-delete-button, .message-edit-button, .message-reply-button, .voice-play) {
+  color: var(--text-dark);
+}
+
+html[data-theme="daylight"] .messages-page :is(.message-sender, .chat-header-subtitle) {
+  color: #5e566f;
+}
+
+html[data-theme="daylight"] .messages-page .message-status.seen { color: #227453; }
+html[data-theme="daylight"] .messages-page .reply-quote { background: rgba(100, 70, 160, 0.08); }
+html[data-theme="daylight"] .messages-page .voice-seek { accent-color: #6b49b8; }
+
+html[data-theme="daylight"] .live-audience-menu {
+  color: var(--text-dark);
+  background: linear-gradient(160deg, #ffffff, #f6efff);
+}
+
+html[data-theme="daylight"] :is(.live-audience-trigger, .live-audience-choice-copy strong, .live-audience-option-copy strong, .live-empty-title) {
+  color: var(--text-dark);
+}
+
+html[data-theme="daylight"] :is(.live-audience-choice-copy small, .live-audience-option-copy small, .live-empty-text, .live-empty-features li) {
+  color: #59506f;
+}
+
+html[data-theme="daylight"] :is(.live-audience-choice-icon, .live-audience-option-icon, .live-empty-eyebrow, .live-empty-title span) {
+  color: #8a5a00;
+}
+
+html[data-theme="daylight"] .live-empty-title span { background: none; }
+html[data-theme="daylight"] .live-audience-chevron { color: #665089; }
+
+html[data-theme="daylight"] .live-sidebar #live-streams-list > p {
+  color: #59506f !important;
+}

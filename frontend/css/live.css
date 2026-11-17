@@ -743,6 +743,11 @@
   overflow-wrap: anywhere;
 }
 
+.live-chat-content {
+  min-width: 0;
+  white-space: pre-wrap;
+}
+
 .live-chat-avatar {
   flex: 0 0 auto;
   width: 28px;
@@ -800,6 +805,12 @@
 .live-chat-input-row .chat-input {
   min-width: 0;
   min-height: 40px;
+  max-height: 120px;
+  box-sizing: border-box;
+  overflow-y: auto;
+  resize: none;
+  font: inherit;
+  line-height: 1.4;
   padding: 9px 12px;
   border: 1px solid rgba(174, 133, 255, 0.35);
   border-radius: 10px;

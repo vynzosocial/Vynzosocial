@@ -2,6 +2,11 @@
   'use strict';
   // English (key, without leading/trailing punctuation or emoji) -> Russian
   var D = {
+    'Host with side guests': 'Ведущий с гостями по бокам', 'Invite': 'Пригласить', 'No viewers available to invite': 'Нет зрителей, которых можно пригласить',
+    'Grid': 'Сетка', 'Focus': 'Фокус', 'Focus this participant': 'Выделить этого участника',
+    'Host only': 'Только ведущий', 'Two people': 'Два человека', 'Host and guests': 'Ведущий и гости', 'Two above guests': 'Двое над гостями',
+    'Show chat': 'Показать чат', 'Hide chat': 'Скрыть чат', 'Manage guests': 'Управление гостями',
+    'Requests': 'Запросы', 'On stage': 'На сцене', 'Stage layout': 'Вид сцены', 'Live media controls': 'Управление эфиром',
     /* Navigation & shared */
     'Offer to save this login in my password manager': 'Предложить сохранить данные входа в менеджере паролей',
     'Your browser or phone decides whether to save it. Avoid saving on shared devices': 'Браузер или телефон решает, сохранять ли данные. Не сохраняйте их на общих устройствах',

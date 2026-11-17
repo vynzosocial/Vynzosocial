@@ -48,3 +48,36 @@ test('old share links remain readable and invalid previews remain plain text', (
   assert.equal(context.parseSharedMessage(context.shareMessage('x', 'https://evil.example/live', { type: 'live' })), null);
   assert.equal(context.parseSharedMessage(context.shareMessage('x', 'https://example.test/x', { type: 'image', r2: true, kind: 'post', id: 'bad' })), null);
 });
+
+test('blog shares render a local article link and reject forged destinations', () => {
+  const id = 'a4e777de-3d68-4f4e-9e7a-843f3229dabc';
+  const url = `https://www.vynzosocial.com/share-blog?id=${id}`;
+  const shared = context.parseSharedMessage(context.shareMessage('📝 A & B', url, { type: 'blog', id }));
+  assert.equal(shared.url, url);
+  const markup = context.sharedMessageMarkup(shared, {}, 'Sender');
+  assert.match(markup, new RegExp(`href="blogs.html#/a/${id}"`));
+  assert.match(markup, /A &amp; B/);
+  assert.equal(context.parseSharedMessage(context.shareMessage('x', 'https://evil.example/share-blog?id=' + id, { type: 'blog', id })), null);
+  assert.equal(context.parseSharedMessage(context.shareMessage('x', url, { type: 'blog', id: 'invalid' })), null);
+  assert.equal(context.parseSharedMessage(context.shareMessage('x', url, { type: 'blog', id: 'b4e777de-3d68-4f4e-9e7a-843f3229dabc' })), null);
+});
+
+test('blog card fetches its cover with recipient authorization and handles unavailable articles', async () => {
+  const id = 'a4e777de-3d68-4f4e-9e7a-843f3229dabc';
+  const frame = { textContent: '', replaceChildren(image) { this.image = image; } };
+  const caption = { textContent: '' };
+  const link = { dataset: { id }, isConnected: true, querySelector: selector => selector === '.shared-media-frame' ? frame : caption };
+  const container = { querySelectorAll: selector => selector === '.shared-blog-preview' ? [link] : [] };
+  context.document = { createElement: () => ({ addEventListener() {} }) };
+  let request;
+  context.apiRequest = async url => { request = url; return { article: { title: 'Updated title', cover_url: 'https://storage.example/cover.jpg' } }; };
+  context.hydrateSharedPreviews(container);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(request, `/blogs/${id}`);
+  assert.equal(caption.textContent, 'Updated title');
+  assert.equal(frame.image.src, 'https://storage.example/cover.jpg');
+  context.apiRequest = async () => { throw new Error('Article not found'); };
+  context.hydrateSharedPreviews(container);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(frame.textContent, /unavailable/i);
+});

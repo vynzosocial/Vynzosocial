@@ -21,7 +21,7 @@ function filterEnvironment({ supported = true, play = () => Promise.resolve() } 
     addEventListener(name, callback) { sourceListeners.set(name, callback); },
     removeEventListener(name) { sourceListeners.delete(name); }
   };
-  const context2d = { filter: 'none', drawImage() { this.lastFilter = this.filter; } };
+  const context2d = { filter: 'none', draws: 0, drawImage() { this.draws++; this.lastFilter = this.filter; } };
   const video = { videoWidth: 1920, videoHeight: 1080, play, pause() { this.paused = true; } };
   const canvas = {
     getContext: () => supported ? context2d : null,
@@ -75,6 +75,36 @@ test('reports camera failure and stops the generated track', async () => {
   env.sourceListeners.get('ended')();
   assert.match(error.message, /camera stopped/i);
   assert.equal(env.outputTrack.stopped, true);
+});
+
+test('switching lenses retains the filtered outgoing track and moves source cleanup to the new camera', async () => {
+  const env = filterEnvironment();
+  const errors = [];
+  const result = await env.context.createCameraFilter(env.source, 'warm', error => errors.push(error));
+  const listeners = new Map();
+  const next = {
+    readyState: 'live',
+    addEventListener(name, callback) { listeners.set(name, callback); },
+    removeEventListener(name) { listeners.delete(name); }
+  };
+  env.source.readyState = 'ended';
+  let ready;
+  env.video.play = () => new Promise(resolve => { ready = resolve; });
+  const draws = env.context2d.draws;
+  const switching = result.replaceSource(next);
+  [...env.callbacks.values()][0](100);
+  assert.equal(env.context2d.draws, draws);
+  ready();
+  await switching;
+  assert.equal(env.video.srcObject.tracks[0], next);
+  assert.equal(result.track, env.outputTrack);
+  assert.equal(env.outputTrack.stopped, false);
+  assert.equal(env.sourceListeners.size, 0);
+  [...env.callbacks.values()].at(-1)(200);
+  assert.match(env.context2d.lastFilter, /sepia/);
+  assert.equal(errors.length, 0);
+  result.stop();
+  assert.equal(listeners.size, 0);
 });
 
 function controlEnvironment(createCameraFilter) {

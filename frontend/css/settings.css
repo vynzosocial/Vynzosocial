@@ -38,6 +38,61 @@
   box-shadow: 0 16px 42px rgba(0, 0, 0, 0.22), 0 0 26px rgba(164, 83, 255, 0.08);
 }
 
+.account-deactivation-card {
+  border-color: rgba(255, 117, 137, 0.4);
+  background:
+    radial-gradient(ellipse at 100% 0, rgba(255, 91, 112, 0.08), transparent 42%),
+    linear-gradient(145deg, rgba(34, 20, 38, 0.98), rgba(17, 16, 33, 0.98));
+}
+
+#account-deactivation-details,
+#account-deactivation-panel {
+  margin-top: 24px;
+}
+
+#account-deactivation-details[hidden],
+#account-deactivation-panel[hidden],
+#account-deactivation-open[hidden] {
+  display: none;
+}
+
+.account-action-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.account-deactivation-note {
+  margin: -12px 0 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.account-deactivation-form {
+  display: grid;
+  gap: 16px;
+}
+
+.account-deactivation-form .settings-field input {
+  width: 100%;
+  padding: 11px 12px;
+  color: var(--text-dark);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(189, 130, 255, 0.25);
+  border-radius: 9px;
+}
+
+.account-deactivation-button {
+  justify-self: start;
+  border-color: rgba(255, 117, 137, 0.55);
+  background: linear-gradient(135deg, #a92542, #711e42);
+}
+
+.account-deactivation-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #c6304f, #8b2750);
+}
+
 .settings-section-heading {
   display: flex;
   align-items: flex-start;
@@ -53,6 +108,20 @@
 
 .settings-section-heading p {
   font-size: 13px;
+}
+
+.problem-report-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.problem-report-form[hidden] {
+  display: none;
+}
+
+.problem-report-form .settings-button {
+  justify-self: start;
 }
 
 .profile-photo-section {
@@ -299,6 +368,44 @@ a.settings-button {
   font-weight: 650;
   cursor: pointer;
   transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.settings-page:not(.delete-account-page) .settings-card {
+  margin-bottom: 12px;
+  padding: clamp(12px, 2.6vw, 20px);
+  border-radius: 14px;
+}
+
+.settings-page:not(.delete-account-page) .settings-section-heading {
+  margin-bottom: 14px;
+}
+
+.settings-page:not(.delete-account-page) .session-settings-card .settings-section-heading {
+  margin-bottom: 0;
+}
+
+.settings-page:not(.delete-account-page) .profile-photo-section {
+  gap: 12px;
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+}
+
+.settings-page:not(.delete-account-page) .profile-settings-form {
+  gap: 14px;
+}
+
+.settings-page:not(.delete-account-page) .message-privacy {
+  gap: 5px;
+  margin-top: 12px;
+}
+
+.settings-page:not(.delete-account-page) .message-privacy-select,
+.settings-page:not(.delete-account-page) .privacy-toggle {
+  padding: 8px 10px;
+}
+
+.settings-page:not(.delete-account-page) .settings-button {
+  zoom: 0.65;
 }
 
 .settings-button:hover:not(:disabled) {
@@ -672,4 +779,99 @@ a.settings-button {
   max-width: 100%;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+
+button.profile-stat {
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.profile-stat[aria-expanded="true"],
+button.profile-stat:focus-visible {
+  outline: 2px solid #ffd54a;
+  outline-offset: 2px;
+}
+
+.settings-connections {
+  width: 100%;
+  max-width: 320px;
+  margin: 6px 0;
+  padding: 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--card-dark);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.settings-connections[hidden] {
+  display: none;
+}
+
+.settings-connections h3 {
+  margin: 2px 6px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.settings-connections .settings-status {
+  margin: 4px 6px;
+  font-size: 12px;
+}
+
+.settings-connections .settings-status:empty {
+  display: none;
+}
+
+.settings-connections-list {
+  display: grid;
+  gap: 2px;
+  max-height: 176px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.settings-connection-account {
+  display: grid;
+  grid-template-columns: fit-content(50%) minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-height: 40px;
+  padding: 5px 6px;
+  color: var(--text-dark);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.settings-connection-account strong {
+  min-width: 0;
+  font-size: inherit;
+  font-weight: 600;
+}
+
+.settings-connection-account span {
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-align: left;
+}
+
+.settings-connection-account:hover,
+.settings-connection-account:focus-visible {
+  background: rgba(128, 128, 128, 0.12);
+}
+
+.settings-connection-account:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
 }

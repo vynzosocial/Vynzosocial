@@ -14,12 +14,13 @@ test('camera-off signal shows the profile and ignores our own signal', () => {
   const states = new Map();
   const classes = new Set();
   const tile = {
-    frame: { classList: { toggle: (name, enabled) => enabled ? classes.add(name) : classes.delete(name) } },
+    frame: { dataset: {}, classList: { toggle: (name, enabled) => enabled ? classes.add(name) : classes.delete(name) } },
     video: { srcObject: { getVideoTracks: () => [{ readyState: 'live', muted: false }] } }
   };
   const context = {
     socket: { id: 'self', off() {}, on(_event, fn) { listener = fn; } },
-    remoteCameraStates: states,
+    remoteCameraStates: states, remoteImagePeers: new Set(),
+    canShowTile: id => id === 'host',
     ensureVideoTile: () => tile
   };
   vm.runInNewContext(`${setCameraOff}\n${handler}`, context);
@@ -33,7 +34,36 @@ test('camera-off signal shows the profile and ignores our own signal', () => {
   assert.equal(states.get('host'), true);
   assert.equal(classes.has('camera-off'), false);
   assert.equal(tile.video.hidden, false);
+  listener({ socketId: 'host', enabled: true, image: true });
+  assert.equal(tile.frame.dataset.mediaSource, 'image');
+  listener({ socketId: 'host', enabled: true, image: false });
+  assert.equal(tile.frame.dataset.mediaSource, 'camera');
+  listener({ socketId: 'removed-guest', enabled: false });
+  assert.equal(classes.has('camera-off'), false);
 });
+
+for (const image of [true, false]) {
+  test(`local ${image ? 'image' : 'camera'} preview publishes its display mode`, async () => {
+    const events = [];
+    const tile = {
+      frame: { dataset: {}, classList: { toggle() {} } },
+      video: { play: () => Promise.resolve() }, status: {}
+    };
+    const context = {
+      socket: { connected: true, emit: (...args) => events.push(args) },
+      activeRoomSessionId: 'live', localVideoTrack: {}, localAudioTrack: null,
+      imageStream: image ? {} : null, ensureVideoTile: () => tile,
+      MediaStream: class { constructor(tracks) { this.tracks = tracks; } },
+      peerConnections: {}, peerSenders: {}, requestPeerNegotiation() {},
+      console, showLiveError: error => { throw new Error(error); }
+    };
+    vm.runInNewContext(`${setCameraOff}\n${publishMedia}`, context);
+    await context.publishLocalMedia();
+    assert.equal(tile.frame.dataset.mediaSource, image ? 'image' : 'camera');
+    assert.equal(events[0][1].image, image);
+    assert.equal(events[0][1].enabled, true);
+  });
+}
 
 for (const isGuest of [false, true]) {
   test(`${isGuest ? 'guest' : 'host'} preview shows profile immediately when the camera stops`, async () => {
@@ -49,7 +79,7 @@ for (const isGuest of [false, true]) {
     const context = {
       socket: { connected: true, emit: (...args) => events.push(args) },
       activeRoomSessionId: 'live',
-      localVideoTrack: null,
+      localVideoTrack: null, imageStream: null,
       localAudioTrack: null,
       guestOnStage: isGuest,
       myStageInfo: isGuest ? { name: 'Guest' } : null,

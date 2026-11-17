@@ -1,6 +1,6 @@
 import { apiRequest } from './api.js?v=sb6';
 import { API_ORIGIN } from './config.js?v=sb4';
-import { shareMessage } from './share-data.js?v=1';
+import { shareMessage } from './share-data.js?v=2';
 
 export const SHARE_BASE_URL = 'https://www.vynzosocial.com';
 

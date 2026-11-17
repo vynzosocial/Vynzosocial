@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const usernameInput = document.getElementById('profile-username');
   const bioInput = document.getElementById('profile-bio');
   const bioCount = document.getElementById('bio-character-count');
+  const instagramInput = document.getElementById('profile-instagram');
   const photoInput = document.getElementById('profile-photo-input');
   const photoPreview = document.getElementById('profile-photo-preview');
   const photoFallback = document.getElementById('profile-photo-fallback');
@@ -22,6 +23,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const user = readStoredUser();
   let previewUrl = null;
   setupChangePassword(user);
+  setupAccountDeactivation(user);
+  setupConnectionDropdowns(user);
 
   if (!user.id) {
     userInfoEl.textContent = 'Log in to edit your profile.';
@@ -36,6 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
     userInfoEl.textContent = `Logged in as @${user.username}${user.email ? ` (${user.email})` : ''}`;
     usernameInput.value = user.username || '';
     bioInput.value = user.bio || '';
+    instagramInput.value = user.instagram_username || '';
     bioCount.textContent = String(bioInput.value.length);
     loadProfile(user).catch(err => {
       console.error('Could not load profile settings:', err);
@@ -104,7 +108,8 @@ document.addEventListener('DOMContentLoaded', () => {
         method: 'PATCH',
         body: JSON.stringify({
           username: usernameInput.value,
-          bio: bioInput.value
+          bio: bioInput.value,
+          instagram: instagramInput.value
         })
       });
       storeUpdatedUser(result.user, result.token);
@@ -133,6 +138,83 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+
+function setupConnectionDropdowns(user) {
+  const buttons = document.querySelectorAll('[data-connection-type]');
+  const panel = document.getElementById('settings-connections');
+  const heading = document.getElementById('settings-connections-heading');
+  const status = document.getElementById('settings-connections-status');
+  const list = document.getElementById('settings-connections-list');
+  const labels = { friends: 'Friends', followers: 'Followers', following: 'Following' };
+  let activeType = null;
+  let generation = 0;
+  const close = () => {
+    generation++;
+    activeType = null;
+    panel.hidden = true;
+    buttons.forEach(button => button.setAttribute('aria-expanded', 'false'));
+  };
+  buttons.forEach(button => {
+    button.disabled = !user.id;
+    button.addEventListener('click', async () => {
+      const type = button.dataset.connectionType;
+      if (activeType === type) {
+        close();
+        return;
+      }
+      activeType = type;
+      const request = ++generation;
+      buttons.forEach(item => item.setAttribute('aria-expanded', String(item === button)));
+      panel.hidden = false;
+      heading.textContent = labels[type];
+      list.replaceChildren();
+      setStatus(status, 'Loading accounts...', '');
+      try {
+        const data = await apiRequest(`/users/connections?type=${type}`);
+        if (request !== generation) return;
+        setStatus(status, data.users.length ? '' : `No ${labels[type].toLowerCase()} yet.`, '');
+        for (const account of data.users) {
+          const entry = document.createElement('button');
+          entry.type = 'button';
+          entry.className = 'settings-connection-account';
+          const name = document.createElement('strong');
+          name.textContent = account.display_name || account.username;
+          const username = document.createElement('span');
+          username.textContent = `@${account.username}`;
+          entry.append(name, username);
+          entry.addEventListener('click', async () => {
+            entry.disabled = true;
+            try {
+              const { openUserProfile } = await import('./users.js?v=connection-groups2');
+              await openUserProfile(account.id);
+            } catch (err) {
+              console.error('Could not open connection profile:', err);
+              setStatus(status, err.message || 'Could not open this profile. Please try again.', 'error');
+            } finally {
+              entry.disabled = false;
+            }
+          });
+          list.appendChild(entry);
+        }
+      } catch (err) {
+        console.error('Could not load settings connections:', err);
+        if (request === generation) setStatus(status, err.message || 'Could not load accounts. Close and reopen this list to retry.', 'error');
+      }
+    });
+  });
+  document.addEventListener('click', event => {
+    if (!activeType || panel.contains(event.target)
+      || Array.from(buttons).some(button => button.contains(event.target))) return;
+    close();
+  });
+  panel.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      const trigger = Array.from(buttons).find(button => button.dataset.connectionType === activeType);
+      close();
+      trigger?.focus();
+    }
+  });
+}
 
 function formatStat(value) {
   const number = Math.max(0, Math.floor(Number(value) || 0));
@@ -167,6 +249,7 @@ async function loadProfile(user) {
   const stats = {
     'stat-followers': profile.followers_count,
     'stat-following': profile.following_count,
+    'stat-friends': profile.friends_count,
     'stat-likes-total': likes.total,
   };
   Object.entries(stats).forEach(([id, value]) => {
@@ -174,6 +257,7 @@ async function loadProfile(user) {
   });
   document.getElementById('profile-username').value = profile.username || '';
   document.getElementById('profile-bio').value = profile.bio || '';
+  document.getElementById('profile-instagram').value = profile.instagram_username || '';
   document.getElementById('bio-character-count').textContent = String((profile.bio || '').length);
   renderPhoto(
     document.getElementById('profile-photo-preview'),
@@ -476,6 +560,79 @@ function setupChangePassword(user) {
       setStatus(statusEl, err.message || 'Could not update your password.', 'error');
     } finally {
       button.disabled = false;
+    }
+  });
+}
+
+function setupAccountDeactivation(user) {
+  const form = document.getElementById('account-deactivation-form');
+  if (!form) return;
+  const passwordInput = document.getElementById('account-deactivation-password');
+  const opener = document.getElementById('account-deactivation-open');
+  const details = document.getElementById('account-deactivation-details');
+  const choice = document.getElementById('account-deactivation-choice');
+  const panel = document.getElementById('account-deactivation-panel');
+  const button = document.getElementById('account-deactivation-button');
+  const status = document.getElementById('account-deactivation-status');
+
+  passwordInput.value = '';
+  window.addEventListener('pageshow', () => { passwordInput.value = ''; });
+
+  opener.addEventListener('click', () => {
+    passwordInput.value = '';
+    details.hidden = false;
+    opener.hidden = true;
+    opener.setAttribute('aria-expanded', 'true');
+    choice.focus();
+  });
+
+  choice.addEventListener('click', () => {
+    passwordInput.value = '';
+    panel.hidden = false;
+    choice.setAttribute('aria-expanded', 'true');
+    passwordInput.focus();
+  });
+
+  if (!user.id) {
+    form.querySelectorAll('input, button').forEach(control => { control.disabled = true; });
+    setStatus(status, 'Log in to deactivate your account.', '');
+    return;
+  }
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (button.disabled) return;
+    if (!passwordInput.value) {
+      setStatus(status, 'Enter your current password to deactivate your account.', 'error');
+      passwordInput.focus();
+      return;
+    }
+    if (!window.confirm('Are you sure you want to deactivate your account? Your profile and content will be hidden, not deleted. You will need access to your verified email to reactivate.')) return;
+
+    button.disabled = true;
+    opener.disabled = true;
+    setStatus(status, 'Deactivating your account...', '');
+    try {
+      const result = await apiRequest('/auth/deactivate', {
+        method: 'POST',
+        body: JSON.stringify({ password: passwordInput.value })
+      });
+      if (result.deactivated !== true) throw new Error('The server did not confirm account deactivation.');
+    } catch (err) {
+      console.error('Could not deactivate account:', err);
+      setStatus(status, err.message || 'Could not deactivate your account. Please try again.', 'error');
+      button.disabled = false;
+      opener.disabled = false;
+      return;
+    }
+
+    passwordInput.value = '';
+    try {
+      await signOutSupabase({ scope: 'local', unregister: false });
+      window.location.href = '../index.html';
+    } catch (err) {
+      console.error('Account deactivated, but this device could not sign out:', err);
+      setStatus(status, 'Your account is deactivated, but this device could not sign out. Close this page and sign in again to reactivate.', 'error');
     }
   });
 }

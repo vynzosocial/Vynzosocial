@@ -1,4 +1,8 @@
-const SHARE_PATHS = new Set(['/pages/shared-media.html', '/pages/live.html', '/pages/blogs.html']);
+const SHARE_PATHS = new Set([
+  '/pages/shared-media.html', '/pages/shared-media',
+  '/pages/live.html', '/pages/live',
+  '/pages/blogs.html', '/pages/blogs'
+]);
 
 export function shareLoginUrl(location) {
   const login = new URL('/pages/login.html', location.origin);

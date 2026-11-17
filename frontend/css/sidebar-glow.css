@@ -79,6 +79,11 @@ html body .sidebar.desktop-nav::before {
 
 .sidebar.desktop-nav nav {
   gap: 10px;
+  zoom: 0.65;
+}
+
+.mobile-nav .mob-item {
+  zoom: 0.65;
 }
 
 html body .sidebar.desktop-nav .nav-item {

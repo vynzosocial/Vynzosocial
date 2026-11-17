@@ -1,34 +1,76 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en" dir="ltr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <link rel="icon" type="image/png" href="./assets/favicon-32.png">
+    <meta name="vynzo-web-version" content="development">
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/assets/icon-192.png">
+    <link rel="apple-touch-icon" href="/assets/icon-192.png">
     <title>Vynzo — Social Media Platform</title>
+    <meta name="description" content="Vynzo is a social media platform to share videos and photos, post stories, chat, and go live with friends.">
+    <link rel="canonical" href="https://www.vynzosocial.com/">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Vynzo">
+    <meta property="og:title" content="Vynzo — Social Media Platform">
+    <meta property="og:description" content="Share videos and photos, post stories, chat, and go live with friends on Vynzo.">
+    <meta property="og:url" content="https://www.vynzosocial.com/">
+    <meta property="og:image" content="https://www.vynzosocial.com/assets/logo.png">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content="https://www.vynzosocial.com/assets/logo.png">
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "Vynzo",
+      "url": "https://www.vynzosocial.com/"
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "Vynzo",
+      "url": "https://www.vynzosocial.com/",
+      "logo": "https://www.vynzosocial.com/assets/logo.png",
+      "sameAs": ["https://www.instagram.com/vynzosocial/", "https://www.snapchat.com/@vynzosocial"]
+    }
+    </script>
     <link rel="stylesheet" href="./css/variables.css">
     <link rel="stylesheet" href="./css/reset.css">
-    <link rel="stylesheet" href="./css/layout.css?v=profile-report2">
-    <link rel="stylesheet" href="./css/feed.css?v=7">
+    <link rel="stylesheet" href="./css/layout.css?v=repost1">
+    <link rel="stylesheet" href="./css/feed.css?v=fit-media10">
   <link rel="stylesheet" href="./css/share.css?v=4">
     <link rel="stylesheet" href="./css/stories.css?v=5">
     <link rel="stylesheet" href="./css/camera.css?v=vc1">
     <link rel="stylesheet" href="./css/responsive.css">
-    <link rel="stylesheet" href="./css/landing.css?v=mobile-header-3">
-    <link rel="stylesheet" href="./css/home-glow.css?v=2">
+    <link rel="stylesheet" href="./css/landing.css?v=mobile-header-4">
+    <link rel="stylesheet" href="./css/home-glow.css?v=gold-frames1">
     <link rel="stylesheet" href="./css/mobile.css?v=5">
-    <link rel="stylesheet" href="./css/sidebar-glow.css?v=3">
-    <link rel="stylesheet" href="./css/create-buttons.css?v=4">
+    <link rel="stylesheet" href="./css/sidebar-glow.css?v=compact4">
+    <link rel="stylesheet" href="./css/create-buttons.css?v=fit-upload5">
     <link rel="stylesheet" href="./css/activity.css?v=3">
     <link rel="stylesheet" href="./css/inbox-count.css?v=1">
     <link rel="stylesheet" href="./css/content-guard.css?v=1">
     <link rel="stylesheet" href="./css/post-author.css?v=1">
-    <link rel="stylesheet" href="./css/theme.css?v=3">
+    <link rel="stylesheet" href="./css/theme.css?v=daylight4">
     <link rel="stylesheet" href="./css/feed-insta.css?v=4">
-    <link rel="stylesheet" href="./css/app-download.css?v=1">
+    <link rel="stylesheet" href="./css/app-download.css?v=platform-icons1">
+    <link rel="stylesheet" href="./css/home-update.css?v=1">
     <script src="./js/theme.js?v=1"></script>
     <script src="./js/i18n.js?v=report-reasons1"></script>
 </head>
 <body class="dark-theme home-page">
+    <div class="home-gold-decoration" aria-hidden="true" inert>
+        <span class="home-gold-halo home-gold-halo-left"></span>
+        <span class="home-gold-halo home-gold-halo-right"></span>
+        <span class="home-gold-sparkles"></span>
+        <span class="home-gold-shimmer"></span>
+    </div>
+    <div id="home-update" class="home-update" hidden>
+        <button id="home-update-button" type="button">Update available</button>
+        <span id="home-update-status" role="status" aria-live="polite"></span>
+    </div>
     <main id="welcome-page" class="welcome-page">
         <div class="welcome-glow welcome-glow-pink" aria-hidden="true"></div>
         <div class="welcome-glow welcome-glow-blue" aria-hidden="true"></div>
@@ -39,6 +81,7 @@
             <a class="welcome-logo" href="./index.html" aria-label="Vynzo home" style="display:flex;align-items:center;gap:8px"><img src="./assets/icon-192.png" alt="" style="width:36px;height:36px;border-radius:9px">vynzo<span>.</span></a>
             <nav class="welcome-nav" aria-label="Account">
                 <a class="welcome-login" href="./pages/about.html">About</a>
+                <a class="instagram-icon-link" href="https://www.instagram.com/vynzosocial/" target="_blank" rel="noopener noreferrer" aria-label="Vynzo on Instagram" title="Instagram"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"></rect><circle cx="12" cy="12" r="4"></circle><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"></circle></svg></a>
                 <a class="welcome-login welcome-web-auth" href="./pages/login.html">Log in</a>
                 <a class="welcome-button welcome-button-small welcome-web-auth" href="./pages/register.html">Create account</a>
                 <span class="welcome-app-auth">
@@ -49,7 +92,10 @@
             </nav>
         </header>
 
-        <a class="app-download-link welcome-app-download" href="https://vynzo-app-download.vynzolive.workers.dev/vynzo-android-1.2.apk">Download Android app <span>APK</span></a>
+        <div class="welcome-downloads">
+            <a class="app-download-link welcome-app-download" href="https://vynzo-app-download.vynzolive.workers.dev/vynzo-android-1.7.apk"><svg class="app-platform-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m7 8-2-4m12 4 2-4M4 17v-2a8 8 0 0 1 16 0v2Z"/><circle cx="8.5" cy="12.5" r="0.8" fill="currentColor" stroke="none"/><circle cx="15.5" cy="12.5" r="0.8" fill="currentColor" stroke="none"/></svg>Download Android app</a>
+            <button id="windows-download-button" class="welcome-app-download windows-download-primary windows-download-card" type="button" data-download-url="https://vynzo-app-download.vynzolive.workers.dev/windows/VynzoSocial-Setup-1.2.4-x64.exe" aria-haspopup="dialog" aria-controls="windows-download-dialog" disabled><svg class="app-platform-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z"/></svg><span class="windows-download-label">Download for Windows</span></button>
+        </div>
         <section class="welcome-hero">
             <div class="welcome-copy">
                 <p class="welcome-eyebrow"><span></span> YOUR PEOPLE. YOUR MOMENTS.</p>
@@ -62,49 +108,19 @@
                 <div class="welcome-note"><span class="welcome-sparkle" aria-hidden="true">✦</span> Your next favorite corner of the internet.</div>
             </div>
 
-            <div class="welcome-art" aria-hidden="true">
-                <article class="welcome-preview-card welcome-preview-story">
-                    <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&amp;fit=crop&amp;w=760&amp;q=85" alt="" fetchpriority="high">
-                    <span class="welcome-preview-tag">STORY <i></i></span>
-                    <span class="welcome-preview-caption"><strong>A little moment</strong><small>Shared just now</small></span>
-                </article>
-                <article class="welcome-preview-card welcome-preview-blog">
-                    <img src="https://images.unsplash.com/photo-1517842645767-c639042777db?auto=format&amp;fit=crop&amp;w=700&amp;q=85" alt="" fetchpriority="high">
-                    <span class="welcome-preview-tag">BLOG</span>
-                    <span class="welcome-preview-caption"><strong>Notes from the everyday</strong><small>A story worth reading</small></span>
-                </article>
-                <article class="welcome-preview-card welcome-preview-live">
-                    <img src="https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&amp;fit=crop&amp;w=700&amp;q=85" alt="" fetchpriority="high">
-                    <span class="welcome-preview-tag"><i></i> LIVE NOW</span>
-                    <div class="welcome-live-room">
-                        <div class="welcome-live-room-heading">
-                            <strong>Friday night hangout</strong>
-                            <span>5 friends joined</span>
-                        </div>
-                        <div class="welcome-live-guests" aria-label="Five friends in the live">
-                            <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&amp;fit=crop&amp;w=80&amp;h=80&amp;q=80" alt="">
-                            <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&amp;fit=crop&amp;w=80&amp;h=80&amp;q=80" alt="">
-                            <img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&amp;fit=crop&amp;w=80&amp;h=80&amp;q=80" alt="">
-                            <img src="https://images.unsplash.com/photo-1531123897727-8f129e1688ce?auto=format&amp;fit=crop&amp;w=80&amp;h=80&amp;q=80" alt="">
-                            <img src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&amp;fit=crop&amp;w=80&amp;h=80&amp;q=80" alt="">
-                            <span>Friends</span>
-                        </div>
-                        <div class="welcome-live-chat">
-                            <div class="welcome-live-chat-heading"><strong>LIVE CHAT</strong><span>Join in</span></div>
-                            <div class="welcome-live-message">
-                                <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&amp;fit=crop&amp;w=48&amp;h=48&amp;q=75" alt="">
-                                <span><b>Maya</b> This is so fun!</span>
-                            </div>
-                            <div class="welcome-live-message">
-                                <img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&amp;fit=crop&amp;w=48&amp;h=48&amp;q=75" alt="">
-                                <span><b>Alex</b> Glad I joined ?</span>
-                            </div>
-                        </div>
-                    </div>
-                </article>
-                <div class="welcome-preview-brand">
-                    <img src="./assets/icon-192.png" alt="">
-                    <span><strong>Vynzo</strong><small>Share your world</small></span>
+            <div class="welcome-art welcome-video-art">
+                <div class="welcome-video-frame">
+                    <video id="welcome-featured-video" class="welcome-video-player" playsinline preload="auto" disablepictureinpicture aria-label="Featured video from Vynzo">
+                        <source src="./assets/gemini_generated_video_1ad518cc.mp4" type="video/mp4">
+                        Your browser does not support embedded video.
+                    </video>
+                    <button id="welcome-video-audio-toggle" class="welcome-video-audio" type="button" aria-label="Mute featured video sound" aria-controls="welcome-featured-video">
+                        <svg class="welcome-video-audio-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M11 5 6 9H3v6h3l5 4V5Z"></path>
+                            <path data-sound-waves d="M15.5 8.5a5 5 0 0 1 0 7"></path>
+                            <path data-muted-mark d="m16 9 5 6m0-6-5 6"></path>
+                        </svg>
+                    </button>
                 </div>
             </div>
         </section>
@@ -160,6 +176,25 @@
         </section>
     </main>
 
+    <dialog id="windows-download-dialog" class="windows-download-dialog" aria-labelledby="windows-download-title" aria-describedby="windows-download-description windows-installer-warning">
+        <h2 id="windows-download-title">Install VynzoSocial for Windows?</h2>
+        <p id="windows-download-description">VynzoSocial v1.2.4 for Windows 10 / 11 (64-bit).</p>
+        <div id="windows-installer-warning" class="windows-download-warning">
+            <strong>This installer is not code-signed.</strong>
+        </div>
+        <ol>
+            <li>Download the Windows installer.</li>
+            <li>Open it from your browser's Downloads.</li>
+            <li>Review the publisher and follow the setup instructions.</li>
+        </ol>
+        <p class="windows-download-note">Installation starts only after you open the downloaded installer.</p>
+        <p id="windows-download-status" role="status"></p>
+        <div class="windows-download-dialog-actions">
+            <form method="dialog"><button class="windows-download-cancel" type="submit">Not now</button></form>
+            <a id="windows-download-confirm" class="windows-download-primary" aria-disabled="true" tabindex="-1" download>Yes, download</a>
+        </div>
+    </dialog>
+
     <div id="feed-app" hidden>
     <div id="app-container">
         <!-- Sidebar Navigation -->
@@ -190,11 +225,13 @@
                     <button class="tab-btn" data-scope="following">Following</button>
                     <button class="tab-btn" data-scope="all">For You</button>
                 </div>
+                <a class="instagram-icon-link" href="https://www.instagram.com/vynzosocial/" target="_blank" rel="noopener noreferrer" aria-label="Vynzo on Instagram" title="Instagram"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"></rect><circle cx="12" cy="12" r="4"></circle><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"></circle></svg></a>
+                <a class="snapchat-icon-link" href="https://www.snapchat.com/@vynzosocial" target="_blank" rel="noopener noreferrer" aria-label="Vynzo on Snapchat" title="Snapchat"><svg viewBox="0 0 24 24" width="22" height="22" fill="#fff" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M12 3c-3 0-4.5 2-4.5 4.7v2.2l-1.6-.6c-.7-.3-1.2.7-.5 1.1l1.9 1.1c-.6 2.2-2 3.8-4 4.6-.6.3-.5 1.1.1 1.3l2.2.6.5 1.5c.1.4.5.5.9.4l1.6-.4c1 .6 2 1.4 3.4 1.4s2.4-.8 3.4-1.4l1.6.4c.4.1.8 0 .9-.4l.5-1.5 2.2-.6c.6-.2.7-1 .1-1.3-2-.8-3.4-2.4-4-4.6l1.9-1.1c.7-.4.2-1.4-.5-1.1l-1.6.6V7.7C16.5 5 15 3 12 3z"></path></svg></a>
                 <a class="account-search-link" href="./pages/users.html">Find people</a>
                 <button id="theme-toggle" class="icon-btn" aria-label="Toggle theme"><span class="theme-emoji">🌓</span><img class="home-app-logo" src="./assets/icon-192.png" alt="Vynzo"></button>
             </header>
 
-            <div class="home-app-download"><a class="app-download-link" href="https://vynzo-app-download.vynzolive.workers.dev/vynzo-android-1.2.apk">Download Android app <span>APK</span></a></div>
+            <div class="home-app-download"><a class="app-download-link" href="https://vynzo-app-download.vynzolive.workers.dev/vynzo-android-1.7.apk"><svg class="app-platform-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m7 8-2-4m12 4 2-4M4 17v-2a8 8 0 0 1 16 0v2Z"/><circle cx="8.5" cy="12.5" r="0.8" fill="currentColor" stroke="none"/><circle cx="15.5" cy="12.5" r="0.8" fill="currentColor" stroke="none"/></svg>Download Android app</a></div>
             <div class="home-content-layout">
                 <div class="home-main-column">
                     <section class="home-stories-section" aria-labelledby="stories-heading">
@@ -231,6 +268,7 @@
                                 <button id="add-video-post-btn" class="home-create-button video-create-button" type="button"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="M16 11l5-3v8l-5-3z"/></svg><span class="create-label">Video</span><small class="create-hint">Record or CapCut</small></button>
                             </div>
                             <label class="protect-option"><input type="checkbox" id="post-protect"> Protect (no download / screenshot)</label>
+                            <label class="protect-option"><input type="checkbox" id="post-no-repost"> Do not allow reposting</label>
                             <input id="photo-post-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
                             <input id="video-post-input" type="file" accept="video/mp4,video/webm,video/quicktime" hidden>
                             <span id="post-upload-status" class="home-upload-status" aria-live="polite"></span>
@@ -280,12 +318,15 @@
     </div>
     </div>
 
-    <script type="module" src="./js/app.js?v=external-share2"></script>
+    <script type="module" src="./js/app.js?v=repost1"></script>
+    <script type="module" src="./js/home-update.mjs?v=1"></script>
+    <script type="module" src="./js/home-video-controls.js?v=9"></script>
+    <script type="module" src="./js/windows-download.mjs?v=4"></script>
 
-    <script type="module">import { initCalls } from './js/calls.js?v=sb5-r6'; initCalls();</script>
-    <script type="module" src="./js/notifications.js?v=n2-r6"></script>
+    <script type="module">import { initCalls } from './js/calls.js?v=audio3'; initCalls();</script>
+    <script type="module" src="./js/notifications.js?v=audio3"></script>
     <script type="module" src="./js/activity.js?v=report-reasons1"></script>
-    <script type="module" src="./js/inbox-count.js?v=1"></script>
+    <script type="module" src="./js/inbox-count.js?v=3"></script>
     <script type="module" src="./js/content-guard.js?v=1"></script>
 </body>
 </html>

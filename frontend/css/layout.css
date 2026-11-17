@@ -554,10 +554,8 @@
   background: var(--card-dark);
 }
 
-@media (min-width: 769px) {
-  .account-profile-report-form[hidden] {
-    display: none;
-  }
+.account-profile-report-form[hidden] {
+  display: none;
 }
 
 .account-profile-report-form h3 {
@@ -695,6 +693,14 @@
   overflow-wrap: anywhere;
 }
 
+.account-profile-instagram {
+  display: inline-block;
+  margin: 0 0 14px;
+  color: var(--primary, #e1306c);
+  font-weight: 600;
+  text-decoration: none;
+}
+
 .account-profile-posts-heading {
   margin: 18px 0 10px;
   font-size: 16px;
@@ -747,6 +753,15 @@ video.account-profile-post-media::-webkit-media-controls-start-playback-button {
   top: 8px;
   right: 8px;
   color: #fff;
+  text-shadow: 0 1px 5px #000;
+}
+
+.account-profile-repost-indicator {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  color: #fff;
+  font-size: 12px;
   text-shadow: 0 1px 5px #000;
 }
 

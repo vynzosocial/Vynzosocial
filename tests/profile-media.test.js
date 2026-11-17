@@ -44,6 +44,7 @@ function gridFor(posts) {
     document: { createElement: tag => new Element(tag) },
     posts, profile: { username: 'alice', avatar_url: '' }, container,
     MEDIA_BASE_URL: 'https://api.example',
+    refreshExpiredMedia() {},
     protectMedia: el => { el.dataset.protected = 'true'; },
     openPostViewer: (...args) => opened.push(args)
   };
@@ -74,9 +75,23 @@ test('profile videos request a frame for old and new URLs and preserve protectio
   assert.equal(opened[0][1].length, 3);
 });
 
+test('profile reposts retain the original author and display a repost badge', () => {
+  const { grid, opened } = gridFor([{
+    id: 'repost', media_type: 'image', media_url: '/image.jpg',
+    is_repost: true, author_username: 'original', author_avatar_url: '/original.jpg'
+  }]);
+  const button = grid.children[0];
+  assert.equal(button.dataset.repostId, 'repost');
+  assert.equal(button.children[1].textContent, 'Repost');
+  assert.match(button.attributes['aria-label'], /@original/);
+  button.events.click();
+  assert.equal(opened[0][0].author_username, 'original');
+  assert.equal(opened[0][0].author_avatar_url, '/original.jpg');
+});
+
 function viewerHarness() {
   const selectors = [
-    '#post-viewer-like', '#post-viewer-comment-form', '#post-viewer-comment-input',
+    '#post-viewer-like', '#post-viewer-share', '#post-viewer-comment-form', '#post-viewer-comment-input',
     '.post-viewer-close', '.post-viewer-previous', '.post-viewer-next',
     '#post-viewer-media', '.post-viewer-navigation', '.post-viewer-position',
     '.post-viewer-details', '#post-viewer-author', '#post-viewer-avatar-slot',
@@ -99,6 +114,7 @@ function viewerHarness() {
     document, API_ORIGIN: 'https://api.example', console,
     apiRequest: async () => ({ comments: [] }), timeAgo: () => 'now',
     createAuthorAvatar: () => new Element(), createPrivacySelect: () => new Element('select'),
+    refreshExpiredMedia() {},
     protectMedia: el => { el.dataset.protected = 'true'; },
     attachEmojiPicker() {}, alert() {}, confirm: () => false,
     localStorage: { getItem: () => null }

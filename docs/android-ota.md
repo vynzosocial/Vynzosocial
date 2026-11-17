@@ -2,7 +2,10 @@
 
 The Android app checks `https://www.vynzosocial.com/ota/manifest.json` for signed
 web updates when it starts and periodically on resume. It downloads an update
-in the background and activates it on a later cold start. A failed trial startup
+in the background and activates it on a later cold start. When a signed update is
+ready, the home page shows an **Update available** button. Android versions 1.2
+and 1.3 ask the user to close and reopen the app to apply it; a future binary
+with native apply support can apply it from the button. A failed trial startup
 can roll back to the previous bundle; this is not a substitute for testing the
 website and the app before deployment.
 
@@ -34,8 +37,31 @@ still builds the website without OTA files; deploying that build to the same
 Cloudflare worker removes the update endpoint until an OTA-enabled build is
 deployed again.
 
+The website's home page also checks for new website builds and offers a reload
+button. The build writes a fresh version into the home page and
+`web-version.json`; Settings receives the same build identifier, and the
+version endpoint must not be cached.
+
+Settings displays the installed Android version and build from the native
+`Ota.getInfo()` response, separately from the active web-update version.
+These fields are available starting with Android 1.7 and require a new APK. Older native plugins report that an
+app update is needed rather than displaying the latest APK's version as if it
+were installed. Web updates alone cannot change or reliably infer the installed
+APK version.
+
 Only web assets can be updated this way. Android code, permissions, plugins,
-and signing-key changes require a new Play Store release. Ensure web updates
-comply with Google Play policies and remain compatible with installed binaries;
-raising `versionCode` in the Android project prevents the resulting OTA bundle
-from being installed by older binaries.
+and signing-key changes require a new Android binary. On Android releases
+without the native notification plugin, the home button offers the signed
+version 1.3 APK; the user must approve its installation. This compatibility
+check is specific to version 1.3, not general APK version detection. Ensure web updates
+comply with Google Play policies and remain compatible with installed binaries.
+
+The OTA compatibility floor is `ota_min_binary_version_code` in
+`android-app/android/app/src/main/res/values/ota.xml`, independently of the APK's
+`versionCode`. It is currently 4 (Android 1.3), so later APK releases do not
+silently block compatible older apps from receiving web-only updates. Raise
+this floor only when the web bundle requires newer native capabilities. The
+publisher rejects a missing, invalid, or newer-than-current compatibility floor.
+Older binaries reject incompatible bundles before staging, so they cannot show
+the home page's **Update available** button for those bundles. This is an in-app
+button on Home, not an Android system push notification.

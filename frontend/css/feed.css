@@ -46,6 +46,8 @@
 
 .home-main-column {
   min-width: 0;
+  width: 100%;
+  max-width: 100%;
 }
 
 .home-friends-sidebar {
@@ -583,6 +585,7 @@
 
 .post-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 14px;
   padding: 8px 12px 11px;
@@ -623,6 +626,89 @@
   color: var(--text-muted);
   text-align: center;
 }
+
+.home-page .feed-container:not(.reel-feed) {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr));
+  align-items: stretch;
+  gap: 14px;
+}
+
+.home-page .feed-container:not(.reel-feed) > .post-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.home-page .feed-container:not(.reel-feed) > .post-card .post-thumbnail-button {
+  flex: none;
+  aspect-ratio: 16 / 9;
+}
+
+.home-page .feed-container:not(.reel-feed) > .post-card .post-media {
+  position: absolute;
+  inset: 0;
+  object-fit: contain;
+  transform: none;
+}
+
+.home-page .feed-container:not(.reel-feed) > .post-card .post-details {
+  min-height: 84px;
+  padding: 8px 10px 4px;
+}
+
+.home-page .feed-container:not(.reel-feed) > .post-card .post-author-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 0 8px;
+}
+
+.home-page .feed-container:not(.reel-feed) > .post-card .post-author-avatar {
+  grid-row: span 2;
+  width: 24px;
+  height: 24px;
+}
+
+.home-page .feed-container:not(.reel-feed) > .post-card .post-time {
+  grid-column: 2;
+  margin-left: 0;
+}
+
+.home-page .feed-container:not(.reel-feed) > .post-card .post-caption {
+  line-height: 1.35;
+}
+
+.home-page .feed-container:not(.reel-feed) > .post-card .post-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: auto;
+  padding: 6px 10px;
+}
+
+.home-page .feed-container:not(.reel-feed) > .post-card .post-actions:has(.post-privacy-select) {
+  grid-template-rows: minmax(28px, auto) minmax(30px, auto) minmax(32px, auto) minmax(36px, auto);
+}
+
+.home-page .feed-container:not(.reel-feed) > .post-card :is(.post-privacy-select, .protect-option) {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin: 0;
+}
+
+.home-page .feed-container:not(.reel-feed) > .post-card .post-actions > .post-action:not(.like-btn):not(.comment-count) {
+  min-width: 0;
+  min-height: 36px;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.home-page .feed-container:not(.reel-feed) > .post-card .post-delete-btn {
+  grid-column: 2;
+  grid-row: 4;
+  justify-content: center;
+  margin-left: 0;
+}
+
+.home-page .feed-container:not(.reel-feed) > .feed-more { grid-column: 1 / -1; }
 
 /* Modal for Comments */
 .comments-modal {
@@ -688,7 +774,8 @@
   color: var(--text-dark);
 }
 .post-privacy-select {
-  max-width: 110px;
+  flex: 0 0 auto;
+  max-width: 100%;
   padding: 3px 6px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
@@ -697,7 +784,7 @@
   font-size: 12px;
 }
 .post-privacy-select[hidden] { display: none; }
-.reel-feed .post-privacy-select { max-width: 64px; color: #fff; background: rgba(0, 0, 0, 0.55); border-color: rgba(255, 255, 255, 0.4); }
+.reel-feed .post-privacy-select { color: #fff; background: rgba(0, 0, 0, 0.55); border-color: rgba(255, 255, 255, 0.4); }
 .reel-feed .post-privacy-select option { color: #000; }
 
 /* Reel mode: the video/photo fills the page instead of a small centred card. */

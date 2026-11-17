@@ -23,7 +23,10 @@ test('website build contains an authentic, compatible OTA bundle', () => {
   const manifest = JSON.parse(manifestBytes);
   assert.ok(Number.isSafeInteger(manifest.version) && manifest.version > 0);
   const gradle = fs.readFileSync(path.join(appRoot, 'android', 'app', 'build.gradle'), 'utf8');
-  assert.equal(manifest.minBinaryVersionCode, Number(gradle.match(/versionCode\s+(\d+)/)[1]));
+  const compatibilityFloor = Number(xml.match(/<integer name="ota_min_binary_version_code">(\d+)<\/integer>/)[1]);
+  assert.equal(manifest.minBinaryVersionCode, compatibilityFloor);
+  assert.equal(compatibilityFloor, 4, 'Web-only updates must remain available to Android 1.3 and newer.');
+  assert.ok(manifest.minBinaryVersionCode <= Number(gradle.match(/versionCode\s+(\d+)/)[1]));
   assert.match(manifest.bundle, /^bundle-\d+\.zip$/);
   const bundle = fs.readFileSync(path.join(otaDir, manifest.bundle));
   assert.equal(bundle.length, manifest.size);

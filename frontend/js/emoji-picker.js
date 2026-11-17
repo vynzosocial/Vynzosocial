@@ -63,6 +63,7 @@ export function attachEmojiPicker(form, input) {
     const next = input.value.slice(0, start) + emoji + input.value.slice(end);
     if (next.length > max) return;
     input.value = next;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
     input.focus();
     const caret = start + emoji.length;
     input.setSelectionRange(caret, caret);

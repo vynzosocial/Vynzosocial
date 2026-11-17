@@ -6,6 +6,7 @@ import { protectMedia } from './media-protect.js';
 import { openCamera } from './camera-capture.js';
 import { attachEmojiPicker } from './emoji-picker.js';
 import { openShareDialog, absoluteMediaUrl } from './share.js?v=5';
+import { uploadSelectedFile } from './selected-file.js';
 
 let viewerTimer = null;
 let currentStoryGroup = [];
@@ -26,11 +27,7 @@ export async function initStoriesCarousel() {
       }
       fileInput.click();
     });
-    fileInput.addEventListener('change', async () => {
-      const file = fileInput.files?.[0];
-      fileInput.value = '';
-      if (file) await uploadStory(file, addButton);
-    });
+    fileInput.addEventListener('change', () => uploadSelectedFile(fileInput, file => uploadStory(file, addButton)));
   }
   document.getElementById('camera-story-btn')?.addEventListener('click', () => {
     if (!localStorage.getItem('vynzo_token')) {
@@ -90,7 +87,10 @@ function renderStories(container, usersWithStories) {
       video.className = 'story-preview-media';
       video.muted = true;
       video.playsInline = true;
-      video.preload = 'none';
+      video.preload = 'metadata';
+      video.addEventListener('loadedmetadata', () => {
+        if (Number.isFinite(video.duration) && video.duration > 0) video.currentTime = Math.min(0.1, video.duration / 2);
+      }, { once: true });
       video.src = mediaUrl(latestStory.media_url);
       ring.appendChild(video);
       const playIcon = document.createElement('span');
@@ -319,7 +319,7 @@ function showStory(index) {
   modal.querySelector('#story-comments-count').textContent =
     `Comments · ${Number(story.comments_count) || 0}`;
   modal.querySelector('#story-media-wrapper').innerHTML = story.media_type === 'video'
-    ? `<video class="story-media" src="${escapeHtml(mediaUrl(story.media_url))}" autoplay controls playsinline></video>`
+    ? `<video class="story-media" src="${escapeHtml(mediaUrl(story.media_url))}" autoplay muted controls playsinline></video>`
     : `<img class="story-media" src="${escapeHtml(mediaUrl(story.media_url))}" alt="Story shared by ${escapeHtml(currentStoryGroup.username || 'user')}">`;
   const storyWrapper = modal.querySelector('#story-media-wrapper');
   refreshExpiredMedia(storyWrapper.querySelector('.story-media'), story, 'story');

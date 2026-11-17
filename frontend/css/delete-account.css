@@ -1,0 +1,35 @@
+.account-deletion-card {
+  border-color: rgba(255, 117, 137, 0.4);
+  background:
+    radial-gradient(ellipse at 100% 0, rgba(255, 91, 112, 0.08), transparent 42%),
+    linear-gradient(145deg, rgba(34, 20, 38, 0.98), rgba(17, 16, 33, 0.98));
+}
+
+.account-deletion-form {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.account-deletion-form[hidden] {
+  display: none;
+}
+
+.account-deletion-form input {
+  width: 100%;
+  padding: 11px 12px;
+  color: var(--text-dark);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 117, 137, 0.32);
+  border-radius: 9px;
+}
+
+.account-deletion-button {
+  justify-self: start;
+  border-color: rgba(255, 117, 137, 0.55);
+  background: linear-gradient(135deg, #a92542, #711e42);
+}
+
+.account-deletion-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #c6304f, #8b2750);
+}

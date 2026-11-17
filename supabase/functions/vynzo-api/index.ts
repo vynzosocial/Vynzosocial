@@ -1,10 +1,27 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.91.0'
+import nodemailer from 'npm:nodemailer@10.4.0'
 import { GUIDELINES_MESSAGE, suspensionMessage, violatesGuidelines } from './community-rules.ts'
 import { MEDIA_WARNING, scanImages, toDataUrl } from './media-moderation.ts'
 import { handleBlogs } from './blogs.ts'
 import { startBlogAutoReview } from './blog-autoreview.ts'
 import { createDeliveryPermit, createUploadPermits, UploadValidationError } from './media-permits.mjs'
 import { authorizeMediaClaims } from './media-authorization.mjs'
+import { legacyStoragePath, readAuthorizedLegacyFile, readAuthorizedLegacyMedia } from './legacy-media-delivery.mjs'
+import { rewriteLegacyMediaResponse } from './legacy-media-response.mjs'
+import { accountIsActive, inactiveAccountIds } from './account-lifecycle-access.mjs'
+import { createAccountLifecycleRepository } from './account-lifecycle-repository.mjs'
+import { deactivateAccount } from './account-deactivation.mjs'
+import { completeAccountDeletion, requestAccountDeletion } from './account-deletion.mjs'
+import { deleteAccountStorage } from './account-storage.mjs'
+import { redeemReactivation } from './account-reactivation.mjs'
+import { currentLoginEmail, resolveAccountLogin, verifyLoginIdentity } from './account-login.mjs'
+import { isPublicPreview } from './public-preview.mjs'
+import { deviceSecretHash, validDeviceRegistration, validDeviceRemoval } from './push-devices.mjs'
+import { createFcmSender } from './fcm-sender.mjs'
+import { sendMessagePush } from './message-push.mjs'
+import { handleCallPush } from './call-push.mjs'
+
+declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void }
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')
 const secretKeys = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') || '{}')
@@ -18,7 +35,7 @@ const admin = createClient(supabaseUrl, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false }
 })
 
-startBlogAutoReview(admin)
+export const blogAutoReviewInterval = startBlogAutoReview(admin)
 
 const allowedOrigins = new Set([
   'https://www.vynzosocial.com',
@@ -36,6 +53,12 @@ const allowedMediaTypes = new Set([
   'video/webm',
   'video/quicktime'
 ])
+
+const messageMediaExtensions: Record<string, string> = {
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
+  'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov',
+  'audio/webm': 'weba', 'audio/mp4': 'm4a', 'audio/ogg': 'ogg'
+}
 
 function corsHeaders(origin: string | null): Record<string, string> {
   const headers: Record<string, string> = {
@@ -62,6 +85,72 @@ function jsonResponse(
 
 function throwOnError(error: { message: string } | null): void {
   if (error) throw error
+}
+
+function clientAddress(request: Request): string {
+  const forwarded = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || ''
+  return forwarded.split(',')[0].trim().slice(0, 64) || 'unknown'
+}
+
+async function hashForKey(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
+  return Array.from(new Uint8Array(digest).slice(0, 12), byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
+// Returns false when the caller exceeded the limit. A limiter outage must not take the API down, so it fails open.
+async function withinRateLimit(key: string, max: number, windowSeconds: number): Promise<boolean> {
+  const { data, error } = await admin.rpc('consume_rate_limit', {
+    p_key: key, p_max: max, p_window_seconds: windowSeconds
+  })
+  if (error) {
+    console.error('Rate limiter unavailable:', getErrorMetadata(error))
+    return true
+  }
+  return data !== false
+}
+
+async function withinStrictRateLimit(key: string, max: number, windowSeconds: number): Promise<boolean> {
+  const { data, error } = await admin.rpc('consume_rate_limit', {
+    p_key: key, p_max: max, p_window_seconds: windowSeconds
+  })
+  throwOnError(error)
+  if (typeof data !== 'boolean') throw new Error('Invalid rate limit response.')
+  return data
+}
+
+async function sendReactivationEmail({ email, token }: { email: string; token: string }): Promise<void> {
+  const smtpUser = Deno.env.get('REPORT_SMTP_USER')
+  const smtpPassword = Deno.env.get('REPORT_SMTP_PASSWORD')
+  if (!smtpUser || !smtpPassword) throw new Error('Account activation email is not configured.')
+  const transport = nodemailer.createTransport({
+    host: 'smtp.gmail.com', port: 465, secure: true,
+    auth: { user: smtpUser, pass: smtpPassword },
+    connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 30000
+  })
+  const url = `https://www.vynzosocial.com/pages/reactivate.html#token=${encodeURIComponent(token)}`
+  await transport.sendMail({
+    from: smtpUser, to: email, subject: 'Reactivate your Vynzo account',
+    text: `To reactivate your Vynzo account, open this link and confirm:\n\n${url}\n\nThis link expires in 30 minutes. If you did not request this, ignore this email.`
+  })
+}
+
+async function sendAccountDeletionCode({ email, code, expiresAt }: { email: string; code: string; expiresAt: string }): Promise<void> {
+  const smtpUser = Deno.env.get('REPORT_SMTP_USER')
+  const smtpPassword = Deno.env.get('REPORT_SMTP_PASSWORD')
+  if (!smtpUser || !smtpPassword) throw new Error('Account deletion email is not configured.')
+  const transport = nodemailer.createTransport({
+    host: 'smtp.gmail.com', port: 465, secure: true,
+    auth: { user: smtpUser, pass: smtpPassword },
+    connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 30000
+  })
+  await transport.sendMail({
+    from: smtpUser, to: email, subject: 'Your Vynzo account deletion code',
+    text: `Use this 4-digit code to permanently delete your Vynzo account: ${code}\n\nThe code expires at ${expiresAt}. If you did not request account deletion, ignore this email and keep your password secure.`
+  })
+}
+
+function tooManyRequests(headers: Record<string, string>): Response {
+  return jsonResponse(429, { error: 'Too many requests. Please wait a moment and try again.' }, { ...headers, 'Retry-After': '60' })
 }
 
 function getErrorMetadata(error: unknown): { code?: string; name?: string; status?: number } {
@@ -98,7 +187,17 @@ async function getViewer(request: Request): Promise<{ id: string } | null> {
   if (error && (('status' in error && Number(error.status) >= 400 && Number(error.status) < 500) || error.name === 'AuthSessionMissingError')) return null
   if (error) throw error
   if (!data.user) return null
+  if (Deno.env.get('ACCOUNT_LIFECYCLE_ENABLED') === 'true' && !await accountIsActive(admin, data.user.id)) return null
   return { id: data.user.id }
+}
+
+async function getAccountForDeletion(request: Request) {
+  const token = request.headers.get('Authorization')?.match(/^Bearer\s+(.+)$/i)?.[1]
+  if (!token) return null
+  const { data, error } = await admin.auth.getUser(token)
+  if (error && (('status' in error && Number(error.status) >= 400 && Number(error.status) < 500) || error.name === 'AuthSessionMissingError')) return null
+  if (error) throw error
+  return data.user ? { token, user: data.user } : null
 }
 
 async function getAcceptedConnections(userId: string): Promise<Set<string>> {
@@ -119,6 +218,12 @@ async function getBlockedIds(viewerId: string): Promise<Set<string>> {
     .or(`blocker_id.eq.${viewerId},blocked_id.eq.${viewerId}`)
   throwOnError(error)
   return new Set((data || []).map(row => row.blocker_id === viewerId ? row.blocked_id : row.blocker_id))
+}
+
+async function restrictedAccountIds(userIds: string[]): Promise<Set<string>> {
+  return Deno.env.get('ACCOUNT_LIFECYCLE_ENABLED') === 'true'
+    ? await inactiveAccountIds(admin, userIds)
+    : new Set<string>()
 }
 
 async function getBlockRelation(viewerId: string, targetId: string) {
@@ -279,11 +384,15 @@ function canViewPost(
 async function getPostContext(postId: string, viewerId: string) {
   const { data: post, error: postError } = await admin
     .from('posts')
-    .select('id,user_id,media_url,media_type,privacy')
+    .select('id,user_id,media_url,media_type,privacy,allow_repost')
     .eq('id', postId)
     .maybeSingle()
   throwOnError(postError)
   if (!post) return null
+  if (Deno.env.get('ACCOUNT_LIFECYCLE_ENABLED') === 'true') {
+    const [activeViewer, activeOwner] = await Promise.all([accountIsActive(admin, viewerId), accountIsActive(admin, post.user_id)])
+    if (!activeViewer || !activeOwner) return null
+  }
 
   const [{ data: owner, error: ownerError }, friends, blocked] = await Promise.all([
     admin.from('users').select('id,is_private,posts_privacy').eq('id', post.user_id).maybeSingle(),
@@ -316,6 +425,10 @@ async function getStoryContext(storyId: string, viewerId: string) {
     .maybeSingle()
   throwOnError(storyError)
   if (!story) return null
+  if (Deno.env.get('ACCOUNT_LIFECYCLE_ENABLED') === 'true') {
+    const [activeViewer, activeOwner] = await Promise.all([accountIsActive(admin, viewerId), accountIsActive(admin, story.user_id)])
+    if (!activeViewer || !activeOwner) return null
+  }
 
   const [{ data: owner, error: ownerError }, friends, blocked] = await Promise.all([
     admin.from('users').select('id,is_private').eq('id', story.user_id).maybeSingle(),
@@ -328,16 +441,18 @@ async function getStoryContext(storyId: string, viewerId: string) {
   return { story, owner }
 }
 
-async function validMediaControl(request: Request): Promise<boolean> {
-  const expected = Deno.env.get('R2_MEDIA_CONTROL_SECRET')
-  const supplied = request.headers.get('X-Media-Control')
+async function validControlSecret(expected: string | undefined, supplied: string | null, purpose: string): Promise<boolean> {
   if (!expected || expected.length < 32 || !supplied || supplied.length > 512) return false
   const encoder = new TextEncoder()
   const key = await crypto.subtle.importKey('raw', encoder.encode(expected), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'])
   const candidate = await crypto.subtle.importKey('raw', encoder.encode(supplied), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
-  const message = encoder.encode('vynzo-media-control')
+  const message = encoder.encode(purpose)
   const signature = await crypto.subtle.sign('HMAC', candidate, message)
   return await crypto.subtle.verify('HMAC', key, signature, message)
+}
+
+async function validMediaControl(request: Request): Promise<boolean> {
+  return await validControlSecret(Deno.env.get('R2_MEDIA_CONTROL_SECRET'), request.headers.get('X-Media-Control'), 'vynzo-media-control')
 }
 
 async function authorizeMediaDelivery(request: Request, headers: Record<string, string>) {
@@ -349,10 +464,102 @@ async function authorizeMediaDelivery(request: Request, headers: Record<string, 
     if (error instanceof SyntaxError) return jsonResponse(400, { error: 'Invalid media request.' }, headers)
     throw error
   }
+  if (body?.storage === 'legacy-file') {
+    const result = await readAuthorizedLegacyFile({
+      claims: body,
+      range: request.headers.get('Range'),
+      origin: new URL(supabaseUrl!).origin,
+      bucket: admin.storage.from('uploads'),
+      authorize: authorizeLegacyFile
+    })
+    if (!result.response) return jsonResponse(result.status, { error: 'Media unavailable.' }, headers)
+    const mediaHeaders = new Headers({ ...headers, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' })
+    for (const name of ['Content-Type', 'Content-Length', 'Content-Range', 'Accept-Ranges']) {
+      const value = result.response.headers.get(name)
+      if (value) mediaHeaders.set(name, value)
+    }
+    return new Response(result.status === 416 ? null : result.response.body, { status: result.status, headers: mediaHeaders })
+  }
+  if (body?.storage === 'legacy') {
+    const result = await readAuthorizedLegacyMedia({
+      claims: body, range: request.headers.get('Range'), origin: new URL(supabaseUrl!).origin,
+      bucket: admin.storage.from('uploads'), getPostContext, getStoryContext
+    })
+    if (!result.response) return jsonResponse(result.status, { error: 'Media unavailable.' }, headers)
+    const mediaHeaders = new Headers({ ...headers, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' })
+    for (const name of ['Content-Type', 'Content-Length', 'Content-Range', 'Accept-Ranges']) {
+      const value = result.response.headers.get(name)
+      if (value) mediaHeaders.set(name, value)
+    }
+    return new Response(result.status === 416 ? null : result.response.body, { status: result.status, headers: mediaHeaders })
+  }
   const result = await authorizeMediaClaims(body, getPostContext, getStoryContext)
   if (!result.valid) return jsonResponse(400, { error: 'Invalid media request.' }, headers)
   if (!result.allowed) return jsonResponse(403, { allowed: false }, headers)
   return jsonResponse(200, { allowed: true, objectVariant: result.objectVariant }, headers)
+}
+
+async function authorizeLegacyFile(claims: { scope: string; userId: string; viewerId: string; path: string; resourceId?: string }) {
+  if (Deno.env.get('ACCOUNT_LIFECYCLE_ENABLED') === 'true') {
+    const [activeViewer, activeOwner] = await Promise.all([
+      accountIsActive(admin, claims.viewerId),
+      accountIsActive(admin, claims.userId)
+    ])
+    if (!activeViewer || !activeOwner) return false
+  }
+
+  const origin = new URL(supabaseUrl!).origin
+  if (claims.scope === 'avatar') {
+    const { data, error } = await admin.from('users').select('avatar_url')
+      .eq('id', claims.userId).maybeSingle()
+    throwOnError(error)
+    return Boolean(data && legacyStoragePath(data.avatar_url, origin) === claims.path)
+  }
+  if (claims.scope === 'blog-upload') return claims.userId === claims.viewerId
+  if (claims.scope === 'blog') {
+    const { data: article, error } = await admin.from('blog_articles')
+      .select('id,author_id,status,cover_url,content_html')
+      .eq('id', claims.resourceId).maybeSingle()
+    throwOnError(error)
+    if (!article || article.author_id !== claims.userId) return false
+    const paths = [
+      article.cover_url,
+      ...[...String(article.content_html || '').matchAll(/<(?:img|video)\b[^>]*\bsrc="([^"]+)"/gi)].map(match => match[1])
+    ].map(value => legacyStoragePath(value, origin)).filter(Boolean)
+    if (!paths.includes(claims.path)) return false
+    if (article.status !== 'published' && article.author_id !== claims.viewerId) {
+      const { data: viewer, error: viewerError } = await admin.from('users').select('is_admin')
+        .eq('id', claims.viewerId).maybeSingle()
+      throwOnError(viewerError)
+      if (!viewer?.is_admin) return false
+    }
+    if (article.status === 'published' && article.author_id !== claims.viewerId) {
+      const { data: blocked, error: blockError } = await admin.from('blocks').select('blocker_id')
+        .or(`and(blocker_id.eq.${claims.viewerId},blocked_id.eq.${article.author_id}),and(blocker_id.eq.${article.author_id},blocked_id.eq.${claims.viewerId})`)
+        .limit(1)
+      throwOnError(blockError)
+      if (blocked?.length) return false
+    }
+    return true
+  }
+  if (claims.scope === 'message') {
+    const { data: message, error } = await admin.from('messages')
+      .select('id,conversation_id,sender_id,media_url,view_once,created_at')
+      .eq('id', claims.resourceId).maybeSingle()
+    throwOnError(error)
+    if (!message || message.sender_id !== claims.userId || message.view_once ||
+        legacyStoragePath(message.media_url, origin) !== claims.path) return false
+    const members = await getConversationMembership(message.conversation_id, claims.viewerId)
+    if (!members) return false
+    const viewer = members.find(member => member.user_id === claims.viewerId)
+    if (!viewer) return false
+    if (viewer.cleared_at && new Date(message.created_at) <= new Date(viewer.cleared_at)) return false
+    const hidden = (viewer.hidden_senders || {}) as Record<string, string>
+    if (hidden[`msg:${message.id}`]) return false
+    const hiddenAt = hidden[message.sender_id]
+    return !hiddenAt || new Date(message.created_at) > new Date(hiddenAt)
+  }
+  return false
 }
 
 async function reconcileMediaReferences(request: Request, headers: Record<string, string>) {
@@ -394,6 +601,11 @@ async function reconcileMediaReferences(request: Request, headers: Record<string
 
 type R2MediaReference = { kind: 'post' | 'story'; userId: string; uploadId: string }
 
+function legacyMediaGatewayEnabled(mediaUrl: string): boolean {
+  return Deno.env.get('LEGACY_MEDIA_GATEWAY_ENABLED') === 'true'
+    && Boolean(legacyStoragePath(mediaUrl, new URL(supabaseUrl!).origin))
+}
+
 function parseR2MediaUrl(mediaUrl: string): R2MediaReference | null {
   const match = /^r2:\/\/(post|story)\/([0-9a-f-]{36})\/([0-9a-f-]{36})$/i.exec(mediaUrl)
   if (!match) return null
@@ -402,19 +614,21 @@ function parseR2MediaUrl(mediaUrl: string): R2MediaReference | null {
   return { kind: match[1].toLowerCase() as 'post' | 'story', userId: match[2], uploadId: match[3] }
 }
 
-async function mediaPlaybackUrl(mediaUrl: string, itemId: string, viewerId: string, variant: 'playback' | 'original' = 'playback'): Promise<string> {
+async function mediaPlaybackUrl(mediaUrl: string, itemId: string, viewerId: string, variant: 'playback' | 'original' = 'playback', legacy?: { kind: 'post' | 'story'; userId: string }): Promise<string> {
   const ref = parseR2MediaUrl(mediaUrl)
-  if (!ref) return mediaUrl
+  const useLegacyGateway = !ref && legacy && legacyMediaGatewayEnabled(mediaUrl)
+  if (!ref && !useLegacyGateway) return mediaUrl
   const workerUrl = Deno.env.get('R2_MEDIA_WORKER_URL')
   const secret = Deno.env.get('R2_DELIVERY_SECRET')
   if (!workerUrl || !secret) throw new Error('R2 media delivery is not configured.')
-  const permit = await createDeliveryPermit({ ...ref, viewerId, itemId, variant, secret })
+  const reference = ref || { kind: legacy!.kind, userId: legacy!.userId, uploadId: itemId, storage: 'legacy' }
+  const permit = await createDeliveryPermit({ ...reference, viewerId, itemId, variant, secret })
   const url = new URL('/media', workerUrl)
   url.searchParams.set('permit', permit)
   return url.toString()
 }
 
-async function callMediaWorker(action: 'inspect' | 'read' | 'promote' | 'delete', payload: Record<string, unknown>) {
+async function callMediaWorker(action: 'inspect' | 'read' | 'promote' | 'delete' | 'delete-account-media', payload: Record<string, unknown>) {
   const workerUrl = Deno.env.get('R2_MEDIA_WORKER_URL')
   const secret = Deno.env.get('R2_MEDIA_CONTROL_SECRET')
   if (!workerUrl || !secret || secret.length < 32) throw new Error('R2 media control is not configured.')
@@ -430,6 +644,119 @@ async function callMediaWorker(action: 'inspect' | 'read' | 'promote' | 'delete'
   return response
 }
 
+async function publicMediaPreview(request: Request, headers: Record<string, string>) {
+  const url = new URL(request.url)
+  const kind = url.searchParams.get('kind')
+  const id = url.searchParams.get('id')
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if ((kind !== 'post' && kind !== 'story') || !id || !uuid.test(id)) return jsonResponse(404, { error: 'Preview unavailable.' }, headers)
+  const { data: item, error } = kind === 'post'
+    ? await admin.from('posts').select('id,user_id,media_url,media_type,privacy,is_protected').eq('id', id).maybeSingle()
+    : await admin.from('stories').select('id,user_id,media_url,media_type,privacy,is_protected,expires_at').eq('id', id).maybeSingle()
+  throwOnError(error)
+  if (!item) return jsonResponse(404, { error: 'Preview unavailable.' }, headers)
+  if (Deno.env.get('ACCOUNT_LIFECYCLE_ENABLED') === 'true' && !await accountIsActive(admin, item.user_id)) {
+    return jsonResponse(404, { error: 'Preview unavailable.' }, headers)
+  }
+  const { data: owner, error: ownerError } = await admin.from('users').select('is_private,posts_privacy').eq('id', item.user_id).maybeSingle()
+  throwOnError(ownerError)
+  if (!isPublicPreview(item, owner, kind)) return jsonResponse(404, { error: 'Preview unavailable.' }, headers)
+  const ref = parseR2MediaUrl(item.media_url)
+  if (!ref) {
+    if (item.media_type !== 'image') return jsonResponse(404, { error: 'Preview unavailable.' }, headers)
+    let mediaUrl: URL
+    try {
+      mediaUrl = new URL(item.media_url)
+    } catch {
+      return jsonResponse(404, { error: 'Preview unavailable.' }, headers)
+    }
+    const path = storagePath(item.media_url)
+    if (!supabaseUrl || mediaUrl.origin !== new URL(supabaseUrl).origin || !path ||
+        !path.startsWith(`${item.user_id}/`) || path.includes('..')) {
+      return jsonResponse(404, { error: 'Preview unavailable.' }, headers)
+    }
+    const { data: image, error: downloadError } = await admin.storage.from('uploads').download(path)
+    if (downloadError) {
+      if (getErrorMetadata(downloadError).status === 404) {
+        return jsonResponse(404, { error: 'Preview unavailable.' }, headers)
+      }
+      throw new Error(`Legacy preview read failed: ${downloadError.message}`)
+    }
+    if (!image || !['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(image.type)) {
+      throw new Error('Invalid legacy preview image type.')
+    }
+    return new Response(image.stream(), { headers: { ...headers, 'Content-Type': image.type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } })
+  }
+  if (ref.userId !== item.user_id || ref.kind !== kind || ref.uploadId !== id) return jsonResponse(404, { error: 'Preview unavailable.' }, headers)
+  const variant = ['image', 'video'].includes(item.media_type) ? 'cover' : null
+  if (!variant) return jsonResponse(404, { error: 'Preview unavailable.' }, headers)
+  const workerUrl = Deno.env.get('R2_MEDIA_WORKER_URL')
+  const secret = Deno.env.get('R2_MEDIA_CONTROL_SECRET')
+  if (!workerUrl || !secret || secret.length < 32) throw new Error('R2 media control is not configured.')
+  const read = (objectVariant: string) => fetch(new URL('/internal/read', workerUrl), {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Media-Control': secret },
+    body: JSON.stringify({ ...ref, prefix: 'media', variant: objectVariant })
+  })
+  let response = await read(variant)
+  if (response.status === 404 && item.media_type === 'image') response = await read('original')
+  if (response.status === 404) return jsonResponse(404, { error: 'Preview unavailable.' }, headers)
+  if (!response.ok) throw new Error(`R2 preview read failed (HTTP ${response.status}).`)
+  const contentType = response.headers.get('Content-Type') || ''
+  if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(contentType)) throw new Error('Invalid preview image type.')
+  return new Response(response.body, { headers: { ...headers, 'Content-Type': contentType, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } })
+}
+
+async function authorizeCallInvite(request: Request, viewerId: string, headers: Record<string, string>) {
+  let body
+  try {
+    body = await request.json()
+  } catch (error) {
+    if (error instanceof SyntaxError) return jsonResponse(400, { error: 'Invalid call invitation.' }, headers)
+    throw error
+  }
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (typeof body?.targetId !== 'string' || !uuid.test(body.targetId) || body.targetId === viewerId ||
+      (body.conversationId != null && (typeof body.conversationId !== 'string' || !uuid.test(body.conversationId)))) {
+    return jsonResponse(400, { error: 'Invalid call invitation.' }, headers)
+  }
+  if ((await restrictedAccountIds([body.targetId])).has(body.targetId)) {
+    return jsonResponse(404, { error: 'This person is unavailable for calls.' }, headers)
+  }
+  const [{ data: users, error }, blocked, friends] = await Promise.all([
+    admin.from('users').select('id,username,display_name,avatar_url,allow_calls').in('id', [viewerId, body.targetId]),
+    getBlockRelation(viewerId, body.targetId),
+    getAcceptedConnections(viewerId)
+  ])
+  throwOnError(error)
+  const actor = (users || []).find(user => user.id === viewerId)
+  const target = (users || []).find(user => user.id === body.targetId)
+  if (!actor || !target || target.allow_calls === false || blocked.blockedByMe || blocked.blockedMe) {
+    return jsonResponse(404, { error: 'This person is unavailable for calls.' }, headers)
+  }
+  let allowed = friends.has(body.targetId)
+  if (!allowed && body.conversationId) {
+    const [{ data: conversation, error: conversationError }, { data: members, error: memberError }] = await Promise.all([
+      admin.from('conversations').select('id,is_group').eq('id', body.conversationId).maybeSingle(),
+      admin.from('conversation_members').select('user_id').eq('conversation_id', body.conversationId)
+    ])
+    throwOnError(conversationError)
+    throwOnError(memberError)
+    const ids = new Set((members || []).map(member => member.user_id))
+    allowed = Boolean(conversation && !conversation.is_group && ids.size === 2 && ids.has(viewerId) && ids.has(body.targetId))
+  }
+  if (!allowed) return jsonResponse(404, { error: 'This person is unavailable for calls.' }, headers)
+  const summary = (user: { id: string; username: string; display_name: string; avatar_url: string | null }) =>
+    ({ id: user.id, username: user.username, display_name: user.display_name, avatar_url: user.avatar_url })
+  let pushAvailable = false
+  if (Deno.env.get('PUSH_NOTIFICATIONS_ENABLED') === 'true') {
+    const { data: devices, error: deviceError } = await admin.from('push_devices')
+      .select('device_id').eq('user_id', body.targetId).limit(1)
+    throwOnError(deviceError)
+    pushAvailable = Boolean(devices?.length)
+  }
+  return jsonResponse(200, { actor: summary(actor), target: summary(target), pushAvailable }, headers)
+}
+
 async function publishStagedMedia(request: Request, viewerId: string, headers: Record<string, string>) {
   let body
   try {
@@ -440,7 +767,8 @@ async function publishStagedMedia(request: Request, viewerId: string, headers: R
   }
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   if (!['post', 'story'].includes(body?.kind) || typeof body?.uploadId !== 'string' || !uuid.test(body.uploadId) ||
-      !['image', 'video'].includes(body?.mediaType) || typeof body?.protected !== 'boolean') {
+      !['image', 'video'].includes(body?.mediaType) || typeof body?.protected !== 'boolean' ||
+      (body?.allowRepost !== undefined && typeof body.allowRepost !== 'boolean')) {
     return jsonResponse(400, { error: 'Invalid upload request.' }, headers)
   }
   const caption = typeof body.caption === 'string' ? body.caption.slice(0, 2200) : ''
@@ -450,12 +778,15 @@ async function publishStagedMedia(request: Request, viewerId: string, headers: R
   const objects = await inspect.json()
   const original = objects?.original
   const playback = objects?.playback
+  const cover = objects?.cover
   const validObject = (value: { size?: unknown; contentType?: unknown }) =>
     Number.isSafeInteger(value?.size) && Number(value.size) > 0 && Number(value.size) <= 50 * 1024 * 1024 &&
     typeof value.contentType === 'string' && allowedMediaTypes.has(value.contentType)
   if (!validObject(original) || !original.contentType.startsWith(`${body.mediaType}/`) ||
       (body.mediaType === 'image' && playback) ||
-      (body.mediaType === 'video' && (!validObject(playback) || playback.contentType !== 'video/mp4'))) {
+      (cover && (!validObject(cover) || cover.contentType !==
+        (body.mediaType === 'video' ? 'image/webp' : 'image/jpeg') || cover.size > 2 * 1024 * 1024)) ||
+      (body.mediaType === 'video' && (!validObject(playback) || playback.contentType !== 'video/mp4' || !cover))) {
     return jsonResponse(400, { error: 'The staged media is incomplete or invalid.' }, headers)
   }
   if (body.mediaType === 'image' && original.size <= 15 * 1024 * 1024) {
@@ -465,17 +796,25 @@ async function publishStagedMedia(request: Request, viewerId: string, headers: R
     const unsafe = await rejectUnsafeImage(file, viewerId, headers)
     if (unsafe) return unsafe
   }
+  if (cover) {
+    const response = await callMediaWorker('read', { ...ref, prefix: 'staging', variant: 'cover' })
+    const coverExtension = cover.contentType === 'image/webp' ? 'webp' : 'jpg'
+    const file = new File([await response.arrayBuffer()], `cover.${coverExtension}`, { type: cover.contentType })
+    if (file.size !== cover.size) throw new Error('Staged cover size changed during moderation.')
+    const unsafe = await rejectUnsafeImage(file, viewerId, headers)
+    if (unsafe) return unsafe
+  }
   const marker = `r2://${body.kind}/${viewerId}/${body.uploadId}`
   const mediaUrl = await mediaPlaybackUrl(marker, body.uploadId, viewerId)
   const table = body.kind === 'post' ? 'posts' : 'stories'
   const row = body.kind === 'post'
-    ? { id: body.uploadId, user_id: viewerId, caption, media_type: body.mediaType, media_url: marker, is_protected: body.protected }
+    ? { id: body.uploadId, user_id: viewerId, caption, media_type: body.mediaType, media_url: marker, is_protected: body.protected, allow_repost: body.allowRepost !== false }
     : { id: body.uploadId, user_id: viewerId, media_type: body.mediaType, media_url: marker, is_protected: body.protected,
       expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() }
   const { data: item, error } = await admin.from(table).insert(row).select('*').single()
   throwOnError(error)
   try {
-    await callMediaWorker('promote', { ...ref, mediaType: body.mediaType })
+    await callMediaWorker('promote', { ...ref, mediaType: body.mediaType, hasCover: Boolean(cover) })
   } catch (promotionError) {
     const { error: cleanupError } = await admin.from(table).delete().eq('id', body.uploadId).eq('user_id', viewerId)
     if (cleanupError) console.error('Failed to remove a post or story after R2 promotion failed:', cleanupError)
@@ -534,9 +873,17 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
     }
     if (bio.length > 500) return jsonResponse(400, { error: 'Bio must be 500 characters or fewer.' }, headers)
     if (violatesGuidelines(bio, username)) return jsonResponse(422, { error: GUIDELINES_MESSAGE, code: 'guidelines' }, headers)
-    const { data: user, error } = await admin.from('users').update({ username, bio, updated_at: new Date().toISOString() })
+    const profileUpdate: Record<string, unknown> = { username, bio, updated_at: new Date().toISOString() }
+    if (typeof body?.instagram === 'string') {
+      const instagram = body.instagram.trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/^@/, '').replace(/[/?#].*$/, '')
+      if (instagram && !/^[A-Za-z0-9._]{1,30}$/.test(instagram)) {
+        return jsonResponse(400, { error: 'Enter a valid Instagram username (letters, numbers, periods and underscores, up to 30 characters).' }, headers)
+      }
+      profileUpdate.instagram_username = instagram || null
+    }
+    const { data: user, error } = await admin.from('users').update(profileUpdate)
       .eq('id', viewerId)
-      .select('id,username,email,display_name,bio,avatar_url')
+      .select('id,username,email,display_name,bio,avatar_url,instagram_username')
       .maybeSingle()
     if (error?.code === '23505') return jsonResponse(409, { error: 'That username is already in use.' }, headers)
     throwOnError(error)
@@ -619,27 +966,38 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
     ])
     throwOnError(incomingError)
     const friendIds = new Set((incoming || []).map(row => row.follower_id))
-    const friends = outgoingIds.filter(id => friendIds.has(id)).map(id => summaries.get(id))
+    const inactive = await restrictedAccountIds(outgoingIds)
+    const friends = outgoingIds.filter(id => friendIds.has(id) && !inactive.has(id) && summaries.has(id)).map(id => summaries.get(id))
       .sort((a, b) => String(a.display_name || a.username).localeCompare(String(b.display_name || b.username)))
     return jsonResponse(200, { friends }, headers)
   }
 
   if (route === '/users/connections' && method === 'GET') {
-    const type = url.searchParams.get('type') === 'followers' ? 'followers' : 'friends'
-    const { data: incoming, error } = await admin.from('follows').select('follower_id')
-      .eq('following_id', viewerId).eq('status', 'accepted').limit(200)
+    const requestedType = url.searchParams.get('type')
+    const type = requestedType === 'following' || requestedType === 'followers' ? requestedType : 'friends'
+    const outgoing = type === 'following'
+    const { data: connections, error } = await admin.from('follows')
+      .select('follower_id,following_id')
+      .eq(outgoing ? 'follower_id' : 'following_id', viewerId).eq('status', 'accepted').limit(200)
     throwOnError(error)
-    const candidateIds = (incoming || []).map(row => row.follower_id)
+    const candidateIds = (connections || []).map(row => outgoing ? row.following_id : row.follower_id)
     const [status, summaries] = await Promise.all([
       getFollowStatus(viewerId, candidateIds),
       getUserSummaries(candidateIds, true, viewerId)
     ])
-    const users = candidateIds.filter(id => type === 'followers' || status.get(id)?.following)
+    const inactive = await restrictedAccountIds(candidateIds)
+    const users = candidateIds.filter(id => {
+      if (inactive.has(id) || !summaries.has(id)) return false
+      const relationship = status.get(id)
+      return type === 'following'
+        ? relationship?.following
+        : type === 'followers' || relationship?.following
+    })
       .map(id => ({
         ...summaries.get(id),
         follow_status: status.get(id)?.following ? 'accepted' : null,
-        follows_me: true,
-        is_friend: Boolean(status.get(id)?.following),
+        follows_me: Boolean(status.get(id)?.followsMe),
+        is_friend: Boolean(status.get(id)?.following && status.get(id)?.followsMe),
         is_following: Boolean(status.get(id)?.following),
         follow_requested: false
       }))
@@ -661,7 +1019,8 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
     throwOnError(outgoingError)
     const mutual = new Set((outgoing || []).map(row => row.following_id))
     const createdAt = new Map((incoming || []).map(row => [row.follower_id, row.created_at]))
-    const requests = candidateIds.filter(id => !mutual.has(id)).map(id => ({
+    const inactive = await restrictedAccountIds(candidateIds)
+    const requests = candidateIds.filter(id => !mutual.has(id) && !inactive.has(id) && summaries.has(id)).map(id => ({
       id,
       username: summaries.get(id)?.username,
       display_name: summaries.get(id)?.display_name,
@@ -674,6 +1033,7 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
   if (route === '/users/search' && method === 'GET') {
     const query = (url.searchParams.get('q') || '').trim()
     if (query.length < 2 || query.length > 50) return jsonResponse(400, { error: 'Search must be between 2 and 50 characters' }, headers)
+    if (!await withinRateLimit(`search:${viewerId}`, 40, 60)) return tooManyRequests(headers)
     const escaped = query.replace(/[\\%_]/g, character => `\\${character}`)
     const pattern = `%${escaped}%`
     const [usernameResults, displayNameResults, blockedIds] = await Promise.all([
@@ -688,10 +1048,12 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
     const users = [...new Map([
       ...(usernameResults.data || []),
       ...(displayNameResults.data || [])
-    ].filter(user => !blockedIds.has(user.id)).map(user => [user.id, user])).values()].slice(0, 20)
-    const ids = (users || []).map(user => user.id)
+    ].filter(user => !blockedIds.has(user.id)).map(user => [user.id, user])).values()]
+    const inactive = await restrictedAccountIds(users.map(user => user.id))
+    const visibleUsers = users.filter(user => !inactive.has(user.id)).slice(0, 20)
+    const ids = visibleUsers.map(user => user.id)
     const [followStatus, summaries] = await Promise.all([getFollowStatus(viewerId, ids), getUserSummaries(ids, true, viewerId)])
-    const results = ids.map(id => {
+    const results = ids.filter(id => summaries.has(id)).map(id => {
       const user = summaries.get(id)
       const relation = followStatus.get(id)
       const isFriend = Boolean(relation?.following && relation.followsMe)
@@ -715,6 +1077,9 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
     const [, targetId] = followMatch
     if (method === 'POST') {
       if (targetId === viewerId) return jsonResponse(400, { error: 'You cannot add your own account' }, headers)
+      if ((await restrictedAccountIds([targetId])).has(targetId)) {
+        return jsonResponse(404, { error: 'Account not found' }, headers)
+      }
       const { data: target, error: targetError } = await admin.from('users').select('id').eq('id', targetId).maybeSingle()
       throwOnError(targetError)
       if (!target) return jsonResponse(404, { error: 'Account not found' }, headers)
@@ -743,8 +1108,11 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
   const profileMatch = route.match(/^\/users\/([^/]+)\/profile$/)
   if (profileMatch && method === 'GET') {
     const [, targetId] = profileMatch
+    if ((await restrictedAccountIds([targetId])).has(targetId)) {
+      return jsonResponse(404, { error: 'Account not found' }, headers)
+    }
     const { data: user, error } = await admin.from('users')
-      .select('id,username,display_name,bio,avatar_url,is_private,is_verified,created_at,message_privacy,allow_calls,posts_privacy,following_privacy,read_receipts')
+      .select('id,username,display_name,bio,instagram_username,avatar_url,is_private,is_verified,created_at,message_privacy,allow_calls,posts_privacy,following_privacy,read_receipts')
       .eq('id', targetId)
       .maybeSingle()
     throwOnError(error)
@@ -818,7 +1186,7 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
     let visiblePosts: Record<string, unknown>[] = []
     if (canViewPosts) {
       const { data: userPosts, error: postsError } = await admin.from('posts')
-        .select('id,user_id,caption,media_type,media_url,created_at,likes_count,comments_count,is_protected,privacy')
+        .select('id,user_id,caption,media_type,media_url,created_at,likes_count,comments_count,is_protected,privacy,allow_repost')
         .eq('user_id', targetId).order('created_at', { ascending: false }).limit(100)
       throwOnError(postsError)
       const postIds = (userPosts || []).map(post => post.id)
@@ -830,10 +1198,53 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
       visiblePosts = await Promise.all((userPosts || []).filter(post => post.user_id === viewerId
         || (post.privacy !== 'only_me' && (post.privacy !== 'friends' || isFriend)))
         .map(async post => ({
-          ...post, media_url: await mediaPlaybackUrl(post.media_url, post.id, viewerId),
+          ...post, media_url: await mediaPlaybackUrl(post.media_url, post.id, viewerId, 'playback', { kind: 'post', userId: post.user_id }),
           has_original: Boolean(parseR2MediaUrl(post.media_url)),
+          has_expiring_media_url: legacyMediaGatewayEnabled(post.media_url),
           is_owner: post.user_id === viewerId, is_liked: likedIds.has(post.id)
         })))
+
+      const { data: reposts, error: repostError } = await admin.from('post_reposts')
+        .select('post_id,created_at').eq('user_id', targetId).order('created_at', { ascending: false }).limit(100)
+      throwOnError(repostError)
+      const repostIds = (reposts || []).map(repost => repost.post_id)
+      if (repostIds.length) {
+        const [originalsResult, friends, blocked] = await Promise.all([
+          admin.from('posts').select('id,user_id,caption,media_type,media_url,created_at,likes_count,comments_count,is_protected,privacy,allow_repost').in('id', repostIds),
+          getAcceptedConnections(viewerId),
+          getBlockedIds(viewerId)
+        ])
+        throwOnError(originalsResult.error)
+        const originals = originalsResult.data || []
+        const ownerIds = [...new Set(originals.map(post => post.user_id))]
+        const [ownersResult, repostLikesResult, inactiveOwners] = await Promise.all([
+          ownerIds.length ? admin.from('users').select('id,username,display_name,avatar_url,is_private,posts_privacy').in('id', ownerIds) : Promise.resolve({ data: [], error: null }),
+          admin.from('likes').select('post_id').eq('user_id', viewerId).in('post_id', repostIds),
+          restrictedAccountIds(ownerIds)
+        ])
+        throwOnError(ownersResult.error)
+        throwOnError(repostLikesResult.error)
+        const owners = new Map((ownersResult.data || []).map(owner => [owner.id, owner]))
+        const originalsById = new Map(originals.map(post => [post.id, post]))
+        const likedReposts = new Set((repostLikesResult.data || []).map(like => like.post_id))
+        for (const repost of reposts || []) {
+          const post = originalsById.get(repost.post_id)
+          const owner = post && owners.get(post.user_id)
+          if (!post || !owner || !post.allow_repost || blocked.has(post.user_id) || inactiveOwners.has(post.user_id) ||
+              (owner.is_private && post.user_id !== viewerId && !friends.has(post.user_id)) ||
+              !canViewPost(post, owner, viewerId, friends)) continue
+          visiblePosts.push({
+            ...post, media_url: await mediaPlaybackUrl(post.media_url, post.id, viewerId, 'playback', { kind: 'post', userId: post.user_id }),
+            has_original: Boolean(parseR2MediaUrl(post.media_url)),
+            has_expiring_media_url: legacyMediaGatewayEnabled(post.media_url),
+            is_owner: post.user_id === viewerId, is_liked: likedReposts.has(post.id),
+            author_id: owner.id, author_username: owner.username, author_display_name: owner.display_name,
+            author_avatar_url: owner.avatar_url, reposted_at: repost.created_at,
+            is_repost: true, can_remove_repost: isOwner
+          })
+        }
+        visiblePosts.sort((a, b) => String(b.reposted_at || b.created_at).localeCompare(String(a.reposted_at || a.created_at)))
+      }
     }
     const { data: liveRaw, error: liveError } = await admin.from('live_sessions')
       .select('id,title,visibility').eq('host_id', targetId).eq('is_active', true).gte('last_heartbeat', new Date(Date.now() - 90_000).toISOString()).order('created_at', { ascending: false }).limit(1).maybeSingle()
@@ -893,6 +1304,7 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
         ...(isOwner ? { vynzo_id: vynzoId } : {}),
         display_name: user.display_name,
         bio: user.bio,
+        instagram_username: user.instagram_username || null,
         avatar_url: user.avatar_url,
         is_private: user.is_private,
         ...(isOwner ? {
@@ -988,7 +1400,7 @@ async function handleModeration(request: Request, viewerId: string, headers: Rec
     let removed = 0
     for (const item of todo.slice(0, 15)) {
       if (item.media_type === 'video') {
-        videos.push({ kind: item.kind, id: item.id, media_url: await mediaPlaybackUrl(item.media_url, item.id, viewerId) })
+        videos.push({ kind: item.kind, id: item.id, media_url: await mediaPlaybackUrl(item.media_url, item.id, viewerId, 'playback', { kind: item.kind, userId: viewerId }) })
         continue
       }
       const ref = parseR2MediaUrl(item.media_url)
@@ -1048,6 +1460,7 @@ async function handleModeration(request: Request, viewerId: string, headers: Rec
   if (blockMatch && request.method === 'POST') {
     const blockedId = blockMatch[1]
     if (blockedId === viewerId) return jsonResponse(400, { error: 'You cannot block yourself' }, headers)
+    if ((await restrictedAccountIds([blockedId])).has(blockedId)) return jsonResponse(404, { error: 'Account not found' }, headers)
     const { data: target, error: targetError } = await admin.from('users').select('id').eq('id', blockedId).maybeSingle()
     throwOnError(targetError)
     if (!target) return jsonResponse(404, { error: 'Account not found' }, headers)
@@ -1071,8 +1484,11 @@ async function handleModeration(request: Request, viewerId: string, headers: Rec
     const { data, error } = await admin.from('blocks').select('blocked_id').eq('blocker_id', viewerId)
     throwOnError(error)
     const ids = (data || []).map(row => row.blocked_id)
-    const summaries = await getUserSummaries(ids, false, viewerId)
-    return jsonResponse(200, { users: ids.map(id => summaries.get(id)).filter(Boolean) }, headers)
+    const [summaries, inactive] = await Promise.all([
+      getUserSummaries(ids, false, viewerId),
+      restrictedAccountIds(ids)
+    ])
+    return jsonResponse(200, { users: ids.filter(id => !inactive.has(id)).map(id => summaries.get(id)).filter(Boolean) }, headers)
   }
   return jsonResponse(404, { error: 'Endpoint not found' }, headers)
 }
@@ -1118,11 +1534,12 @@ async function handleStories(request: Request, viewerId: string, headers: Record
     throwOnError(error)
     throwOnError(viewerError)
     const userIds = [...new Set((stories || []).map(story => story.user_id))].filter(id => !blockedIds.has(id))
+    const inactiveOwners = await restrictedAccountIds(userIds)
     const { data: users, error: usersError } = userIds.length
       ? await admin.from('users').select('id,username,display_name,avatar_url,is_private').in('id', userIds)
       : { data: [], error: null }
     throwOnError(usersError)
-    const visibleUsers = new Map((users || []).map(user => [user.id, user]))
+    const visibleUsers = new Map((users || []).filter(user => !inactiveOwners.has(user.id)).map(user => [user.id, user]))
     const visibleStories = (stories || []).filter(story => {
       const owner = visibleUsers.get(story.user_id)
       return owner && canViewStory(story, owner, viewerId, friends)
@@ -1162,8 +1579,9 @@ async function handleStories(request: Request, viewerId: string, headers: Record
       groups.get(story.user_id)!.stories.push({
         id: story.id,
         media_type: story.media_type,
-        media_url: await mediaPlaybackUrl(story.media_url, story.id, viewerId),
+        media_url: await mediaPlaybackUrl(story.media_url, story.id, viewerId, 'playback', { kind: 'story', userId: story.user_id }),
         has_original: Boolean(parseR2MediaUrl(story.media_url)),
+        has_expiring_media_url: legacyMediaGatewayEnabled(story.media_url),
         is_protected: story.is_protected,
         privacy: story.privacy || 'everyone',
         created_at: story.created_at,
@@ -1188,6 +1606,9 @@ async function handleStories(request: Request, viewerId: string, headers: Record
     }
     if (file.size > 50 * 1024 * 1024 || !allowedMediaTypes.has(file.type)) {
       return jsonResponse(400, { error: 'Choose a supported image or video file up to 50 MB.' }, headers)
+    }
+    if (file.type.startsWith('video/')) {
+      return jsonResponse(426, { error: 'Update Vynzo to upload videos using the optimized video service.' }, headers)
     }
     const unsafeStory = await rejectUnsafeImage(file, viewerId, headers)
     if (unsafeStory) return unsafeStory
@@ -1314,9 +1735,12 @@ async function handleStories(request: Request, viewerId: string, headers: Record
       : { data: [], error: null }
     throwOnError(usersError)
     const userById = new Map((users || []).map(user => [user.id, user]))
-    const blockedForStoryComments = await getBlockedIds(viewerId)
+    const [blockedForStoryComments, inactiveCommenters] = await Promise.all([
+      getBlockedIds(viewerId),
+      restrictedAccountIds(userIds)
+    ])
     return jsonResponse(200, {
-      comments: (comments || []).filter(comment => !blockedForStoryComments.has(comment.user_id)).map(comment => ({
+      comments: (comments || []).filter(comment => !blockedForStoryComments.has(comment.user_id) && !inactiveCommenters.has(comment.user_id)).map(comment => ({
         ...comment,
         ...userById.get(comment.user_id)
       }))
@@ -1415,7 +1839,7 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
     const followedIds = new Set((outgoing.data || []).map(row => row.following_id))
 
     let query = admin.from('posts')
-      .select('id,user_id,caption,media_type,media_url,thumbnail_url,views_count,likes_count,comments_count,created_at,is_protected,privacy')
+      .select('id,user_id,caption,media_type,media_url,thumbnail_url,views_count,likes_count,comments_count,created_at,is_protected,privacy,allow_repost')
       .order('created_at', { ascending: false })
       .range(scope === 'me' ? offset : 0, scope === 'me' ? offset + limit - 1 : 999)
     if (scope === 'me') query = query.eq('user_id', viewerId)
@@ -1429,11 +1853,12 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
     throwOnError(error)
     const blockedIds = await getBlockedIds(viewerId)
     const userIds = [...new Set((candidates || []).map(post => post.user_id))].filter(id => !blockedIds.has(id))
+    const inactiveOwners = await restrictedAccountIds(userIds)
     const { data: users, error: usersError } = userIds.length
       ? await admin.from('users').select('id,username,display_name,avatar_url,is_private,posts_privacy').in('id', userIds)
       : { data: [], error: null }
     throwOnError(usersError)
-    const userById = new Map((users || []).map(user => [user.id, user]))
+    const userById = new Map((users || []).filter(user => !inactiveOwners.has(user.id)).map(user => [user.id, user]))
 
     const visiblePosts = (candidates || [])
       .filter(post => {
@@ -1453,8 +1878,9 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
         const owner = userById.get(post.user_id)!
         return {
           ...post,
-          media_url: await mediaPlaybackUrl(post.media_url, post.id, viewerId),
+          media_url: await mediaPlaybackUrl(post.media_url, post.id, viewerId, 'playback', { kind: 'post', userId: post.user_id }),
           has_original: Boolean(parseR2MediaUrl(post.media_url)),
+          has_expiring_media_url: legacyMediaGatewayEnabled(post.media_url),
           is_owner: post.user_id === viewerId,
           is_liked: likedIds.has(post.id),
           author_id: owner.id,
@@ -1480,6 +1906,9 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
     if (file.size > 50 * 1024 * 1024 || !allowedMediaTypes.has(file.type)) {
       return jsonResponse(400, { error: 'Choose a supported image or video file up to 50 MB.' }, headers)
     }
+    if (file.type.startsWith('video/')) {
+      return jsonResponse(426, { error: 'Update Vynzo to upload videos using the optimized video service.' }, headers)
+    }
     const caption = String(form.get('caption') || '').slice(0, 2200)
     if (violatesGuidelines(caption)) return jsonResponse(422, { error: GUIDELINES_MESSAGE, code: 'guidelines' }, headers)
     const unsafePost = await rejectUnsafeImage(file, viewerId, headers)
@@ -1499,7 +1928,8 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
       caption,
       media_type: file.type.startsWith('video/') ? 'video' : 'image',
       media_url: mediaUrl,
-      is_protected: ['true', '1', 'on'].includes(String(form.get('protected') || '').toLowerCase())
+      is_protected: ['true', '1', 'on'].includes(String(form.get('protected') || '').toLowerCase()),
+      allow_repost: String(form.get('allowRepost') || 'true').toLowerCase() !== 'false'
     }).select('id,user_id,caption,media_type,media_url,is_protected,views_count,likes_count,comments_count,created_at').single()
     if (error) {
       const { error: cleanupError } = await admin.storage.from('uploads').remove([path])
@@ -1509,9 +1939,15 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
     return jsonResponse(201, { message: 'Post created successfully', post }, headers)
   }
 
-  const postMatch = route.match(/^\/posts\/([^/]+)(?:\/(privacy|like|comments))?$/)
+  const postMatch = route.match(/^\/posts\/([^/]+)(?:\/(privacy|like|comments|repost|repost-permission))?$/)
   if (!postMatch) return jsonResponse(404, { error: 'Endpoint not found' }, headers)
   const [, postId, action] = postMatch
+
+  if (action === 'repost' && method === 'DELETE') {
+    const { error } = await admin.from('post_reposts').delete().eq('user_id', viewerId).eq('post_id', postId)
+    throwOnError(error)
+    return jsonResponse(200, { success: true }, headers)
+  }
 
   if (!action && method === 'DELETE') {
     const { data: post, error } = await admin.from('posts').select('id,media_url').eq('id', postId).eq('user_id', viewerId).maybeSingle()
@@ -1525,6 +1961,26 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
 
   const context = await getPostContext(postId, viewerId)
   if (!context) return jsonResponse(403, { error: 'This post is unavailable or private.' }, headers)
+
+  if (action === 'repost' && method === 'POST') {
+    if (context.post.user_id === viewerId || !context.post.allow_repost ||
+        !['image', 'video'].includes(context.post.media_type)) {
+      return jsonResponse(403, { error: 'This post cannot be reposted.' }, headers)
+    }
+    const { error } = await admin.from('post_reposts')
+      .upsert({ user_id: viewerId, post_id: postId }, { onConflict: 'user_id,post_id', ignoreDuplicates: true })
+    throwOnError(error)
+    return jsonResponse(200, { success: true }, headers)
+  }
+
+  if (action === 'repost-permission' && method === 'PATCH') {
+    if (context.post.user_id !== viewerId) return jsonResponse(403, { error: 'Only the post owner can change repost permission.' }, headers)
+    const body = await request.json()
+    if (typeof body?.allowRepost !== 'boolean') return jsonResponse(400, { error: 'Invalid repost permission.' }, headers)
+    const { error } = await admin.from('posts').update({ allow_repost: body.allowRepost }).eq('id', postId).eq('user_id', viewerId)
+    throwOnError(error)
+    return jsonResponse(200, { success: true, allow_repost: body.allowRepost }, headers)
+  }
 
   if (action === 'privacy' && method === 'PATCH') {
     if (context.post.user_id !== viewerId) return jsonResponse(403, { error: 'Only the post owner can change privacy.' }, headers)
@@ -1564,9 +2020,12 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
       : { data: [], error: null }
     throwOnError(usersError)
     const userById = new Map((users || []).map(user => [user.id, user]))
-    const blockedForComments = await getBlockedIds(viewerId)
+    const [blockedForComments, inactiveCommenters] = await Promise.all([
+      getBlockedIds(viewerId),
+      restrictedAccountIds(userIds)
+    ])
     return jsonResponse(200, {
-      comments: (comments || []).filter(comment => !blockedForComments.has(comment.user_id)).map(comment => {
+      comments: (comments || []).filter(comment => !blockedForComments.has(comment.user_id) && !inactiveCommenters.has(comment.user_id)).map(comment => {
         const user = userById.get(comment.user_id)
         return {
           id: comment.id,
@@ -1606,29 +2065,24 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
 }
 
 async function getMessageBlockReason(senderId: string, recipientId: string): Promise<string | null> {
-  const { data: recipient, error } = await admin.from('users')
-    .select('id,message_privacy')
-    .eq('id', recipientId)
-    .maybeSingle()
+  const [inactiveRecipients, { data: recipient, error }] = await Promise.all([
+    restrictedAccountIds([recipientId]),
+    admin.from('users').select('id,message_privacy').eq('id', recipientId).maybeSingle()
+  ])
+  if (inactiveRecipients.has(recipientId)) return 'Account not found'
   throwOnError(error)
   if (!recipient) return 'Account not found'
 
   if (recipient.message_privacy === 'nobody') return 'This person is not accepting messages.'
   if (recipient.message_privacy === 'friends') {
-    const { data: mutualFollow, error: followError } = await admin.from('follows')
-      .select('follower_id')
-      .eq('follower_id', senderId)
-      .eq('following_id', recipientId)
-      .eq('status', 'accepted')
-      .maybeSingle()
+    const [{ data: mutualFollow, error: followError }, { data: followsBack, error: followsBackError }] = await Promise.all([
+      admin.from('follows').select('follower_id').eq('follower_id', senderId)
+        .eq('following_id', recipientId).eq('status', 'accepted').maybeSingle(),
+      admin.from('follows').select('follower_id').eq('follower_id', recipientId)
+        .eq('following_id', senderId).eq('status', 'accepted').maybeSingle()
+    ])
     throwOnError(followError)
     if (!mutualFollow) return 'This person only accepts messages from friends.'
-    const { data: followsBack, error: followsBackError } = await admin.from('follows')
-      .select('follower_id')
-      .eq('follower_id', recipientId)
-      .eq('following_id', senderId)
-      .eq('status', 'accepted')
-      .maybeSingle()
     throwOnError(followsBackError)
     if (!followsBack) return 'This person only accepts messages from friends.'
   }
@@ -1657,6 +2111,54 @@ async function getConversationMembership(conversationId: string, viewerId: strin
   throwOnError(error)
   const members = data || []
   return members.some(member => member.user_id === viewerId) ? members : null
+}
+
+function scheduleMessagePush(conversationId: string, senderId: string) {
+  if (Deno.env.get('PUSH_NOTIFICATIONS_ENABLED') !== 'true') return
+  const task = (async () => {
+    let sender: ReturnType<typeof createFcmSender> | undefined
+    const result = await sendMessagePush({
+      conversationId,
+      senderId,
+      async getRecipients(id: string) {
+        const { data, error } = await admin.from('conversation_members')
+          .select('user_id').eq('conversation_id', id)
+        throwOnError(error)
+        return (data || []).map(member => member.user_id)
+      },
+      async getInstallations(ids: string[]) {
+        const { data, error } = await admin.from('push_devices')
+          .select('installation_id,user_id').in('user_id', ids)
+        throwOnError(error)
+        return (data || []).map(device => ({ installationId: device.installation_id, userId: device.user_id }))
+      },
+      async send(message: Parameters<ReturnType<typeof createFcmSender>['send']>[0]) {
+        if (!sender) {
+          const configuration = Deno.env.get('FIREBASE_SERVICE_ACCOUNT')
+          if (!configuration) throw new Error('Firebase push credentials are not configured.')
+          sender = createFcmSender({ serviceAccount: JSON.parse(configuration) })
+        }
+        return await sender.send(message)
+      },
+      async removeUnregistered(installationId: string) {
+        const { error } = await admin.from('push_devices').delete().eq('installation_id', installationId)
+        throwOnError(error)
+      },
+      onFailure(stage: string, error: unknown) {
+        console.error('Message push failure:', { stage, ...getErrorMetadata(error) })
+      }
+    })
+    if (result.failed || result.cleanupFailed) {
+      console.error('Message push delivery failed:', {
+        failed: result.failed, cleanupFailed: result.cleanupFailed
+      })
+    }
+  })().catch(error => console.error('Message push task failed:', getErrorMetadata(error), error))
+  try {
+    EdgeRuntime.waitUntil(task)
+  } catch (error) {
+    console.error('Could not schedule message push task:', getErrorMetadata(error), error)
+  }
 }
 
 async function handleMessages(request: Request, viewerId: string, headers: Record<string, string>) {
@@ -1698,9 +2200,12 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
     const peerIds = [...new Set((membersResult.data || [])
       .filter(member => member.user_id !== viewerId)
       .map(member => member.user_id))]
-    const peerResult = peerIds.length
-      ? await admin.from('users').select('id,username,display_name,avatar_url').in('id', peerIds)
-      : { data: [], error: null }
+    const [peerResult, inactivePeers] = await Promise.all([
+      peerIds.length
+        ? admin.from('users').select('id,username,display_name,avatar_url').in('id', peerIds)
+        : Promise.resolve({ data: [], error: null }),
+      restrictedAccountIds(peerIds)
+    ])
     throwOnError(peerResult.error)
 
     const clearedAtByConversation = new Map((memberships || []).map(member => [
@@ -1741,11 +2246,11 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
       const deletedAt = deletedByConversation.get(conversation.id)
       return !deletedAt || latestMessageByConversation.has(conversation.id)
     }).map(conversation => {
-      const peer = (membersByConversation.get(conversation.id) || [])
+      const peerMember = (membersByConversation.get(conversation.id) || [])
         .filter(member => member.user_id !== viewerId)
         .sort((a, b) => String(a.joined_at).localeCompare(String(b.joined_at)))
-        .map(member => usersById.get(member.user_id))
-        .find(Boolean)
+        .find(member => usersById.has(member.user_id))
+      const peer = peerMember && !inactivePeers.has(peerMember.user_id) ? usersById.get(peerMember.user_id) : undefined
       return {
         ...conversation,
         other_user_id: peer?.id || null,
@@ -1769,13 +2274,8 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
     const members = await getConversationMembership(conversationId, viewerId)
     if (!members) return jsonResponse(403, { error: 'Access denied to this conversation' }, headers)
     const body = await request.json().catch(() => ({}))
-    const extensions: Record<string, string> = {
-      'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
-      'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov',
-      'audio/webm': 'weba', 'audio/mp4': 'm4a', 'audio/ogg': 'ogg'
-    }
-    const extension = extensions[String(body?.content_type || '').split(';')[0].trim().toLowerCase()]
-    if (!extension) return jsonResponse(400, { error: 'Choose a supported image, video or voice file.' }, headers)
+    const extension = messageMediaExtensions[String(body?.content_type || '').split(';')[0].trim().toLowerCase()]
+    if (typeof extension !== 'string') return jsonResponse(400, { error: 'Choose a supported image, video or voice file.' }, headers)
     const path = `${viewerId}/messages/${conversationId}/${crypto.randomUUID()}.${extension}`
     const { data, error } = await admin.storage.from('uploads').createSignedUploadUrl(path)
     throwOnError(error)
@@ -1796,17 +2296,19 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
       .order('created_at', { ascending: true })
       .limit(500)
     if (viewerMembership.cleared_at) messageQuery = messageQuery.gt('created_at', viewerMembership.cleared_at)
-    const [{ data: messages, error }, { data: users, error: usersError }, { data: viewer, error: viewerError }] = await Promise.all([
+    const [{ data: messages, error }, { data: users, error: usersError }, { data: viewer, error: viewerError }, inactiveSenders] = await Promise.all([
       messageQuery,
       admin.from('users').select('id,username,display_name,avatar_url,read_receipts').in('id', senderIds),
-      admin.from('users').select('read_receipts').eq('id', viewerId).single()
+      admin.from('users').select('read_receipts').eq('id', viewerId).single(),
+      restrictedAccountIds(senderIds)
     ])
     throwOnError(error)
     throwOnError(usersError)
     throwOnError(viewerError)
     if (!viewer) throw new Error('The authenticated user profile is unavailable.')
 
-    const usersById = new Map((users || []).map(user => [user.id, user]))
+    const readReceiptsById = new Map((users || []).map(user => [user.id, user.read_receipts]))
+    const usersById = new Map((users || []).filter(user => !inactiveSenders.has(user.id)).map(user => [user.id, user]))
     const hiddenSenders = (viewerMembership.hidden_senders || {}) as Record<string, string>
     const visibleMessages = (messages || []).filter(message => {
       if (hiddenSenders[`msg:${message.id}`]) return false
@@ -1814,13 +2316,14 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
       return !hiddenAt || new Date(message.created_at).getTime() > new Date(hiddenAt).getTime()
     })
     const replyIds = [...new Set(visibleMessages.map(message => message.reply_to_id).filter(Boolean))]
-    const replyTargets = replyIds.length
-      ? (await admin.from('messages')
+    const replyResult = replyIds.length
+      ? await admin.from('messages')
         .select('id,sender_id,content,media_url,view_once')
         .eq('conversation_id', conversationId)
-        .in('id', replyIds)).data || []
-      : []
-    const replyById = new Map(replyTargets.map(target => [target.id, target]))
+        .in('id', replyIds)
+      : { data: [], error: null }
+    throwOnError(replyResult.error)
+    const replyById = new Map((replyResult.data || []).map(target => [target.id, target]))
     const messagesWithUsers = visibleMessages.map(message => {
       const sender = usersById.get(message.sender_id)
       const target = message.reply_to_id ? replyById.get(message.reply_to_id) : null
@@ -1830,7 +2333,7 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
       const wasRead = readers.some(readAtOrAfterMessage)
       const seen = message.sender_id === viewerId && viewer.read_receipts !== false
         && readers.some(member => readAtOrAfterMessage(member)
-          && usersById.get(member.user_id)?.read_receipts !== false)
+          && readReceiptsById.get(member.user_id) !== false)
       return {
         ...message,
         sender_username: sender?.username,
@@ -1869,12 +2372,15 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
     const [, conversationId] = messagesMatch
     const members = await getConversationMembership(conversationId, viewerId)
     if (!members) return jsonResponse(403, { error: 'Access denied to this conversation' }, headers)
-    const conversationResult = await admin.from('conversations')
-      .select('is_group')
-      .eq('id', conversationId)
-      .maybeSingle()
+    const [conversationResult, senderResult] = await Promise.all([
+      admin.from('conversations').select('is_group').eq('id', conversationId).maybeSingle(),
+      admin.from('users').select('username,display_name,avatar_url').eq('id', viewerId).single()
+    ])
     throwOnError(conversationResult.error)
     if (!conversationResult.data) return jsonResponse(404, { error: 'Conversation not found' }, headers)
+    throwOnError(senderResult.error)
+    const sender = senderResult.data
+    if (!sender) throw new Error('The sender profile is unavailable.')
 
     let content = ''
     let replyToId: string | null = null
@@ -1917,6 +2423,17 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
       if (blockReason) return jsonResponse(403, { error: blockReason }, headers)
     }
 
+    let reply_to = null
+    if (replyTarget) {
+      const [targetResult, inactiveTargets] = await Promise.all([
+        admin.from('users').select('id,username,display_name').eq('id', replyTarget.sender_id).maybeSingle(),
+        restrictedAccountIds([replyTarget.sender_id])
+      ])
+      throwOnError(targetResult.error)
+      const targetUser = inactiveTargets.has(replyTarget.sender_id) ? null : targetResult.data
+      reply_to = replyPreview(replyTarget, new Map(targetUser ? [[targetUser.id, targetUser]] : []))
+    }
+
     let mediaUrl: string | null = null
     let mediaPath: string | null = null
     if (directPath) {
@@ -1924,20 +2441,13 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
       mediaUrl = admin.storage.from('uploads').getPublicUrl(directPath).data.publicUrl
     }
     if (file) {
-      if (!allowedMediaTypes.has(file.type)) return jsonResponse(400, { error: 'Choose a supported image or video file.' }, headers)
+      const contentType = file.type.split(';')[0].trim().toLowerCase()
+      const extension = messageMediaExtensions[contentType]
+      if (typeof extension !== 'string') return jsonResponse(400, { error: 'Choose a supported image, video or voice file.' }, headers)
       if (file.size === 0 || file.size > 50 * 1024 * 1024) return jsonResponse(413, { error: 'Message media must be 50 MB or smaller.' }, headers)
-      const extensions: Record<string, string> = {
-        'image/jpeg': 'jpg',
-        'image/png': 'png',
-        'image/webp': 'webp',
-        'image/gif': 'gif',
-        'video/mp4': 'mp4',
-        'video/webm': 'webm',
-        'video/quicktime': 'mov'
-      }
-      mediaPath = `${viewerId}/messages/${conversationId}/${crypto.randomUUID()}.${extensions[file.type]}`
+      mediaPath = `${viewerId}/messages/${conversationId}/${crypto.randomUUID()}.${extension}`
       const { error: uploadError } = await admin.storage.from('uploads').upload(mediaPath, file, {
-        contentType: file.type,
+        contentType,
         upsert: false
       })
       throwOnError(uploadError)
@@ -1950,18 +2460,7 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
         .select('id,conversation_id,sender_id,content,media_url,created_at,view_once,viewed_at,reply_to_id')
         .single()
       throwOnError(error)
-      const { data: sender, error: senderError } = await admin.from('users')
-        .select('username,display_name,avatar_url')
-        .eq('id', viewerId)
-        .single()
-      throwOnError(senderError)
-      if (!sender) throw new Error('The sender profile is unavailable.')
-      let reply_to = null
-      if (replyTarget) {
-        const { data: targetUser } = await admin.from('users')
-          .select('id,username,display_name').eq('id', replyTarget.sender_id).maybeSingle()
-        reply_to = replyPreview(replyTarget, new Map(targetUser ? [[targetUser.id, targetUser]] : []))
-      }
+      scheduleMessagePush(conversationId, viewerId)
       return jsonResponse(201, {
         message: {
           ...inserted,
@@ -2022,6 +2521,7 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
       await admin.storage.from('view-once').remove([photoPath])
       throwOnError(insertError)
     }
+    scheduleMessagePush(conversationId, viewerId)
     const { data: sender, error: senderError } = await admin.from('users')
       .select('username,display_name,avatar_url').eq('id', viewerId).single()
     throwOnError(senderError)
@@ -2036,17 +2536,42 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
     const members = await getConversationMembership(conversationId, viewerId)
     const gone = () => jsonResponse(410, { error: 'This photo is no longer available.' }, headers)
     if (!members) return gone()
+    if (Deno.env.get('ACCOUNT_LIFECYCLE_ENABLED') === 'true') {
+      const { data: message, error } = await admin.from('messages')
+        .select('sender_id')
+        .eq('id', messageId)
+        .eq('conversation_id', conversationId)
+        .eq('view_once', true)
+        .maybeSingle()
+      throwOnError(error)
+      if (!message) return gone()
+      if ((await restrictedAccountIds([message.sender_id])).has(message.sender_id)) {
+        return jsonResponse(423, { error: 'This media is temporarily unavailable.', code: 'view_once_temporarily_unavailable' }, headers)
+      }
+    }
     // The update only matches while the photo is unopened, so only one request can claim it.
-    const { data: claimed, error: claimError } = await admin.from('messages')
-      .update({ viewed_at: new Date().toISOString() })
-      .eq('id', messageId)
-      .eq('conversation_id', conversationId)
-      .eq('view_once', true)
-      .is('viewed_at', null)
-      .neq('sender_id', viewerId)
-      .select('view_once_path')
-      .maybeSingle()
-    throwOnError(claimError)
+    let claimed
+    if (Deno.env.get('ACCOUNT_LIFECYCLE_ENABLED') === 'true') {
+      const { data, error } = await admin.rpc('claim_view_once_message', {
+        p_conversation_id: conversationId,
+        p_message_id: messageId,
+        p_viewer_id: viewerId
+      })
+      throwOnError(error)
+      claimed = Array.isArray(data) ? data[0] : null
+    } else {
+      const { data, error } = await admin.from('messages')
+        .update({ viewed_at: new Date().toISOString() })
+        .eq('id', messageId)
+        .eq('conversation_id', conversationId)
+        .eq('view_once', true)
+        .is('viewed_at', null)
+        .neq('sender_id', viewerId)
+        .select('view_once_path')
+        .maybeSingle()
+      throwOnError(error)
+      claimed = data
+    }
     if (!claimed?.view_once_path) return gone()
     const { data: blob, error: downloadError } = await admin.storage.from('view-once').download(claimed.view_once_path)
     if (downloadError || !blob) return gone()
@@ -2301,14 +2826,15 @@ async function handleLive(request: Request, viewerId: string | undefined, header
     if (!sessions?.length) return jsonResponse(200, { liveStreams: [] }, headers)
 
     const hostIds = [...new Set(sessions.map(session => session.host_id))]
-    const [usersResult, followingResult, followedByResult] = await Promise.all([
+    const [usersResult, followingResult, followedByResult, inactiveHosts] = await Promise.all([
       admin.from('users').select('id,username,display_name,avatar_url').in('id', hostIds),
       viewerId
         ? admin.from('follows').select('following_id').eq('follower_id', viewerId).eq('status', 'accepted').in('following_id', hostIds)
         : Promise.resolve({ data: [], error: null }),
       viewerId
         ? admin.from('follows').select('follower_id').eq('following_id', viewerId).eq('status', 'accepted').in('follower_id', hostIds)
-        : Promise.resolve({ data: [], error: null })
+        : Promise.resolve({ data: [], error: null }),
+      restrictedAccountIds(hostIds)
     ])
     throwOnError(usersResult.error)
     throwOnError(followingResult.error)
@@ -2323,7 +2849,7 @@ async function handleLive(request: Request, viewerId: string | undefined, header
     const selectedHostIds = [...new Set(sessions.filter(session => session.visibility === 'selected' && session.host_id !== viewerId).map(session => session.host_id))]
     const allowedSelectedSessions = await getLiveInvitedSessionIds(viewerId, selectedSessionIds)
     const selectedFriendHosts = await getLiveMutualFriendIds(viewerId, selectedHostIds)
-    const liveStreams = sessions.filter(session => !blockedForLive.has(session.host_id)
+    const liveStreams = sessions.filter(session => !blockedForLive.has(session.host_id) && !inactiveHosts.has(session.host_id)
       && (session.visibility === 'public'
         || session.host_id === viewerId
         || (session.visibility === 'friends' && friendIds.has(session.host_id))
@@ -2469,22 +2995,38 @@ async function handlePhoneLogin(request: Request, headers: Record<string, string
   if (!identifier || !password || identifier.length > 254) {
     return jsonResponse(400, { error: 'Enter your email, username or phone number and your password.' }, headers)
   }
+  const loginRateLimit = Deno.env.get('ACCOUNT_LIFECYCLE_ENABLED') === 'true' ? withinStrictRateLimit : withinRateLimit
+  const [addressAllowed, accountAllowed] = await Promise.all([
+    loginRateLimit(`login:ip:${await hashForKey(clientAddress(request))}`, 20, 600),
+    loginRateLimit(`login:id:${await hashForKey(identifier.toLowerCase())}`, 8, 600)
+  ])
+  if (!addressAllowed || !accountAllowed) return tooManyRequests(headers)
 
   let email: string | null = null
+  let expectedUserId: string | null = null
+  const lifecycleEnabled = Deno.env.get('ACCOUNT_LIFECYCLE_ENABLED') === 'true'
   if (identifier.includes('@')) {
     email = identifier.toLowerCase()
   } else {
     const phone = normalizeLoginPhone(identifier)
-    const byUsername = () => admin.from('users').select('email').ilike('username', identifier.replace(/[%_\\]/g, '\\$&')).limit(2)
+    const byUsername = () => admin.from('users').select('id,email').ilike('username', identifier.replace(/[%_\\]/g, '\\$&')).limit(2)
     let found = await byUsername()
     throwOnError(found.error)
     if (!found.data?.length && phone) {
-      found = await admin.from('users').select('email').in('phone', [phone, phone.slice(1)]).limit(2)
+      found = await admin.from('users').select('id,email').in('phone', [phone, phone.slice(1)]).limit(2)
       throwOnError(found.error)
     }
     const data = found.data
     if (!data || data.length !== 1) return invalid()
     email = data[0].email
+    if (lifecycleEnabled) {
+      expectedUserId = data[0].id
+      email = await currentLoginEmail(expectedUserId, async (userId: string) => {
+        const { data: result, error } = await admin.auth.admin.getUserById(userId)
+        throwOnError(error)
+        return result.user
+      })
+    }
   }
   if (!email) return invalid()
 
@@ -2500,6 +3042,31 @@ async function handlePhoneLogin(request: Request, headers: Record<string, string
     }
     return invalid()
   }
+  if (lifecycleEnabled) {
+    const signOut = async () => {
+      const { error } = await authClient.auth.signOut({ scope: 'local' })
+      throwOnError(error)
+    }
+    if (!await verifyLoginIdentity(signedIn, expectedUserId, signOut)) return invalid()
+    const result = await resolveAccountLogin({
+      signedIn,
+      async getState(userId: string) {
+        const { data: deletion, error: deletionError } = await admin.from('account_deletion_tombstones')
+          .select('user_id').eq('user_id', userId).maybeSingle()
+        throwOnError(deletionError)
+        if (deletion) return 'deleting'
+        const { data, error } = await admin.from('account_lifecycle').select('state').eq('user_id', userId).maybeSingle()
+        throwOnError(error)
+        return data?.state ?? null
+      },
+      signOut,
+      repository: createAccountLifecycleRepository(admin),
+      sendEmail: sendReactivationEmail
+    })
+    if (result.status === 'deleting') return jsonResponse(403, { error: 'This account is being permanently deleted.' }, headers)
+    if (result.status === 'deactivating') return jsonResponse(403, { error: 'Account deactivation is still being completed. Please try again later.' }, headers)
+    if (result.status === 'activation_sent') return jsonResponse(200, { activation_required: true }, headers)
+  }
   return jsonResponse(200, {
     session: { access_token: signedIn.session.access_token, refresh_token: signedIn.session.refresh_token }
   }, headers)
@@ -2514,6 +3081,7 @@ async function handlePhoneRegister(request: Request, headers: Record<string, str
   if (password.length < 6 || password.length > 72) {
     return jsonResponse(400, { error: 'Password must be between 6 and 72 characters.' }, headers)
   }
+  if (!await withinRateLimit(`register:ip:${await hashForKey(clientAddress(request))}`, 5, 3600)) return tooManyRequests(headers)
   const { data: taken, error: takenError } = await admin.from('users').select('id').in('phone', [phone, phone.slice(1)]).limit(1)
   throwOnError(takenError)
   if (taken?.length) return jsonResponse(409, { error: 'This phone number is already registered. Please log in.' }, headers)
@@ -2554,7 +3122,7 @@ async function handlePhoneRegister(request: Request, headers: Record<string, str
   }, headers)
 }
 
-Deno.serve(async request => {
+const handleApiRequest = async (request: Request): Promise<Response> => {
   const headers = corsHeaders(request.headers.get('Origin'))
   if (request.method === 'OPTIONS') return new Response('ok', { headers })
 
@@ -2571,6 +3139,181 @@ Deno.serve(async request => {
       && endpointSegments[1] === 'reconcile' && request.method === 'POST') {
       return await reconcileMediaReferences(request, headers)
     }
+    if (endpointSegments.length === 2 && endpointSegments[0] === 'media'
+      && endpointSegments[1] === 'public-preview' && request.method === 'GET') {
+      return await publicMediaPreview(request, headers)
+    }
+    if (endpointSegments.length === 2 && endpointSegments[0] === 'calls'
+      && endpointSegments[1] === 'participant-status' && request.method === 'POST') {
+      if (Deno.env.get('ACCOUNT_LIFECYCLE_ENABLED') !== 'true') {
+        return jsonResponse(503, { error: 'Call participant verification is not configured.' }, headers)
+      }
+      if (!await validControlSecret(Deno.env.get('CALL_LIFECYCLE_SECRET'), request.headers.get('X-Call-Lifecycle'), 'vynzo-call-lifecycle')) {
+        return jsonResponse(401, { error: 'Unauthorized.' }, headers)
+      }
+      let body
+      try {
+        body = await request.json()
+      } catch (error) {
+        if (error instanceof SyntaxError) return jsonResponse(400, { error: 'Invalid call participants.' }, headers)
+        throw error
+      }
+      const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      if (!Array.isArray(body?.userIds) || body.userIds.length < 1 || body.userIds.length > 8 ||
+          body.userIds.some((id: unknown) => typeof id !== 'string' || !uuid.test(id)) ||
+          new Set(body.userIds).size !== body.userIds.length) {
+        return jsonResponse(400, { error: 'Invalid call participants.' }, headers)
+      }
+      const inactiveIds = [...await inactiveAccountIds(admin, body.userIds)]
+      return jsonResponse(200, { inactiveIds }, { ...headers, 'Cache-Control': 'no-store' })
+    }
+    if (endpointSegments.length === 2 && endpointSegments[0] === 'calls'
+      && endpointSegments[1] === 'push' && request.method === 'POST') {
+      if (Deno.env.get('PUSH_NOTIFICATIONS_ENABLED') !== 'true') {
+        return jsonResponse(503, { error: 'Notifications are unavailable.' }, headers)
+      }
+      let sender: ReturnType<typeof createFcmSender> | undefined
+      const result = await handleCallPush({
+        request,
+        secret: Deno.env.get('CALL_PUSH_SECRET'),
+        async getInstallations(userId: string) {
+          const { data, error } = await admin.from('push_devices')
+            .select('installation_id').eq('user_id', userId)
+          throwOnError(error)
+          return (data || []).map(device => device.installation_id)
+        },
+        async send(message: Parameters<ReturnType<typeof createFcmSender>['send']>[0]) {
+          if (!sender) {
+            const configuration = Deno.env.get('FIREBASE_SERVICE_ACCOUNT')
+            if (!configuration) throw new Error('Firebase push credentials are not configured.')
+            sender = createFcmSender({ serviceAccount: JSON.parse(configuration) })
+          }
+          return await sender.send(message)
+        },
+        async removeUnregistered(installationId: string) {
+          const { error } = await admin.from('push_devices').delete().eq('installation_id', installationId)
+          throwOnError(error)
+        },
+        onFailure(stage: string, error: unknown) {
+          console.error('Call push failure:', { stage, ...getErrorMetadata(error) })
+        }
+      })
+      return jsonResponse(result.status, result, headers)
+    }
+    if (endpointSegments.length === 2 && endpointSegments[0] === 'auth'
+      && endpointSegments[1] === 'reactivate' && request.method === 'POST') {
+      if (Deno.env.get('ACCOUNT_LIFECYCLE_ENABLED') !== 'true') return jsonResponse(404, { error: 'Endpoint not found' }, headers)
+      if (!await withinStrictRateLimit(`reactivate:ip:${await hashForKey(clientAddress(request))}`, 15, 600)) return tooManyRequests(headers)
+      let body
+      try {
+        body = await request.json()
+      } catch (error) {
+        if (error instanceof SyntaxError) return jsonResponse(400, { error: 'Invalid activation request.' }, headers)
+        throw error
+      }
+      const activated = await redeemReactivation({ token: body?.token, repository: createAccountLifecycleRepository(admin) })
+      if (!activated) return jsonResponse(400, { error: 'This activation link is invalid or expired. Sign in again to request a new email.' }, headers)
+      return jsonResponse(200, { activated: true }, { ...headers, 'Cache-Control': 'no-store' })
+    }
+    if (endpointSegments.length === 3 && endpointSegments[0] === 'auth'
+      && endpointSegments[1] === 'delete-account' && endpointSegments[2] === 'request-code'
+      && request.method === 'POST') {
+      if (Deno.env.get('ACCOUNT_LIFECYCLE_ENABLED') !== 'true') return jsonResponse(404, { error: 'Endpoint not found' }, headers)
+      const account = await getAccountForDeletion(request)
+      if (!account) return jsonResponse(401, { error: 'Invalid or expired session.' }, headers)
+      const [ipAllowed, accountAllowed] = await Promise.all([
+        withinStrictRateLimit(`delete-account-request:ip:${await hashForKey(clientAddress(request))}`, 10, 600),
+        withinStrictRateLimit(`delete-account-request:user:${await hashForKey(account.user.id)}`, 3, 600)
+      ])
+      if (!ipAllowed || !accountAllowed) return tooManyRequests(headers)
+
+      let body
+      try {
+        body = await request.json()
+      } catch (error) {
+        if (error instanceof SyntaxError) return jsonResponse(400, { error: 'Invalid account deletion request.' }, headers)
+        throw error
+      }
+
+      const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
+      if (!anonKey) throw new Error('SUPABASE_ANON_KEY is not available in this Edge Function.')
+      const passwordClient = createClient(supabaseUrl!, anonKey, {
+        auth: { autoRefreshToken: false, persistSession: false }
+      })
+      const result = await requestAccountDeletion({
+        user: account.user,
+        password: typeof body?.password === 'string' ? body.password : '',
+        verifyPassword: async (email: string, password: string) => {
+          const { data, error } = await passwordClient.auth.signInWithPassword({ email, password })
+          if (error || !data.session) return null
+          const verifiedUser = data.user
+          const { error: signOutError } = await passwordClient.auth.signOut({ scope: 'local' })
+          throwOnError(signOutError)
+          return verifiedUser
+        },
+        repository: createAccountLifecycleRepository(admin),
+        sendEmail: sendAccountDeletionCode,
+        secret: serviceRoleKey!
+      })
+      if (result.status === 'verified_email_required') {
+        return jsonResponse(400, { error: 'Add and verify an email address before deleting your account.' }, headers)
+      }
+      if (result.status === 'password_required') {
+        return jsonResponse(400, { error: 'Enter your current password to delete your account.' }, headers)
+      }
+      if (result.status === 'invalid_password') {
+        return jsonResponse(403, { error: 'Your current password is incorrect.' }, headers)
+      }
+      if (result.status === 'account_unavailable') {
+        return jsonResponse(409, { error: 'This account is already unavailable.' }, headers)
+      }
+      return jsonResponse(200, { otp_sent: true }, { ...headers, 'Cache-Control': 'no-store' })
+    }
+    if (endpointSegments.length === 3 && endpointSegments[0] === 'auth'
+      && endpointSegments[1] === 'delete-account' && endpointSegments[2] === 'confirm'
+      && request.method === 'POST') {
+      if (Deno.env.get('ACCOUNT_LIFECYCLE_ENABLED') !== 'true') return jsonResponse(404, { error: 'Endpoint not found' }, headers)
+      const account = await getAccountForDeletion(request)
+      if (!account) return jsonResponse(401, { error: 'Invalid or expired session.' }, headers)
+      const [ipAllowed, accountAllowed] = await Promise.all([
+        withinStrictRateLimit(`delete-account-confirm:ip:${await hashForKey(clientAddress(request))}`, 30, 600),
+        withinStrictRateLimit(`delete-account-confirm:user:${await hashForKey(account.user.id)}`, 10, 600)
+      ])
+      if (!ipAllowed || !accountAllowed) return tooManyRequests(headers)
+
+      let body
+      try {
+        body = await request.json()
+      } catch (error) {
+        if (error instanceof SyntaxError) return jsonResponse(400, { error: 'Invalid account deletion code.' }, headers)
+        throw error
+      }
+      const result = await completeAccountDeletion({
+        userId: account.user.id,
+        code: typeof body?.code === 'string' ? body.code : '',
+        secret: serviceRoleKey!,
+        repository: createAccountLifecycleRepository(admin),
+        deleteMedia: userId => callMediaWorker('delete-account-media', { userId }),
+        deleteStorage: userId => deleteAccountStorage(admin.storage, userId),
+        async deleteProfile(userId) {
+          const { error } = await admin.from('users').delete().eq('id', userId)
+          throwOnError(error)
+        },
+        async deleteAuthUser(userId) {
+          const { error } = await admin.auth.admin.deleteUser(userId, false)
+          throwOnError(error)
+        }
+      })
+      if (result.status === 'invalid_code') {
+        return jsonResponse(400, { error: 'This code is invalid or expired. Request a new code and try again.' }, headers)
+      }
+      return jsonResponse(200, { deleted: true }, { ...headers, 'Cache-Control': 'no-store' })
+    }
+    if (endpointSegments.length === 2 && endpointSegments[0] === 'calls'
+      && endpointSegments[1] === 'session' && request.method === 'GET'
+      && Deno.env.get('ACCOUNT_LIFECYCLE_ENABLED') !== 'true') {
+      return jsonResponse(503, { error: 'Call session verification is not configured.' }, headers)
+    }
     const viewer = await getViewer(request)
     if (endpointSegments[0] === 'auth' && endpointSegments[1] === 'login' && request.method === 'POST') {
       return await handlePhoneLogin(request, headers)
@@ -2578,15 +3321,118 @@ Deno.serve(async request => {
     if (endpointSegments[0] === 'auth' && endpointSegments[1] === 'register' && request.method === 'POST') {
       return await handlePhoneRegister(request, headers)
     }
+    if (endpointSegments.length === 2 && endpointSegments[0] === 'auth'
+      && endpointSegments[1] === 'deactivate' && request.method === 'POST') {
+      if (Deno.env.get('ACCOUNT_LIFECYCLE_ENABLED') !== 'true'
+        || Deno.env.get('ACCOUNT_DEACTIVATION_ENABLED') !== 'true') {
+        return jsonResponse(404, { error: 'Endpoint not found' }, headers)
+      }
+      if (!viewer) return jsonResponse(401, { error: 'Invalid or expired session.' }, headers)
+      const [ipAllowed, accountAllowed] = await Promise.all([
+        withinStrictRateLimit(`deactivate:ip:${await hashForKey(clientAddress(request))}`, 5, 600),
+        withinStrictRateLimit(`deactivate:user:${await hashForKey(viewer.id)}`, 5, 600)
+      ])
+      if (!ipAllowed || !accountAllowed) return tooManyRequests(headers)
+
+      let body
+      try {
+        body = await request.json()
+      } catch (error) {
+        if (error instanceof SyntaxError) return jsonResponse(400, { error: 'Invalid account deactivation request.' }, headers)
+        throw error
+      }
+      const { data: accountData, error: accountError } = await admin.auth.admin.getUserById(viewer.id)
+      throwOnError(accountError)
+      if (!accountData.user) return jsonResponse(401, { error: 'Invalid or expired session.' }, headers)
+
+      const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
+      if (!anonKey) throw new Error('SUPABASE_ANON_KEY is not available in this Edge Function.')
+      const passwordClient = createClient(supabaseUrl!, anonKey, {
+        auth: { autoRefreshToken: false, persistSession: false }
+      })
+      const result = await deactivateAccount({
+        user: accountData.user,
+        password: typeof body?.password === 'string' ? body.password : '',
+        verifyPassword: async (email: string, password: string) => {
+          const { data, error } = await passwordClient.auth.signInWithPassword({ email, password })
+          if (error || !data.session) return null
+          const verifiedUser = data.user
+          const { error: signOutError } = await passwordClient.auth.signOut({ scope: 'local' })
+          throwOnError(signOutError)
+          return verifiedUser
+        },
+        repository: createAccountLifecycleRepository(admin),
+        async revokeSessions(userId: string) {
+          const { error: devicesError } = await admin.from('push_devices').delete().eq('user_id', userId)
+          throwOnError(devicesError)
+          const token = request.headers.get('Authorization')?.match(/^Bearer\s+(.+)$/i)?.[1]
+          if (!token) throw new Error('Authenticated session token is unavailable.')
+          const { error } = await admin.auth.admin.signOut(token, 'global')
+          throwOnError(error)
+        }
+      })
+      if (result.status === 'verified_email_required') {
+        return jsonResponse(400, { error: 'Add and verify an email address before deactivating your account.' }, headers)
+      }
+      if (result.status === 'password_required') {
+        return jsonResponse(400, { error: 'Enter your current password to deactivate your account.' }, headers)
+      }
+      if (result.status === 'invalid_password') {
+        return jsonResponse(403, { error: 'Your current password is incorrect.' }, headers)
+      }
+      if (result.status === 'account_unavailable') {
+        return jsonResponse(409, { error: 'This account is already unavailable.' }, headers)
+      }
+      return jsonResponse(200, { deactivated: true }, { ...headers, 'Cache-Control': 'no-store' })
+    }
     const isRead = request.method === 'GET' || request.method === 'HEAD'
     const suspensionExempt = (endpointSegments[0] === 'moderation' && endpointSegments[1] === 'report')
       || (endpointSegments[0] === 'blogs' && endpointSegments[2] === 'appeal')
+    if (viewer && !isRead && !await withinRateLimit(`write:${viewer.id}`, 120, 60)) return tooManyRequests(headers)
     if (viewer && !isRead && !suspensionExempt) {
       const suspended = await suspensionMessage(admin, viewer.id)
       if (suspended) return jsonResponse(403, { error: suspended, code: 'suspended' }, headers)
     }
     if (endpointSegments[0] === 'live') return await handleLive(request, viewer?.id, headers)
     if (!viewer) return jsonResponse(401, { error: 'Invalid or expired session.' }, headers)
+    if (endpointSegments.length === 2 && endpointSegments[0] === 'calls'
+      && endpointSegments[1] === 'session' && request.method === 'GET') {
+      return jsonResponse(200, { userId: viewer.id }, { ...headers, 'Cache-Control': 'no-store' })
+    }
+    if (endpointSegments.length === 2 && endpointSegments[0] === 'push'
+      && endpointSegments[1] === 'device' && ['POST', 'DELETE'].includes(request.method)) {
+      let body
+      try {
+        body = await request.json()
+      } catch (error) {
+        if (error instanceof SyntaxError) return jsonResponse(400, { error: 'Invalid notification device request.' }, headers)
+        throw error
+      }
+      if (request.method === 'POST') {
+        if (!validDeviceRegistration(body)) return jsonResponse(400, { error: 'Invalid notification device request.' }, headers)
+        const { data, error } = await admin.rpc('register_push_device', {
+          p_device_id: body.deviceId,
+          p_user_id: viewer.id,
+          p_installation_id: body.installationId,
+          p_device_secret_hash: await deviceSecretHash(body.deviceSecret)
+        })
+        if (error?.code === '23505') return jsonResponse(409, { error: 'Notification device is already registered.' }, headers)
+        throwOnError(error)
+        if (!data) return jsonResponse(403, { error: 'Notification device credentials are invalid.' }, headers)
+        return jsonResponse(200, { registered: true }, headers)
+      }
+      if (!validDeviceRemoval(body)) return jsonResponse(400, { error: 'Invalid notification device request.' }, headers)
+      const { error } = await admin.from('push_devices').delete()
+        .eq('device_id', body.deviceId)
+        .eq('user_id', viewer.id)
+        .eq('device_secret_hash', await deviceSecretHash(body.deviceSecret))
+      throwOnError(error)
+      return jsonResponse(200, { removed: true }, headers)
+    }
+    if (endpointSegments.length === 2 && endpointSegments[0] === 'calls'
+      && endpointSegments[1] === 'authorize-invite' && request.method === 'POST') {
+      return await authorizeCallInvite(request, viewer.id, headers)
+    }
     if (endpointSegments.length === 2 && endpointSegments[0] === 'media'
       && endpointSegments[1] === 'stage' && request.method === 'POST') {
       if (Deno.env.get('R2_UPLOADS_ENABLED') !== 'true') {
@@ -2605,7 +3451,7 @@ Deno.serve(async request => {
       try {
         const upload = await createUploadPermits({
           userId: viewer.id, kind: body?.kind, original: body?.original,
-          playback: body?.playback, secret
+          playback: body?.playback, cover: body?.cover, secret
         })
         return jsonResponse(200, { ...upload, workerUrl }, headers)
       } catch (error) {
@@ -2654,8 +3500,25 @@ Deno.serve(async request => {
       if (!item || (variant === 'original' && (item.user_id !== viewer.id || !parseR2MediaUrl(item.media_url)))) {
         return jsonResponse(404, { error: 'Media not found.' }, headers)
       }
-      const mediaUrl = await mediaPlaybackUrl(item.media_url, id, viewer.id, variant)
+      const mediaUrl = await mediaPlaybackUrl(item.media_url, id, viewer.id, variant, { kind, userId: item.user_id })
       return jsonResponse(200, { url: mediaUrl }, headers)
+    }
+    if (endpointSegments.length === 1 && endpointSegments[0] === 'activity' && request.method === 'GET') {
+      const client = createClient(supabaseUrl!, Deno.env.get('SUPABASE_ANON_KEY')!, {
+        auth: { autoRefreshToken: false, persistSession: false },
+        global: { headers: { Authorization: request.headers.get('Authorization')! } }
+      })
+      const { data, error } = await client.rpc('get_my_activity', { p_limit: 60 })
+      throwOnError(error)
+      if (!Array.isArray(data)) throw new Error('Invalid activity feed response.')
+      const inactiveActors = await restrictedAccountIds(data.map(item => item.actor_id).filter(Boolean))
+      const activity = await Promise.all(data.filter(item => !inactiveActors.has(item.actor_id)).map(async item => ({
+        ...item,
+        preview: item.preview && ['image', 'video', 'story'].includes(item.kind)
+          ? await mediaPlaybackUrl(item.preview, item.target_id, viewer.id, 'playback', { kind: item.kind === 'story' ? 'story' : 'post', userId: viewer.id })
+          : item.preview
+      })))
+      return jsonResponse(200, { activity }, headers)
     }
     if (endpointSegments[0] === 'blogs') return await handleBlogs(request, viewer.id, headers, admin)
     if (endpointSegments[0] === 'posts') return await handlePosts(request, viewer.id, headers)
@@ -2701,5 +3564,30 @@ Deno.serve(async request => {
       return jsonResponse(503, { error: 'Supabase Data API schema or permissions are not configured for this operation.' }, headers)
     }
     return jsonResponse(500, { error: 'Supabase could not complete the request.' }, headers)
+  }
+}
+
+Deno.serve(async request => {
+  const response = await handleApiRequest(request)
+  if (Deno.env.get('LEGACY_MEDIA_GATEWAY_ENABLED') !== 'true' ||
+      !response.headers.get('Content-Type')?.toLowerCase().includes('application/json') ||
+      !(await response.clone().text()).includes('/uploads/')) {
+    return response
+  }
+  try {
+    const viewer = await getViewer(request)
+    return await rewriteLegacyMediaResponse({
+      response,
+      request,
+      viewerId: viewer?.id,
+      enabled: true,
+      storageOrigin: new URL(supabaseUrl!).origin,
+      workerUrl: Deno.env.get('R2_MEDIA_WORKER_URL'),
+      secret: Deno.env.get('R2_DELIVERY_SECRET')
+    })
+  } catch (error) {
+    console.error('Legacy media response could not be secured:', error)
+    const headers = corsHeaders(request.headers.get('Origin'))
+    return jsonResponse(503, { error: 'Legacy media delivery is unavailable. Please try again later.' }, headers)
   }
 })

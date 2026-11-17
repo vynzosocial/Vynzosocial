@@ -1,5 +1,6 @@
 import { extractImagePaths } from "./blog-sanitize.ts";
 import { moderateContent, publicReasons } from "./blog-moderation.ts";
+import { privateBlogImages } from "./legacy-blog-media.mjs";
 
 const MAX_WAIT_MS = 30000, TICK_MS = 15000, RECHECK_MS = 10 * 60 * 1000;
 let running = false;
@@ -17,7 +18,9 @@ async function record(admin: any, article: any, mode: "waiting" | "published") {
   const result = await moderateContent({
     title: article.title,
     text: article.content_text,
-    images,
+    images: Deno.env.get("LEGACY_MEDIA_GATEWAY_ENABLED") === "true"
+      ? await privateBlogImages(admin, images, new URL(Deno.env.get("SUPABASE_URL")!).origin)
+      : images,
     hasEmbeds: article.has_embeds,
   });
   const flagged = result.categories.filter((x) => x.score >= 0.5).map((x) =>
@@ -155,6 +158,7 @@ async function tick(admin: any) {
 }
 export function startBlogAutoReview(admin: any) {
   const run = () => void tick(admin);
-  setInterval(run, TICK_MS);
+  const interval = setInterval(run, TICK_MS);
   run();
+  return interval;
 }

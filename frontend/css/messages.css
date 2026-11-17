@@ -235,8 +235,8 @@
   max-width: min(72%, 560px);
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 12px 16px;
+  gap: 8px;
+  padding: 6px 10px;
   border-radius: 18px;
   font-size: 14px;
   line-height: 1.55;
@@ -323,6 +323,7 @@
 }
 
 .shared-live-preview,
+.shared-blog-preview,
 .shared-media-preview {
   display: flex;
   min-width: 0;
@@ -343,7 +344,7 @@
 .shared-live-preview b { color: #ffb8d2; }
 .shared-live-avatar { display: grid; place-items: center; flex: 0 0 54px; width: 54px; height: 54px; overflow: hidden; border-radius: 50%; background: #8755b8; font-weight: 700; }
 .shared-live-avatar img { width: 100%; height: 100%; object-fit: cover; }
-.shared-media-preview { flex-direction: column; padding: 0; }
+.shared-blog-preview, .shared-media-preview { flex-direction: column; padding: 0; }
 .shared-media-frame { display: grid; position: relative; place-items: center; width: 100%; aspect-ratio: 4 / 3; background: #25202d; }
 .shared-media-frame img, .shared-media-frame video { width: 100%; height: 100%; object-fit: cover; }
 .shared-media-status { padding: 12px; }
@@ -356,6 +357,11 @@
 .message-delete-button,
 .message-edit-button,
 .message-reply-button {
+  display: inline-grid;
+  flex: 0 0 28px;
+  min-width: 28px;
+  min-height: 28px;
+  place-items: center;
   padding: 0 2px;
   border: 0;
   color: rgba(255, 255, 255, 0.72);
@@ -560,6 +566,12 @@
 .chat-input {
   min-width: 0;
   flex: 1;
+  box-sizing: border-box;
+  max-height: 120px;
+  overflow-y: auto;
+  resize: none;
+  font: inherit;
+  line-height: 1.4;
   padding: 11px 12px;
   border: 0;
   border-radius: 14px;
@@ -764,6 +776,27 @@
   color: inherit;
   font: inherit;
   cursor: pointer;
+}
+
+.sticker-create-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.sticker-file-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.sticker-create-button:has(.sticker-file-input:disabled) {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 .sticker-close {
@@ -1039,6 +1072,10 @@
 .sticker-message .sticker-media-link {
   display: block;
   max-width: 220px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
 }
 
 .sticker-message .message-media.sticker-media {
@@ -1058,17 +1095,44 @@
   object-fit: cover;
 }
 
+.photo-media-link {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.message-media.photo-thumb {
+  width: 110px;
+  height: 110px;
+  max-width: 110px;
+  max-height: 110px;
+  margin-bottom: 0;
+  object-fit: cover;
+}
+
+.shared-media-overlay img { max-height: 80vh; }
+
 .message-bubble:has(.message-media),
-.message-bubble:has(.voice-player) {
+.message-bubble:has(> .voice-player):has(> .message-content) {
   flex-wrap: wrap;
+}
+
+.message-bubble:has(> .voice-player) {
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
 }
 
 .voice-player {
   display: flex;
+  flex: 1 1 200px;
   align-items: center;
-  gap: 8px;
-  width: min(250px, 100%);
-  padding: 6px 10px;
+  gap: 6px;
+  min-width: 0;
+  width: min(200px, 100%);
+  padding: 4px 6px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.14);
   user-select: none;
@@ -1107,6 +1171,55 @@
   display: block;
   width: 200px;
   height: 36px;
+}
+
+.message-row[data-pending-id] {
+  opacity: 0.75;
+}
+
+.message-camera-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.85);
+}
+
+.message-camera-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  width: min(100%, 520px);
+  max-height: 100%;
+  overflow: auto;
+  padding: 16px;
+  border-radius: 16px;
+  background: #171322;
+  color: #fff;
+}
+
+.message-camera-panel video {
+  width: 100%;
+  min-height: 0;
+  max-height: 55dvh;
+  object-fit: contain;
+}
+
+.message-camera-panel button {
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid rgba(189, 130, 255, 0.5);
+  border-radius: 12px;
+  background: #332647;
+  color: #fff;
+  font: inherit;
+}
+
+.message-camera-panel button:disabled {
+  opacity: 0.5;
 }
 
 .attach-btn.recording {
@@ -1274,6 +1387,8 @@
 
   .message-bubble {
     max-width: 88%;
+    padding: 4px 8px;
+    gap: 4px;
   }
 
   .chat-input-form,

@@ -1,3 +1,5 @@
+import { createCameraSwitcher } from './camera-devices.js';
+
 const DURATIONS = [
   { value: 15, label: '15s' },
   { value: 30, label: '30s' },
@@ -19,8 +21,11 @@ export function openCamera(onCapture, options = {}) {
   let elapsed = 0;
   let limit = 15;
   const videoOnly = options.videoOnly === true;
+  const photoOnly = options.photoOnly === true;
   let mode = videoOnly ? 'video' : 'photo';
-  let facing = 'user';
+  let closed = false;
+  let streamGeneration = 0;
+  let cameraChoice = { facingMode: 'user' };
   let result = null;
 
   const overlay = document.createElement('div');
@@ -40,7 +45,7 @@ export function openCamera(onCapture, options = {}) {
       </div>
       <div class="camera-durations" hidden></div>
       <div class="camera-actions">
-        <button type="button" class="camera-flip">Flip</button>
+        <button type="button" class="camera-flip" aria-label="Switch camera">Switch camera</button>
         <button type="button" class="camera-shutter" aria-label="Capture"></button>
         <button type="button" class="camera-retake" hidden>Retake</button>
         <button type="button" class="camera-use" hidden>Use this</button>
@@ -57,6 +62,15 @@ export function openCamera(onCapture, options = {}) {
   const durationsBox = $('.camera-durations');
   const modesBox = $('.camera-modes');
   const flipButton = $('.camera-flip');
+  const cameraSwitcher = createCameraSwitcher({
+    getStream: () => stream,
+    onChanged: track => {
+      const settings = track.getSettings();
+      cameraChoice = settings.deviceId ? { deviceId: { exact: settings.deviceId } } : { facingMode: settings.facingMode || 'user' };
+      live.srcObject = stream;
+    },
+    onError: text => { message.textContent = text; }
+  });
 
   DURATIONS.forEach((option, index) => {
     const button = document.createElement('button');
@@ -77,20 +91,35 @@ export function openCamera(onCapture, options = {}) {
   }
 
   async function startStream() {
+    const generation = ++streamGeneration;
     stopStream();
+    shutter.disabled = true;
+    flipButton.disabled = true;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: facing },
+      const next = await navigator.mediaDevices.getUserMedia({
+        video: cameraChoice,
         audio: mode === 'video'
       });
+      if (closed || generation !== streamGeneration) {
+        next.getTracks().forEach(track => track.stop());
+        return;
+      }
+      stream = next;
       live.srcObject = stream;
       message.textContent = '';
     } catch (err) {
-      message.textContent = 'Could not access the camera or microphone. Allow permission in your browser, or in Settings > Apps > Vynzo > Permissions, then try again.';
+      if (!closed && generation === streamGeneration) message.textContent = 'Could not access the camera or microphone. Allow permission in your browser, or in Settings > Apps > Vynzo > Permissions, then try again.';
+    } finally {
+      if (!closed && generation === streamGeneration) {
+        shutter.disabled = !stream;
+        flipButton.disabled = !stream;
+      }
     }
   }
 
   function close() {
+    closed = true;
+    streamGeneration++;
     clearInterval(timer);
     if (recorder && recorder.state !== 'inactive') {
       recorder.onstop = null;
@@ -138,7 +167,7 @@ export function openCamera(onCapture, options = {}) {
     live.hidden = false;
     shutter.hidden = false;
     flipButton.hidden = false;
-    modesBox.hidden = videoOnly;
+    modesBox.hidden = videoOnly || photoOnly;
     durationsBox.hidden = mode !== 'video';
     $('.camera-retake').hidden = true;
     $('.camera-use').hidden = true;
@@ -215,8 +244,17 @@ export function openCamera(onCapture, options = {}) {
   });
 
   flipButton.addEventListener('click', async () => {
-    facing = facing === 'user' ? 'environment' : 'user';
-    await startStream();
+    flipButton.disabled = true;
+    shutter.disabled = true;
+    modesBox.querySelectorAll('button').forEach(button => { button.disabled = true; });
+    message.textContent = '';
+    try {
+      await cameraSwitcher.switchCamera();
+    } finally {
+      flipButton.disabled = false;
+      shutter.disabled = false;
+      modesBox.querySelectorAll('button').forEach(button => { button.disabled = false; });
+    }
   });
   $('.camera-retake').addEventListener('click', resetToLive);
   $('.camera-use').addEventListener('click', () => {
@@ -234,5 +272,6 @@ export function openCamera(onCapture, options = {}) {
     durationsBox.hidden = false;
     shutter.classList.add('video-mode');
   }
+  if (photoOnly) modesBox.hidden = true;
   startStream();
 }

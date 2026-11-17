@@ -28,8 +28,8 @@ svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width:
 .brand-mark { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: #262431; font-size: 25px; font-weight: 800; letter-spacing: -3px; padding-right: 3px; }
 .brand-mark span, .startup-mark > span { color: var(--accent); }
 .history { display: flex; gap: 2px; padding-left: 12px; border-left: 1px solid #ffffff15; }
-.history button, .menu-button { display: grid; place-content: center; width: 32px; height: 32px; border-radius: 6px; }
-.history button:hover:not(:disabled), .menu-button:hover { background: #ffffff10; }
+.history button { display: grid; place-content: center; width: 32px; height: 32px; border-radius: 6px; }
+.history button:hover:not(:disabled) { background: #ffffff10; }
 .history svg { width: 17px; height: 17px; }
 .section-title { color: #a7adbd; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .update-button { margin-left: auto; padding: 7px 12px; border: 1px solid #f0cb7850; border-radius: 6px; background: #f0cb7818; color: var(--accent); font-size: 12px; white-space: nowrap; }
@@ -41,7 +41,6 @@ svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width:
 #connection-dot { width: 6px; height: 6px; border-radius: 50%; background: #e4bf70; }
 body[data-connection="ready"] #connection-dot { background: #79b99d; }
 body[data-connection="offline"] #connection-dot { background: #dc8989; }
-.menu-button { margin-right: 8px; }
 .navigation-rail { position: fixed; top: 52px; bottom: 0; left: 0; width: 88px; padding: 12px 8px 10px; display: flex; flex-direction: column; border-right: 1px solid #ffffff0d; user-select: none; }
 .primary-sections, .rail-footer { display: flex; flex-direction: column; gap: 7px; }
 .navigation-rail button { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; min-height: 65px; width: 72px; border-radius: 9px; color: #a3aabb; }

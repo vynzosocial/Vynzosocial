@@ -1,6 +1,11 @@
 (function () { 'use strict';
   // English -> German
   var D = {
+    'Host with side guests': 'Gastgeber mit Gästen an den Seiten', 'Invite': 'Einladen', 'No viewers available to invite': 'Keine Zuschauer zum Einladen verfügbar',
+    'Grid': 'Raster', 'Focus': 'Fokus', 'Focus this participant': 'Diesen Teilnehmer hervorheben',
+    'Host only': 'Nur Gastgeber', 'Two people': 'Zwei Personen', 'Host and guests': 'Gastgeber und Gäste', 'Two above guests': 'Zwei über den Gästen',
+    'Show chat': 'Chat anzeigen', 'Hide chat': 'Chat ausblenden', 'Manage guests': 'Gäste verwalten',
+    'Requests': 'Anfragen', 'On stage': 'Auf der Bühne', 'Stage layout': 'Bühnenlayout', 'Live media controls': 'Live-Mediensteuerung',
     /* Navigation & shared */
     'Offer to save this login in my password manager': 'Anmeldedaten im Passwortmanager speichern lassen',
     'Your browser or phone decides whether to save it. Avoid saving on shared devices': 'Dein Browser oder Telefon entscheidet, ob die Daten gespeichert werden. Speichere sie nicht auf gemeinsam genutzten Geräten',

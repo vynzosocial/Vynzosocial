@@ -1,8 +1,10 @@
 ﻿import { apiRequest } from './api.js?v=sb6';
-import { createRealtimeSocket } from './realtime.js?v=sb9';
-import { initCalls } from './calls.js?v=sb5';
+import { createRealtimeSocket } from './realtime.js?v=sb15';
+import { initCalls } from './calls.js?v=audio3';
+import { enableNativePush, hasNativePush } from './native-push.mjs';
 
 const ASKED_KEY = 'vynzo_notify_prompt_dismissed';
+const ANDROID_ASKED_KEY = 'vynzo_android_notify_prompt_dismissed';
 const lastSeen = new Map();
 let unread = 0;
 let baseTitle = '';
@@ -103,8 +105,9 @@ async function checkConversation(conversationId, me) {
 }
 
 function offerPermission() {
-  if (!('Notification' in window) || Notification.permission !== 'default') return;
-  if (localStorage.getItem(ASKED_KEY)) return;
+  if (!hasNativePush && (!('Notification' in window) || Notification.permission !== 'default')) return;
+  const promptKey = hasNativePush ? ANDROID_ASKED_KEY : ASKED_KEY;
+  if (localStorage.getItem(promptKey)) return;
   const bar = document.createElement('div');
   bar.style.cssText = 'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:10001;display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:999px;background:rgba(20,20,28,.96);color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.4);font-size:14px;max-width:calc(100vw - 24px)';
   const label = document.createElement('span');
@@ -116,11 +119,19 @@ function offerPermission() {
   later.type = 'button';
   later.textContent = 'Not now';
   [enable, later].forEach(button => { button.style.cssText = 'padding:6px 12px;border-radius:999px;border:0;font:inherit;cursor:pointer'; });
-  enable.addEventListener('click', () => {
-    Notification.requestPermission().finally(() => bar.remove());
+  enable.addEventListener('click', async () => {
+    try {
+      if (hasNativePush) await enableNativePush();
+      else await Notification.requestPermission();
+      localStorage.setItem(promptKey, '1');
+      bar.remove();
+    } catch (error) {
+      console.error('Could not enable notifications:', error);
+      label.textContent = 'Could not enable notifications. Check Android notification settings.';
+    }
   });
   later.addEventListener('click', () => {
-    localStorage.setItem(ASKED_KEY, '1');
+    localStorage.setItem(promptKey, '1');
     bar.remove();
   });
   bar.append(label, enable, later);

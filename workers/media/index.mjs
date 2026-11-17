@@ -1,3 +1,6 @@
+import { deleteAccountMedia } from './account-cleanup.mjs';
+import { parseRange } from '../shared/byte-range.mjs';
+
 const MAX_BYTES = 50 * 1024 * 1024;
 const MAX_PERMIT_SECONDS = 15 * 60;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -21,9 +24,10 @@ async function verifyPermit(token, secret, now) {
     const claims = JSON.parse(new TextDecoder().decode(decodeBase64Url(parts[0])));
     if (!UUID.test(claims.userId) || !UUID.test(claims.uploadId) ||
         !['post', 'story'].includes(claims.kind) ||
-        !['original', 'playback'].includes(claims.variant) ||
+        !['original', 'playback', 'cover'].includes(claims.variant) ||
         !TYPES.has(claims.contentType) ||
         (claims.variant === 'playback' && claims.contentType !== 'video/mp4') ||
+        (claims.variant === 'cover' && (!['image/jpeg', 'image/webp'].includes(claims.contentType) || claims.size > 2 * 1024 * 1024)) ||
         !Number.isSafeInteger(claims.size) || claims.size <= 0 || claims.size > MAX_BYTES ||
         !Number.isSafeInteger(claims.expires) || claims.expires <= now || claims.expires > now + MAX_PERMIT_SECONDS) return null;
     return claims;
@@ -33,7 +37,7 @@ async function verifyPermit(token, secret, now) {
 }
 
 function cors(origin) {
-  const headers = { 'Vary': 'Origin', 'Access-Control-Allow-Methods': 'GET, HEAD, PUT, OPTIONS', 'Access-Control-Allow-Headers': 'content-type, x-upload-permit, range' };
+  const headers = { 'Vary': 'Origin', 'Access-Control-Allow-Methods': 'GET, HEAD, PUT, OPTIONS', 'Access-Control-Allow-Headers': 'content-type, x-upload-permit, range', 'Referrer-Policy': 'no-referrer' };
   if (ORIGINS.has(origin)) headers['Access-Control-Allow-Origin'] = origin;
   return headers;
 }
@@ -46,32 +50,31 @@ async function verifyDelivery(token, secret, now) {
     const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
     if (!await crypto.subtle.verify('HMAC', key, decodeBase64Url(parts[1]), encoder.encode(parts[0]))) return null;
     const claims = JSON.parse(new TextDecoder().decode(decodeBase64Url(parts[0])));
-    if (![claims.viewerId, claims.itemId, claims.userId, claims.uploadId].every(value => UUID.test(value)) ||
-        !['post', 'story'].includes(claims.kind) || !['original', 'playback'].includes(claims.variant) ||
-        !Number.isSafeInteger(claims.expires) || claims.expires <= now || claims.expires > now + 60 * 60) return null;
+    const validIds = [claims.viewerId, claims.itemId, claims.userId, claims.uploadId].every(value => UUID.test(value));
+    const legacyPost = claims.storage === 'legacy' && ['post', 'story'].includes(claims.kind) &&
+      ['original', 'playback'].includes(claims.variant) && claims.uploadId === claims.itemId &&
+      claims.variant === 'playback';
+    const legacyFile = claims.storage === 'legacy-file' && claims.kind === 'file' &&
+      claims.variant === 'playback' && ['avatar', 'blog', 'blog-upload', 'message'].includes(claims.scope) &&
+      typeof claims.path === 'string' && claims.path.length <= 1024 && !claims.path.startsWith('/') &&
+      !claims.path.includes('\\') && !claims.path.includes('\0') &&
+      claims.path.split('/').every(part => part && part !== '.' && part !== '..') &&
+      UUID.test(claims.resourceId) && claims.itemId === claims.resourceId &&
+      claims.uploadId === claims.userId &&
+      (claims.scope === 'avatar' && (!claims.path.includes('/') || claims.path.startsWith(`${claims.userId}/`)) ||
+        claims.scope === 'blog' && claims.path.startsWith(`blogs/${claims.userId}/`) ||
+      claims.scope === 'blog-upload' && claims.viewerId === claims.userId && claims.path.startsWith(`blogs/${claims.userId}/`) ||
+      claims.scope === 'message' && (claims.path.startsWith(`${claims.userId}/messages/`) ||
+        !claims.path.includes('/')));
+    const r2 = (claims.storage === undefined || claims.storage === '') &&
+      ['post', 'story'].includes(claims.kind) && ['original', 'playback'].includes(claims.variant);
+    if (!validIds || !(legacyPost || legacyFile || r2) ||
+        !Number.isSafeInteger(claims.expires) || claims.expires <= now ||
+        claims.expires > now + (legacyFile ? 5 * 60 : 60 * 60)) return null;
     return claims;
   } catch {
     return null;
   }
-}
-
-function parseRange(value, size) {
-  const match = /^bytes=(\d*)-(\d*)$/.exec(value);
-  if (!match || (!match[1] && !match[2]) || size <= 0) return null;
-  let start;
-  let end;
-  if (!match[1]) {
-    const suffix = Number(match[2]);
-    if (!Number.isSafeInteger(suffix) || suffix <= 0) return null;
-    start = Math.max(0, size - suffix);
-    end = size - 1;
-  } else {
-    start = Number(match[1]);
-    end = match[2] ? Number(match[2]) : size - 1;
-    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start >= size || end < start) return null;
-    end = Math.min(end, size - 1);
-  }
-  return { offset: start, length: end - start + 1 };
 }
 
 async function deliver(request, env, headers) {
@@ -87,11 +90,21 @@ async function deliver(request, env, headers) {
       'Authorization': `Bearer ${env.MEDIA_AUTH_KEY}`,
       'apikey': env.MEDIA_AUTH_KEY,
       'X-Media-Control': env.MEDIA_CONTROL_SECRET,
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      ...(claims.storage && request.headers.has('Range') ? { Range: request.headers.get('Range') } : {})
     },
     body: JSON.stringify(claims)
   });
   if (auth.status === 403 || auth.status === 404) return reply(403, 'Media is unavailable or private.', headers);
+  if (claims.storage === 'legacy' || claims.storage === 'legacy-file') {
+    if (![200, 206, 416].includes(auth.status)) return reply(503, 'Media authorization is temporarily unavailable.', headers);
+    const responseHeaders = new Headers({ ...headers, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' });
+    for (const name of ['Content-Type', 'Content-Length', 'Content-Range', 'Accept-Ranges']) {
+      const value = auth.headers.get(name);
+      if (value) responseHeaders.set(name, value);
+    }
+    return new Response(request.method === 'HEAD' || auth.status === 416 ? null : auth.body, { status: auth.status, headers: responseHeaders });
+  }
   if (!auth.ok) return reply(503, 'Media authorization is temporarily unavailable.', headers);
   const authorization = await auth.json();
   if (authorization.allowed !== true || !['original', 'playback'].includes(authorization.objectVariant)) {
@@ -155,7 +168,7 @@ export async function reconcileMedia(env, now = Date.now()) {
       if (now - object.uploaded.getTime() < 2 * 60 * 60 * 1000) continue;
       const parts = object.key.split('/');
       const ref = { kind: parts[1], userId: parts[2], uploadId: parts[3] };
-      if (parts.length !== 5 || !['original', 'playback'].includes(parts[4]) || !validObjectRef(ref)) continue;
+      if (parts.length !== 5 || !['original', 'playback', 'cover'].includes(parts[4]) || !validObjectRef(ref)) continue;
       refs.set(`${ref.kind}/${ref.userId}/${ref.uploadId}`, ref);
     }
     const items = [...refs.values()];
@@ -180,7 +193,7 @@ export async function reconcileMedia(env, now = Date.now()) {
         if (!validObjectRef(ref) || !allowed.has(`${ref.kind}/${ref.userId}/${ref.uploadId}`)) {
           throw new Error('Media reconciliation returned an invalid reference.');
         }
-        keys.push(objectPath('media', ref, 'original'), objectPath('media', ref, 'playback'));
+        keys.push(objectPath('media', ref, 'original'), objectPath('media', ref, 'playback'), objectPath('media', ref, 'cover'));
       }
       if (keys.length) await env.MEDIA.delete(keys);
     }
@@ -221,39 +234,63 @@ async function control(request, env, headers) {
   } catch {
     return reply(400, 'Invalid request.', headers);
   }
-  if (!validObjectRef(body)) return reply(400, 'Invalid media reference.', headers);
   const action = new URL(request.url).pathname;
+  if (action === '/internal/delete-account-media') {
+    if (typeof body?.userId !== 'string' || !UUID.test(body.userId)) {
+      return reply(400, 'Invalid account identifier.', headers);
+    }
+    await deleteAccountMedia(env.MEDIA, body.userId);
+    return Response.json({ deleted: true }, { headers: { ...headers, 'Cache-Control': 'no-store' } });
+  }
+  if (!validObjectRef(body)) return reply(400, 'Invalid media reference.', headers);
   if (action === '/internal/inspect') {
-    const objects = await Promise.all(['original', 'playback'].map(variant => env.MEDIA.head(objectPath('staging', body, variant))));
+    const objects = await Promise.all(['original', 'playback', 'cover'].map(variant => env.MEDIA.head(objectPath('staging', body, variant))));
     if (!objects[0]) return reply(404, 'Original upload not found.', headers);
     return Response.json({
       original: { size: objects[0].size, contentType: objects[0].httpMetadata?.contentType },
-      playback: objects[1] ? { size: objects[1].size, contentType: objects[1].httpMetadata?.contentType } : null
+      playback: objects[1] ? { size: objects[1].size, contentType: objects[1].httpMetadata?.contentType } : null,
+      cover: objects[2] ? { size: objects[2].size, contentType: objects[2].httpMetadata?.contentType } : null
     }, { headers: { ...headers, 'Cache-Control': 'no-store' } });
   }
   if (action === '/internal/read') {
-    if (!['staging', 'media'].includes(body.prefix) || !['original', 'playback'].includes(body.variant)) {
+    if (!['staging', 'media'].includes(body.prefix) || !['original', 'playback', 'cover'].includes(body.variant)) {
       return reply(400, 'Invalid media reference.', headers);
     }
-    const object = await env.MEDIA.get(objectPath(body.prefix, body, body.variant));
+    const path = objectPath(body.prefix, body, body.variant);
+    const rangeValue = request.headers.get('Range');
+    let range = null;
+    if (rangeValue) {
+      const metadata = await env.MEDIA.head(path);
+      if (!metadata) return reply(404, 'Media not found.', headers);
+      range = parseRange(rangeValue, metadata.size);
+      if (!range) return new Response(null, { status: 416, headers: { ...headers, 'Content-Range': `bytes */${metadata.size}`, 'Cache-Control': 'no-store' } });
+    }
+    const object = await env.MEDIA.get(path, range ? { range } : undefined);
     if (!object) return reply(404, 'Media not found.', headers);
     return new Response(object.body, {
+      status: range ? 206 : 200,
       headers: {
         ...headers,
         'Content-Type': object.httpMetadata?.contentType || 'application/octet-stream',
-        'Content-Length': String(object.size),
+        'Content-Length': String(range ? range.length : object.size),
+        'Accept-Ranges': 'bytes',
+        ...(range ? { 'Content-Range': `bytes ${range.offset}-${range.offset + range.length - 1}/${object.size}` } : {}),
         'Cache-Control': 'no-store'
       }
     });
   }
   if (action === '/internal/promote') {
-    if (!['image', 'video'].includes(body.mediaType)) return reply(400, 'Invalid media type.', headers);
+    if (!['image', 'video'].includes(body.mediaType) ||
+        (body.mediaType === 'video' && body.hasCover !== true)) return reply(400, 'Invalid media type or missing video cover.', headers);
     const variants = body.mediaType === 'video' ? ['original', 'playback'] : ['original'];
+    if (body.hasCover === true) variants.push('cover');
     const sources = await Promise.all(variants.map(variant => env.MEDIA.get(objectPath('staging', body, variant))));
     if (sources.some(object => !object)) return reply(404, 'Staged media is incomplete.', headers);
     const type = sources[0].httpMetadata?.contentType;
     if (!TYPES.has(type) || !type.startsWith(`${body.mediaType}/`) ||
         (body.mediaType === 'video' && sources[1].httpMetadata?.contentType !== 'video/mp4') ||
+        (variants.includes('cover') && (sources[variants.indexOf('cover')].httpMetadata?.contentType !==
+          (body.mediaType === 'video' ? 'image/webp' : 'image/jpeg') || sources[variants.indexOf('cover')].size > 2 * 1024 * 1024)) ||
         sources.some(object => object.size <= 0 || object.size > MAX_BYTES)) {
       return reply(400, 'Staged media is invalid.', headers);
     }
@@ -285,7 +322,7 @@ async function control(request, env, headers) {
   }
   if (action === '/internal/delete') {
     if (!['staging', 'media'].includes(body.prefix)) return reply(400, 'Invalid media reference.', headers);
-    await env.MEDIA.delete(['original', 'playback'].map(variant => objectPath(body.prefix, body, variant)));
+    await env.MEDIA.delete(['original', 'playback', 'cover'].map(variant => objectPath(body.prefix, body, variant)));
     return Response.json({ deleted: true }, { headers: { ...headers, 'Cache-Control': 'no-store' } });
   }
   return reply(404, 'Not found.', headers);
@@ -293,6 +330,7 @@ async function control(request, env, headers) {
 
 export default {
   scheduled(_controller, env, ctx) {
+    if (env.ACCOUNT_LIFECYCLE_PRESERVE_MEDIA === 'true') return;
     ctx.waitUntil(Promise.all([reconcileMedia(env), removeExpiredStaging(env)]));
   },
   async fetch(request, env) {

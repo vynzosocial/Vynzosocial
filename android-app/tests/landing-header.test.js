@@ -33,7 +33,7 @@ test('tablet stylesheet is included in every Android page, not the website pages
         const website = fs.readFileSync(path.join(frontend, name), 'utf8');
         const android = fs.readFileSync(path.join(appRoot, 'www', name), 'utf8');
         assert.doesNotMatch(website, /\/css\/tablet-app\.css/);
-        assert.match(android, /<link rel="stylesheet" href="\/css\/tablet-app\.css\?v=1">/);
+        assert.match(android, /<link rel="stylesheet" href="\/css\/tablet-app\.css\?v=2">/);
         assert.match(android, /<script src="\/ota-ready\.js"><\/script>/);
       }
     }

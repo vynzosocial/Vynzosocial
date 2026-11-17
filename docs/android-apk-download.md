@@ -32,6 +32,11 @@ existing installations in place.
 
 ## Releasing an update
 
+Install a full JDK 21 (including `javac` and `jlink`) and set `JAVA_HOME` to its
+installation directory. Gradle's daemon criteria are pinned to Java 21 and take
+precedence over `JAVA_HOME`; JDK auto-download URLs are intentionally omitted,
+so a matching local JDK is required.
+
 1. Review the native code and web assets to be included. Increment Android
    `versionCode` for a new APK and verify OTA compatibility. The standard
    `scripts/build-play-store-release.ps1` prepares web assets and overwrites
@@ -48,5 +53,16 @@ existing installations in place.
 
 Users may need to allow their browser to install apps from unknown sources.
 Web OTA updates do not replace a new APK when native code or permissions change.
-Version 1.1 contains the native keyboard inset fix. Users of the website's
-version 1.0 APK can install version 1.1 over it without uninstalling.
+Version 1.6 (version code 7) makes navigation 35% smaller on every page, reduces
+Settings card spacing and button sizes, and keeps Log out last in Settings.
+It retains the combined deactivation/deletion control, empty password fields,
+and native message and call notifications.
+Version 1.7 (version code 8) adds native installed-version reporting for Settings
+and includes the call initialization and welcome-video fixes. Version 1.6 and
+older cannot report their installed version through the OTA bridge; a web
+update alone cannot add this native capability.
+Mobile Settings displays only the installed version number, without platform,
+build, or web-update details.
+Users of previous website APKs can install version 1.7 over them
+without uninstalling because it uses the same signing key. The published
+download is `vynzo-android-1.7.apk`; previous downloads remain available.

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Reactivate your Vynzo account</title>
+  <link rel="icon" type="image/png" href="../assets/favicon-32.png">
+  <link rel="stylesheet" href="../css/variables.css">
+  <link rel="stylesheet" href="../css/reset.css">
+  <link rel="stylesheet" href="../css/auth-layout.css?v=3">
+  <link rel="stylesheet" href="../css/theme.css?v=3">
+  <style>
+    body { display: flex; justify-content: center; align-items: center; min-height: 100vh; background: var(--bg-dark); color: var(--text-dark); }
+    main { background: var(--card-dark); padding: 32px; border-radius: 12px; width: min(90%, 400px); border: 1px solid var(--border-color); }
+    h1 { font-size: 1.4rem; margin-bottom: 16px; }
+    p { margin-bottom: 16px; }
+    button { padding: 12px; background: var(--primary); color: white; border-radius: 6px; cursor: pointer; }
+    button[hidden] { display: none; }
+    a { color: var(--primary); }
+  </style>
+</head>
+<body class="dark-theme">
+  <main>
+    <h1>Reactivate your account</h1>
+    <p id="activation-status" role="status" aria-live="polite">Confirm to make your account visible again.</p>
+    <button id="activate-account" type="button" disabled>Reactivate account</button>
+    <p><a href="login.html">Return to login</a></p>
+  </main>
+  <script type="module" src="../js/reactivate-account.js?v=1"></script>
+</body>
+</html>

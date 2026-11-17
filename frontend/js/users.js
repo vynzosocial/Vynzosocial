@@ -1,5 +1,5 @@
-import { apiRequest } from './api.js?v=sb6';
-import { openPostViewer } from './feed.js?v=share5';
+﻿import { apiRequest } from './api.js?v=sb6';
+import { openPostViewer } from './feed.js?v=repost1';
 import { protectMedia } from './media-protect.js';
 import { openUserStories } from './stories.js?v=share5';
 import { refreshExpiredMedia } from './r2-uploads.js';
@@ -50,7 +50,7 @@ function initConnections() {
   const tabs = document.querySelectorAll('.people-tab');
   if (!list || !tabs.length) return;
 
-  let activeType = 'friends';
+  let activeType = 'following';
   let generation = 0;
   const load = async (type, refresh = false) => {
     activeType = type;
@@ -69,20 +69,20 @@ function initConnections() {
       const users = type === 'followers' ? data.users.filter(user => !user.is_following) : data.users;
       list.replaceChildren();
       if (!users.length) {
-        renderSearchMessage(list, type === 'friends'
-          ? 'No friends yet. Friends are people you follow who follow you back.'
+        renderSearchMessage(list, type === 'following'
+          ? 'You are not following anyone yet. Friends and people you follow will appear here.'
           : 'No followers waiting for a follow back.');
         return;
       }
-      liveFirst(users).forEach(user => list.appendChild(createAccountResult(user, true)));
+      liveFirst(users).forEach(user => list.appendChild(createAccountResult(user, true, () => load(activeType, true))));
     } catch (err) {
       console.error('Could not load connections:', err);
-      if (request === generation && !refresh) renderSearchMessage(list, err.message || 'Log in to see your friends and followers.');
+      if (request === generation && !refresh) renderSearchMessage(list, err.message || 'Log in to see your friends, following, and followers.');
     }
   };
 
   tabs.forEach(tab => tab.addEventListener('click', () => load(tab.dataset.type)));
-  load('friends');
+  load('following');
   window.setInterval(() => {
     if (!document.hidden && !list.contains(document.activeElement)) load(activeType, true);
   }, 30000);
@@ -137,7 +137,7 @@ function createLiveBadge(user) {
   return badge;
 }
 
-function createAccountResult(user, isConnection = false) {
+function createAccountResult(user, isConnection = false, onFollowChanged) {
   const row = document.createElement('article');
   row.className = `account-search-result${isConnection ? ' account-connection' : ''}`;
 
@@ -166,6 +166,14 @@ function createAccountResult(user, isConnection = false) {
   counts.className = 'account-search-counts';
   counts.textContent = `${user.friends_count ?? 0} friends · ${user.followers_count ?? 0} followers`;
   identity.append(nameRow, username, counts);
+  if (isConnection) {
+    const relationship = document.createElement('small');
+    relationship.className = 'account-search-relationship';
+    relationship.textContent = user.is_friend
+      ? 'Friend (you follow each other)'
+      : user.is_following ? "Following (doesn't follow you back)" : "Follows you (you don't follow back)";
+    identity.appendChild(relationship);
+  }
 
   const viewButton = document.createElement('button');
   viewButton.type = 'button';
@@ -187,6 +195,7 @@ function createAccountResult(user, isConnection = false) {
       user.follow_requested = result.follow_requested;
       user.is_friend = result.is_friend;
       updateFollowButton(button, user);
+      if (onFollowChanged) await onFollowChanged();
     } catch (err) {
       console.error('Could not update account follow:', err);
       alert(err.message || 'Could not update account. Please try again.');
@@ -543,6 +552,15 @@ function renderUserProfile(container, profile, posts) {
     bio.textContent = profile.bio;
     container.appendChild(bio);
   }
+  if (/^[A-Za-z0-9._]{1,30}$/.test(profile.instagram_username || '')) {
+    const instagram = document.createElement('a');
+    instagram.className = 'account-profile-instagram';
+    instagram.href = `https://www.instagram.com/${profile.instagram_username}/`;
+    instagram.target = '_blank';
+    instagram.rel = 'noopener noreferrer';
+    instagram.textContent = `📷 Instagram @${profile.instagram_username}`;
+    container.appendChild(instagram);
+  }
 
   const postsHeading = document.createElement('h3');
   postsHeading.className = 'account-profile-posts-heading';
@@ -570,14 +588,14 @@ function renderUserProfile(container, profile, posts) {
   grid.className = 'account-profile-post-grid';
   const viewerPosts = posts.map(post => ({
     ...post,
-    author_username: profile.username,
-    author_avatar_url: profile.avatar_url
+    author_username: post.author_username || profile.username,
+    author_avatar_url: post.is_repost ? post.author_avatar_url : profile.avatar_url
   }));
   viewerPosts.forEach(post => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'account-profile-post';
-    button.setAttribute('aria-label', `Open ${post.media_type} post by @${profile.username}`);
+    button.setAttribute('aria-label', `Open ${post.media_type} post by @${post.author_username}`);
     const media = document.createElement(post.media_type === 'video' ? 'video' : 'img');
     refreshExpiredMedia(media, post, 'post');
     media.src = /^https?:/i.test(post.media_url) ? post.media_url : `${MEDIA_BASE_URL}${post.media_url}`;
@@ -588,7 +606,7 @@ function renderUserProfile(container, profile, posts) {
       media.preload = 'metadata';
       media.addEventListener('loadedmetadata', () => {
         button.classList.remove('preview-unavailable');
-        button.setAttribute('aria-label', `Open video post by @${profile.username}`);
+        button.setAttribute('aria-label', `Open video post by @${post.author_username}`);
       });
       media.addEventListener('loadedmetadata', () => {
         if (media.duration > 0) {
@@ -597,13 +615,20 @@ function renderUserProfile(container, profile, posts) {
       }, { once: true });
       media.addEventListener('error', () => {
         button.classList.add('preview-unavailable');
-        button.setAttribute('aria-label', `Video preview unavailable. Open post by @${profile.username}`);
+        button.setAttribute('aria-label', `Video preview unavailable. Open post by @${post.author_username}`);
       }, { once: true });
     } else {
-      media.alt = `Post by @${profile.username}`;
+      media.alt = `Post by @${post.author_username}`;
     }
     button.appendChild(media);
     button.dataset.postId = post.id;
+    if (post.is_repost) {
+      button.dataset.repostId = post.id;
+      const badge = document.createElement('span');
+      badge.className = 'account-profile-repost-indicator';
+      badge.textContent = 'Repost';
+      button.appendChild(badge);
+    }
     if (post.is_protected) protectMedia(button);
     if (post.media_type === 'video') {
       const indicator = document.createElement('span');

@@ -53,7 +53,7 @@ test('older Android app does not silently store credentials in the WebView', asy
   assert.equal(calls.length, 0);
 });
 
-function loginHarness({ saveChecked = false, failLogin = false, failSave = false } = {}) {
+function loginHarness({ saveChecked = false, failLogin = false, failSave = false, activationRequired = false } = {}) {
   const elements = {};
   for (const id of ['use-saved-login', 'login-submit', 'login-continue', 'error-message', 'email', 'password', 'save-login']) elements[id] = { hidden: false, value: '', events: {}, addEventListener(name, callback) { this.events[name] = callback; } };
   elements.email.value = 'name';
@@ -65,10 +65,14 @@ function loginHarness({ saveChecked = false, failLogin = false, failSave = false
     loginForm: form, document: { getElementById: id => elements[id] },
     window: { location: { href: '' } },
     SUPABASE_URL: 'https://example.test', SUPABASE_PUBLISHABLE_KEY: 'public',
+    shareLoginDestination: () => '../index.html',
     fetch: async () => failLogin
       ? { ok: false, json: async () => ({ error: 'Bad credentials' }) }
-      : { ok: true, json: async () => ({ session: {} }) },
-    requireSupabase: () => ({ auth: { setSession: async () => ({ data: { session: {}, user: {} } }) } }),
+      : { ok: true, json: async () => activationRequired ? { activation_required: true } : { session: {} } },
+    requireSupabase: () => ({ auth: { setSession: async () => {
+      if (activationRequired) throw new Error('Must not create a session during activation.');
+      return { data: { session: {}, user: {} } };
+    } } }),
     syncLegacySession() {}, canSelectSavedLogin: () => true,
     selectSavedLogin: async () => ({ username: 'saved', password: 'saved-secret' }),
     offerToSaveLogin: async (...args) => { saved.push(args); if (failSave) throw Error('cancelled'); }
@@ -107,4 +111,12 @@ test('saved login fills the form without automatically signing in', async () => 
   assert.equal(result.elements.email.value, 'saved');
   assert.equal(result.elements.password.value, 'saved-secret');
   assert.equal(result.sandbox.window.location.href, '');
+});
+
+test('deactivated login asks the user to check email without creating a session', async () => {
+  const result = loginHarness({ saveChecked: true, activationRequired: true });
+  await result.form.events.submit({ preventDefault() {} });
+  assert.match(result.elements['error-message'].textContent, /check your email/i);
+  assert.equal(result.sandbox.window.location.href, '');
+  assert.equal(result.saved.length, 0);
 });

@@ -16,7 +16,7 @@ const chrome = [
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
 ].find(file => file && fs.existsSync(file));
 
-test('desktop report form opens on request and closes on cancel without changing mobile styling', { skip: !chrome }, () => {
+test('report form opens on request and closes on cancel on desktop and mobile', { skip: !chrome }, () => {
   assert.ok(handler, 'Profile report button handler is present');
   const html = `<!doctype html><meta name="viewport" content="width=device-width">
     <style>${css}</style><button id="report">Report profile</button><main></main>
@@ -36,7 +36,7 @@ test('desktop report form opens on request and closes on cancel without changing
   const url = `data:text/html;base64,${Buffer.from(html).toString('base64')}`;
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'vynzo-profile-test-'));
   try {
-    for (const [width, expected] of [[1200, 'none,grid,none'], [500, 'grid,grid,grid']]) {
+    for (const [width, expected] of [[1200, 'none,grid,none'], [500, 'none,grid,none']]) {
       const result = spawnSync(chrome, [
         '--headless', '--disable-gpu', '--no-first-run', `--user-data-dir=${profile}`,
         `--window-size=${width},900`, '--dump-dom', url

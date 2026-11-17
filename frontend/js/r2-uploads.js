@@ -1,7 +1,10 @@
 import { apiRequest } from './api.js?v=sb7';
 import { encodePlaybackVideo } from './video-encoder.js';
+import { createVideoCover } from './video-cover.js';
+import { createImageCover } from './image-cover.js';
 
 const MAX_BYTES = 50 * 1024 * 1024;
+const UPLOAD_FALLBACK_URL = 'https://www.vynzosocial.com/media-stage';
 const FILE_TYPES = new Set([
   'image/jpeg', 'image/png', 'image/webp', 'image/gif',
   'video/mp4', 'video/webm', 'video/quicktime'
@@ -11,12 +14,27 @@ async function putStagedFile(workerUrl, permit, file) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 240000);
   try {
-    const response = await fetch(new URL('/stage', workerUrl), {
+    const options = {
       method: 'PUT',
       headers: { 'Content-Type': file.type, 'X-Upload-Permit': permit },
       body: file,
       signal: controller.signal
-    });
+    };
+    let response;
+    try {
+      response = await fetch(new URL('/stage', workerUrl), options);
+    } catch (error) {
+      if (controller.signal.aborted || !(error instanceof TypeError)) throw error;
+      console.warn('Direct media upload failed; trying the Vynzo upload gateway.', error);
+      if (controller.signal.aborted) throw error;
+      try {
+        response = await fetch(UPLOAD_FALLBACK_URL, { ...options, body: file.slice(0, file.size, file.type) });
+      } catch (gatewayError) {
+        if (controller.signal.aborted || !(gatewayError instanceof TypeError)) throw gatewayError;
+        console.error('Media upload gateway failed:', gatewayError);
+        throw new Error('Could not reach the media upload service. Check your connection and try again.');
+      }
+    }
     if (!response.ok) {
       throw new Error(`R2 could not store the media (HTTP ${response.status}).`);
     }
@@ -28,25 +46,44 @@ async function putStagedFile(workerUrl, permit, file) {
   }
 }
 
-export async function uploadPublicMedia(file, { kind, caption = '', protected: isProtected = false, onProgress } = {}) {
+export async function uploadPublicMedia(file, { kind, caption = '', protected: isProtected = false, allowRepost = true, onProgress } = {}) {
   if (!(file instanceof File) || !FILE_TYPES.has(file.type) || !file.size || file.size > MAX_BYTES ||
       !['post', 'story'].includes(kind)) {
     throw new Error('Choose a supported image or video file up to 50 MB.');
   }
+  onProgress?.('Preparing selected media...');
+  try {
+    const bytes = await file.arrayBuffer();
+    if (bytes.byteLength !== file.size) throw new Error('Selected media read was incomplete.');
+    file = new File([bytes], file.name, { type: file.type, lastModified: file.lastModified });
+  } catch (error) {
+    console.error('Could not read the selected media:', error);
+    throw new Error('The app could not read this selection from Gallery. Try selecting it again or choose it from My Files.');
+  }
   let playback;
+  let cover;
   if (file.type.startsWith('video/')) {
     onProgress?.('Encoding video on this device...');
     ({ playback } = await encodePlaybackVideo(file, value => {
       onProgress?.(`Encoding video on this device: ${Math.floor(value * 100)}%`);
     }));
   }
+  try {
+    cover = playback ? await createVideoCover(playback) : await createImageCover(file);
+    if (cover.size > 2 * 1024 * 1024) throw new Error('Media preview exceeds the upload limit.');
+  } catch (error) {
+    if (playback) throw error;
+    console.warn('Could not generate media preview:', error);
+    onProgress?.('Media preview unavailable; a fallback sharing preview will be used.');
+    cover = null;
+  }
   const metadata = item => ({ contentType: item.type, size: item.size });
   const stage = await apiRequest('/media/stage', {
     method: 'POST',
-    body: JSON.stringify({ kind, original: metadata(file), playback: playback ? metadata(playback) : null })
+    body: JSON.stringify({ kind, original: metadata(file), playback: playback ? metadata(playback) : null, cover: cover ? metadata(cover) : null })
   });
   if (!stage?.workerUrl || !stage?.uploadId || !stage?.permits?.original ||
-      (playback && !stage.permits.playback)) {
+      (playback && !stage.permits.playback) || (cover && !stage.permits.cover)) {
     throw new Error('The media service returned an invalid upload permit.');
   }
   const workerUrl = new URL(stage.workerUrl);
@@ -57,6 +94,10 @@ export async function uploadPublicMedia(file, { kind, caption = '', protected: i
     if (playback) {
       onProgress?.('Uploading the optimized playback copy...');
       await putStagedFile(workerUrl, stage.permits.playback, playback);
+    }
+    if (cover) {
+      onProgress?.('Uploading video cover...');
+      await putStagedFile(workerUrl, stage.permits.cover, cover);
     }
   } catch (error) {
     try {
@@ -72,7 +113,7 @@ export async function uploadPublicMedia(file, { kind, caption = '', protected: i
     timeoutMs: 240000,
     body: JSON.stringify({
       kind, uploadId: stage.uploadId, mediaType: playback ? 'video' : 'image',
-      caption, protected: Boolean(isProtected)
+      caption, protected: Boolean(isProtected), allowRepost
     })
   });
 }
@@ -91,7 +132,7 @@ export async function downloadOriginal(kind, id) {
 }
 
 export function refreshExpiredMedia(element, item, kind) {
-  if (!item.has_original) return;
+  if (!item.has_original && !item.has_expiring_media_url) return;
   let refreshing = false;
   element.addEventListener('error', async () => {
     if (refreshing) return;

@@ -5,7 +5,7 @@ import { apiRequest } from './api.js?v=sb6';
 import { createOfflineSocket } from './config.js?v=sb4';
 
 const MAX_LIVE_GUESTS = 11;
-const LAYOUTS = ['auto', 'full', 'panel', 'fixed', 'sidebar', 'side', 'spotlight', 'round1', 'round2'];
+const LAYOUTS = ['full', 'two', 'four', 'six', 'host-left', 'top-two', 'host-overlay'];
 const CALL_RING_MS = 45000;
 const HOST_GRACE_MS = 30000;
 
@@ -14,6 +14,7 @@ const currentUser = () => {
   try { return JSON.parse(localStorage.getItem('vynzo_user') || '{}'); } catch { return {}; }
 };
 const displayName = user => user.display_name || user.username || 'Guest';
+const clientPlatform = () => globalThis.Capacitor?.isNativePlatform?.() ? 'app' : 'web';
 
 // Private channels are authorised by RLS, so the socket must carry the user's JWT before joining.
 async function ensureRealtimeAuth() {
@@ -22,11 +23,14 @@ async function ensureRealtimeAuth() {
   await supabase.realtime.setAuth(data.session.access_token);
 }
 
-function subscribe(channel) {
+function subscribe(channel, onStatus) {
   return new Promise((resolve, reject) => {
     let settled = false;
     channel.subscribe(status => {
-      if (settled) return;
+      if (settled) {
+        if (onStatus) onStatus(status);
+        return;
+      }
       if (status === 'SUBSCRIBED') { settled = true; resolve(channel); }
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
         settled = true;
@@ -45,8 +49,31 @@ const hub = {
   online: null,
   outbound: new Map(),
   calls: new Map(),
+  groupCallsReady: false,
+  groupCallsTrackDirty: false,
   starting: null
 };
+
+export async function setGroupCallsReady(ready) {
+  const value = Boolean(ready);
+  if (hub.groupCallsReady === value && !hub.groupCallsTrackDirty) return;
+  if (hub.groupCallsReady !== value) hub.groupCallsTrackDirty = true;
+  hub.groupCallsReady = value;
+  if (hub.online && hub.userId) {
+    const result = await hub.online.track({ user_id: hub.userId, at: Date.now(), group_calls: value });
+    if (result !== 'ok') throw new Error(`Could not update call presence: ${result}`);
+    if (hub.groupCallsReady === value) hub.groupCallsTrackDirty = false;
+  }
+}
+
+export function supportsGroupCalls(userId) {
+  const entries = hub.online?.presenceState()[userId] || [];
+  return hub.groupCallsReady && entries.some(entry => entry.group_calls === true);
+}
+
+export function coordinatorReady() {
+  return hub.groupCallsReady;
+}
 
 function dispatchAll(event, data) {
   hub.instances.forEach(instance => instance.dispatch(event, data));
@@ -99,7 +126,7 @@ function onUserSignal({ event, data, from, userId }) {
       if (!call || call.role !== 'caller') return;
       call.accepted = true;
       clearTimeout(call.timer);
-      dispatchAll('call_accepted', { callId: data.callId });
+      dispatchAll('call_accepted', { callId: data.callId, platform: data.platform });
       break;
     }
     case 'call_end':
@@ -127,9 +154,14 @@ async function startHub() {
     const online = supabase.channel('vynzo:online', { config: { presence: { key: user.id }, private: true } });
     await subscribe(inbox);
     await subscribe(online);
-    await online.track({ user_id: user.id, at: Date.now() });
+    const trackedGroupCalls = hub.groupCallsReady;
+    await online.track({ user_id: user.id, at: Date.now(), group_calls: trackedGroupCalls });
     hub.inbox = inbox;
     hub.online = online;
+    if (trackedGroupCalls !== hub.groupCallsReady) {
+      await online.track({ user_id: user.id, at: Date.now(), group_calls: hub.groupCallsReady });
+    }
+    hub.groupCallsTrackDirty = false;
     hub.outbound.set(user.id, Promise.resolve(inbox));
   })().catch(err => {
     hub.starting = null;
@@ -268,7 +300,7 @@ export function createRealtimeSocket(options = {}) {
       callId,
       conversationId,
       video: Boolean(video),
-      from: { id: me.id, username: me.username, display_name: me.display_name, avatar_url: me.avatar_url }
+      from: { id: me.id, username: me.username, display_name: me.display_name, avatar_url: me.avatar_url, platform: clientPlatform() }
     });
     ack({ ok: true, callId });
   };
@@ -278,7 +310,7 @@ export function createRealtimeSocket(options = {}) {
     if (!call || call.role !== 'callee' || call.accepted) return;
     call.accepted = true;
     clearTimeout(call.timer);
-    sendToUser(call.peerId, 'call_accept', { callId }).catch(() => {});
+    sendToUser(call.peerId, 'call_accept', { callId, platform: clientPlatform() }).catch(() => {});
     sendToUser(hub.userId, 'call_end', { callId, reason: 'answered_elsewhere' }).catch(() => {});
   };
 
@@ -307,6 +339,7 @@ export function createRealtimeSocket(options = {}) {
     }
     return null;
   };
+  const hostPlatform = () => room?.channel.presenceState()[hostSocketId()]?.[0]?.platform;
 
   const sendRoom = (event, data, to) => room?.channel.send({
     type: 'broadcast',
@@ -314,14 +347,25 @@ export function createRealtimeSocket(options = {}) {
     payload: { event, data, from: socket.id, to: to || null }
   });
 
-  const removeStageGuest = socketId => {
+  const stopGuestRequestRetry = () => {
+    if (!room) return;
+    clearInterval(room.guestRequestRetry);
+    room.guestRequestRetry = null;
+    room.guestRequestId = null;
+  };
+
+  const removeStageGuest = async socketId => {
     if (!room) return;
     room.invites.delete(socketId);
-    if (room.pending.delete(socketId)) sendRoom('live_guest_request_cancel', { socketId });
+    const sends = [];
+    if (room.pending.delete(socketId)) sends.push(sendRoom('live_guest_request_cancel', { socketId }));
     if (room.guests.delete(socketId)) {
-      sendRoom('live_guest_count', { count: room.guests.size, max: MAX_LIVE_GUESTS });
-      sendRoom('live_stage_guest_left', { socketId });
+      sends.push(sendRoom('live_guest_count', { count: room.guests.size, max: MAX_LIVE_GUESTS }));
+      sends.push(sendRoom('live_stage_guest_left', { socketId }));
+      dispatch('live_stage_guest_left', { socketId });
     }
+    const results = await Promise.all(sends);
+    if (results.some(result => result !== 'ok')) throw new Error('Unable to notify all viewers about the stage change.');
   };
 
   const reportViewerCount = () => {
@@ -333,17 +377,59 @@ export function createRealtimeSocket(options = {}) {
     }).catch(() => {});
   };
 
+  function resolveReplacementSignals() {
+    if (!room) return;
+    const activeRoom = room;
+    const userId = currentUser().id;
+    const state = activeRoom.channel.presenceState();
+    for (const [from, claimedUserId] of activeRoom.replacementSignals) {
+      const sender = state[from];
+      if (!sender) continue;
+      activeRoom.replacementSignals.delete(from);
+      if (userId && claimedUserId === userId && sender.some(meta => meta.userId === userId)) {
+        const leaving = leaveRoom({ notifyEnded: false });
+        dispatch('live_session_replaced');
+        leaving.catch(error => {
+          console.error('Unable to leave the livestream after switching devices:', error);
+        });
+        return;
+      }
+    }
+  }
+
   function onRoomSignal(payload) {
     if (!room || (payload.to && payload.to !== socket.id)) return;
-    const { event, data, from } = payload;
+    const { event, from } = payload;
+    let { data } = payload;
+    if (event === 'live_session_replaced') {
+      const userId = currentUser().id;
+      if (!userId || !from || from === socket.id || payload.to !== socket.id || data?.userId !== userId) return;
+      room.replacementSignals.set(from, data.userId);
+      resolveReplacementSignals();
+      return;
+    }
     if (event === 'cmd_guest_request') {
       if (!room.isHost) return;
       if (!from || data.socketId !== from || !room.channel.presenceState()[from]) return;
+      const guestUserId = room.channel.presenceState()[from]?.[0]?.userId;
+      if (guestUserId && (
+        [...room.guests.values()].some(guest => guest.userId === guestUserId)
+        || [...room.pending.entries()].some(([socketId, request]) => socketId !== from && request.userId === guestUserId)
+      )) {
+        sendRoom('live_guest_denied', { reason: 'This account is already joining the live as a guest on another device.' }, from);
+        return;
+      }
+      if (room.pending.has(from)) {
+        sendRoom('live_guest_request_received', { requestId: data.requestId }, from);
+        return;
+      }
       if (room.guests.size >= MAX_LIVE_GUESTS) {
         sendRoom('live_guest_denied', { reason: `The stage is full (${MAX_LIVE_GUESTS} guests maximum).` }, data.socketId);
         return;
       }
+      data = { ...data, userId: guestUserId, platform: room.channel.presenceState()[from]?.[0]?.platform };
       room.pending.set(data.socketId, data);
+      sendRoom('live_guest_request_received', { requestId: data.requestId }, from);
       if (data.acceptInvite && room.invites.delete(from)) {
         commands.live_guest_decision({ socketId: from, accept: true });
         return;
@@ -351,28 +437,66 @@ export function createRealtimeSocket(options = {}) {
       dispatch('live_guest_request', data);
       return;
     }
+    if (['live_guest_request_received', 'live_guest_approved', 'live_guest_denied'].includes(event)) {
+      if (room.isHost || from !== hostSocketId() || payload.to !== socket.id) return;
+      if (event === 'live_guest_request_received' && data?.requestId !== room.guestRequestId) return;
+      stopGuestRequestRetry();
+      if (event !== 'live_guest_request_received') dispatch(event, data);
+      return;
+    }
     if (event === 'live_host_invite') {
       if (room.isHost || from !== hostSocketId()) return;
       dispatch(event, data);
       return;
     }
+    if (event === 'live_remove_from_stage') {
+      if (room.isHost || from !== hostSocketId() || payload.to !== socket.id) return;
+      stopGuestRequestRetry();
+      dispatch(event, data);
+      return;
+    }
+    if (event === 'live_force_mute') {
+      if (room.isHost || from !== hostSocketId() || payload.to !== socket.id || data?.muted !== true) return;
+      dispatch(event, { muted: true });
+      return;
+    }
+    if (event === 'live_mute_state') {
+      if (!room.isHost || payload.to !== socket.id || !room.guests.has(from)
+        || data?.socketId !== from || typeof data?.muted !== 'boolean') return;
+      dispatch(event, { socketId: from, muted: data.muted });
+      return;
+    }
+    if (event === 'live_stage_guest_left') {
+      if (from !== hostSocketId()) return;
+      if (data?.socketId === socket.id) stopGuestRequestRetry();
+      dispatch(event, data);
+      return;
+    }
     if (event === 'live_camera_state') {
       if (!room.channel.presenceState()[from] || typeof data?.enabled !== 'boolean') return;
-      dispatch(event, { socketId: from, enabled: data.enabled });
+      dispatch(event, { socketId: from, enabled: data.enabled, image: data.enabled && data.image === true });
       return;
     }
     if (event === 'live_chat_message') {
       if (!room.channel.presenceState()[from]) return;
-      dispatch(event, { ...data, socketId: from });
+      dispatch(event, { ...data, socketId: from, platform: room.channel.presenceState()[from]?.[0]?.platform });
       return;
     }
     if (event === 'cmd_guest_leave') {
-      if (room.isHost) removeStageGuest(data.socketId);
+      if (room.isHost && from && data?.socketId === from) {
+        removeStageGuest(from).catch(error => console.error('Unable to remove the stage guest:', error));
+      }
       return;
     }
     if (event === 'live_chat_style') room.style = data;
-    if (event === 'live_layout') room.layout = data.layout;
+    if (event === 'live_layout') {
+      if (from !== hostSocketId() || !LAYOUTS.includes(data?.layout)) return;
+      room.layout = data.layout;
+      dispatch(event, { layout: data.layout, hostSocketId: from, hostPlatform: hostPlatform() });
+      return;
+    }
     if (event === 'live_stream_ended') {
+      stopGuestRequestRetry();
       dispatch(event, data);
       return;
     }
@@ -387,9 +511,12 @@ export function createRealtimeSocket(options = {}) {
     if (meta.joinOrder > room.joinOrder) {
       dispatch('viewer_joined', { socketId: key });
     }
-    if (!meta.isHost && (room.isHost || meta.joinOrder > room.joinOrder) && !room.announcedViewers.has(key)) {
+    const alreadyAnnouncedUser = meta.userId && room.announcedUsers.has(meta.userId);
+    if (!meta.isHost && (room.isHost || room.presenceReady)
+      && !room.announcedViewers.has(key) && !alreadyAnnouncedUser) {
       room.announcedViewers.add(key);
-      dispatch('live_member_joined', { name: meta.name, socketId: key });
+      if (meta.userId) room.announcedUsers.add(meta.userId);
+      dispatch('live_member_joined', { name: meta.name, socketId: key, platform: meta.platform });
     }
     if (meta.isHost && room.hostTimer) {
       clearTimeout(room.hostTimer);
@@ -397,7 +524,7 @@ export function createRealtimeSocket(options = {}) {
     }
     if (room.isHost) {
       if (room.style) sendRoom('live_chat_style', room.style, key);
-      sendRoom('live_layout', { layout: room.layout, hostSocketId: socket.id }, key);
+      sendRoom('live_layout', { layout: room.layout, hostSocketId: socket.id, hostPlatform: clientPlatform() }, key);
       room.guests.forEach(info => sendRoom('live_stage_guest_info', info, key));
       sendRoom('live_guest_count', { count: room.guests.size, max: MAX_LIVE_GUESTS }, key);
       reportViewerCount();
@@ -406,11 +533,19 @@ export function createRealtimeSocket(options = {}) {
 
   function onPresenceLeave(key, metas, currentPresences) {
     if (!room || key === socket.id) return;
-    if (!currentPresences.length) room.announcedViewers.delete(key);
+    if (!currentPresences.length) {
+      room.announcedViewers.delete(key);
+      metas.forEach(meta => {
+        if (meta.userId && !Object.entries(room.channel.presenceState()).some(([presentKey, presences]) =>
+          presentKey !== key && presences.some(presence => presence.userId === meta.userId))) {
+          room.announcedUsers.delete(meta.userId);
+        }
+      });
+    }
     dispatch('viewer_left', { socketId: key });
     dispatch('live_viewers_changed');
     if (room.isHost) {
-      removeStageGuest(key);
+      removeStageGuest(key).catch(error => console.error('Unable to remove the stage guest:', error));
       reportViewerCount();
     }
     const leftHost = metas.some(meta => meta.isHost);
@@ -423,10 +558,25 @@ export function createRealtimeSocket(options = {}) {
     }
   }
 
-  async function leaveRoom() {
+  function initializePresenceAnnouncements(next) {
+    if (room !== next || next.presenceReady) return;
+    if (!next.isHost) {
+      for (const [key, presences] of Object.entries(next.channel.presenceState())) {
+        if (key === socket.id) continue;
+        const meta = presences[presences.length - 1];
+        if (!meta || meta.isHost) continue;
+        next.announcedViewers.add(key);
+        if (meta.userId) next.announcedUsers.add(meta.userId);
+      }
+    }
+    next.presenceReady = true;
+  }
+
+  async function leaveRoom({ notifyEnded = true } = {}) {
     if (!room) return;
     const closing = room;
-    if (closing.isHost) await sendRoom('live_stream_ended', {})?.catch?.(() => {});
+    stopGuestRequestRetry();
+    if (notifyEnded && closing.isHost) await sendRoom('live_stream_ended', {})?.catch?.(() => {});
     clearTimeout(closing.hostTimer);
     clearInterval(closing.heartbeat);
     room = null;
@@ -437,7 +587,7 @@ export function createRealtimeSocket(options = {}) {
   commands.join_live_room = async (sessionId, ack) => {
     if (typeof sessionId !== 'string' || !sessionId) return ack({ ok: false, error: 'Invalid livestream.' });
     if (room && room.sessionId === sessionId) {
-      return ack({ ok: true, messages: [], layout: room.layout, hostSocketId: hostSocketId() });
+      return ack({ ok: true, messages: [], layout: room.layout, hostSocketId: hostSocketId(), hostPlatform: hostPlatform() });
     }
     await leaveRoom();
     await startHub();
@@ -462,12 +612,17 @@ export function createRealtimeSocket(options = {}) {
       channel,
       isHost,
       joinOrder,
-      layout: 'auto',
+      layout: 'full',
       style: null,
       pending: new Map(),
       guests: new Map(),
       invites: new Set(),
       announcedViewers: new Set(),
+      announcedUsers: new Set(),
+      presenceReady: false,
+      replacementSignals: new Map(),
+      guestRequestRetry: null,
+      guestRequestId: null,
       hostTimer: null,
       heartbeat: null
     };
@@ -476,33 +631,87 @@ export function createRealtimeSocket(options = {}) {
     channel.on('broadcast', { event: 'sig' }, ({ payload }) => onRoomSignal(payload));
     channel.on('presence', { event: 'join' }, ({ key, newPresences }) => onPresenceJoin(key, newPresences || []));
     channel.on('presence', { event: 'leave' }, ({ key, leftPresences, currentPresences }) => onPresenceLeave(key, leftPresences || [], currentPresences || []));
+    channel.on('presence', { event: 'sync' }, () => {
+      if (room !== next) return;
+      initializePresenceAnnouncements(next);
+      resolveReplacementSignals();
+    });
 
+    const presence = {
+      userId: me.id,
+      name: displayName(me),
+      avatar_url: me.avatar_url || null,
+      platform: clientPlatform(),
+      joinOrder,
+      isHost
+    };
+    let disconnected = false;
+    let connectionGeneration = 0;
     try {
       await ensureRealtimeAuth();
-      await subscribe(channel);
-      await channel.track({
-        userId: me.id,
-        name: displayName(me),
-        avatar_url: me.avatar_url || null,
-        joinOrder,
-        isHost
+      await subscribe(channel, status => {
+        if (room !== next) return;
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          connectionGeneration++;
+          if (!disconnected) {
+            disconnected = true;
+            dispatch('live_room_disconnected', { sessionId });
+          }
+        } else if (status === 'SUBSCRIBED' && disconnected) {
+          const generation = connectionGeneration;
+          channel.track(presence).then(result => {
+            if (result !== 'ok') throw new Error(`Realtime presence update failed: ${result}`);
+            if (room !== next || !disconnected || generation !== connectionGeneration) return;
+            disconnected = false;
+            dispatch('live_room_reconnected', { sessionId });
+            if (isHost) reportViewerCount();
+          }).catch(error => {
+            console.error('Unable to restore live presence:', error);
+            if (room === next && generation === connectionGeneration) {
+              dispatch('live_chat_error', { error: 'Unable to reconnect to this livestream. Please reload and try again.' });
+            }
+          });
+        }
       });
+      const tracked = await channel.track(presence);
+      if (tracked !== 'ok') throw new Error(`Realtime presence update failed: ${tracked}`);
     } catch (err) {
-      room = null;
+      if (room === next) room = null;
+      await supabase.removeChannel(channel);
       return ack({ ok: false, error: err.message || 'Unable to join this livestream.' });
     }
 
     // Give existing members a moment to appear in presence before answering.
     await new Promise(resolve => setTimeout(resolve, 700));
     if (room !== next) return ack({ ok: false, error: 'Left the livestream.' });
+    if (disconnected) {
+      await leaveRoom({ notifyEnded: false });
+      return ack({ ok: false, error: 'Live connection was interrupted. Please try again.' });
+    }
+    initializePresenceAnnouncements(next);
+
+    for (let attempt = 0; attempt < 10; attempt++) {
+      if (room !== next) return ack({ ok: false, error: 'Left the livestream.' });
+      const otherDevices = Object.entries(channel.presenceState())
+        .filter(([key, presences]) => key !== socket.id
+          && presences.some(presence => presence.userId === me.id));
+      if (!otherDevices.length) break;
+      const results = await Promise.all(otherDevices.map(([key]) =>
+        sendRoom('live_session_replaced', { userId: me.id }, key)));
+      if (results.some(result => result !== 'ok') || attempt === 9) {
+        await leaveRoom({ notifyEnded: false });
+        return ack({ ok: false, error: 'Could not disconnect your other device. Please close the live there and try again.' });
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
 
     if (isHost) {
       next.heartbeat = setInterval(reportViewerCount, 20000);
       reportViewerCount();
-      sendRoom('live_layout', { layout: next.layout, hostSocketId: socket.id });
+      sendRoom('live_layout', { layout: next.layout, hostSocketId: socket.id, hostPlatform: clientPlatform() });
     }
     dispatch('live_viewers_changed');
-    ack({ ok: true, messages: [], layout: next.layout, hostSocketId: hostSocketId() });
+    ack({ ok: true, messages: [], layout: next.layout, hostSocketId: hostSocketId(), hostPlatform: hostPlatform() });
   };
 
   commands.leave_live_room = async (sessionId, ack = () => {}) => {
@@ -515,11 +724,13 @@ export function createRealtimeSocket(options = {}) {
     const state = room.channel.presenceState();
     const seen = new Map();
     let total = 0;
-    Object.values(state).forEach(metas => {
+    Object.entries(state).forEach(([socketId, metas]) => {
       total += 1;
       const meta = metas[0];
       if (meta?.userId && !seen.has(meta.userId)) {
-        seen.set(meta.userId, { id: meta.userId, username: meta.name, display_name: meta.name, avatar_url: meta.avatar_url });
+        seen.set(meta.userId, { id: meta.userId, socketId, username: meta.name, display_name: meta.name, avatar_url: meta.avatar_url, platform: meta.platform });
+      } else if (meta?.userId && meta.platform === 'web' && seen.has(meta.userId)) {
+        seen.get(meta.userId).platform = 'web';
       }
     });
     ack({ ok: true, viewers: [...seen.values()], total });
@@ -553,9 +764,18 @@ export function createRealtimeSocket(options = {}) {
     sendRoom('live_chat_style', { backgroundColor, fontColor, fontSize });
   };
 
-  commands.live_set_layout = layout => {
-    if (!room || !room.isHost || !LAYOUTS.includes(layout)) return;
-    sendRoom('live_layout', { layout, hostSocketId: socket.id });
+  commands.live_set_layout = async (layout, ack) => {
+    if (!room || !room.isHost) return ack({ ok: false, error: 'Only the host can change the stage layout.' });
+    if (!LAYOUTS.includes(layout)) return ack({ ok: false, error: 'Invalid stage layout.' });
+    if (layout === 'full' && room.guests.size) {
+      return ack({ ok: false, error: 'The host-only layout is available when no guests are on stage.' });
+    }
+    const activeRoom = room;
+    const result = await sendRoom('live_layout', { layout, hostSocketId: socket.id, hostPlatform: clientPlatform() });
+    if (result !== 'ok' || room !== activeRoom) return ack({ ok: false, error: 'Unable to change the stage layout. Please try again.' });
+    room.layout = layout;
+    dispatch('live_layout', { layout, hostSocketId: socket.id, hostPlatform: clientPlatform() });
+    ack({ ok: true });
   };
 
   commands.live_guest_join = (options, ack) => {
@@ -565,7 +785,27 @@ export function createRealtimeSocket(options = {}) {
     const host = hostSocketId();
     if (!host) return ack({ ok: false, error: 'This livestream is no longer active.' });
     const me = currentUser();
-    sendRoom('cmd_guest_request', { socketId: socket.id, name: displayName(me), avatar_url: me.avatar_url || null, acceptInvite: options?.acceptInvite === true }, host);
+    const activeRoom = room;
+    const request = { socketId: socket.id, name: displayName(me), avatar_url: me.avatar_url || null, acceptInvite: options?.acceptInvite === true, requestId: uid() };
+    stopGuestRequestRetry();
+    activeRoom.guestRequestId = request.requestId;
+    let attempts = 0;
+    const sendRequest = () => {
+      if (room !== activeRoom) return;
+      if (++attempts > 30) {
+        stopGuestRequestRetry();
+        dispatch('live_guest_denied', { reason: 'Could not deliver your request to the host. Please try again.' });
+        return;
+      }
+      sendRoom('cmd_guest_request', request, hostSocketId() || host)
+        .then(result => {
+          if (result !== 'ok') console.error('Unable to deliver the guest request; retrying:', result);
+        })
+        .catch(error => console.error('Unable to deliver the guest request; retrying:', error));
+    };
+    // Broadcast can arrive before the host's presence state knows this connection.
+    activeRoom.guestRequestRetry = setInterval(sendRequest, 3000);
+    sendRequest();
     ack({ ok: true, approved: false });
   };
 
@@ -585,9 +825,9 @@ export function createRealtimeSocket(options = {}) {
     ack({ ok: true });
   };
 
-  commands.live_camera_state = async ({ enabled, targetSocketId } = {}) => {
+  commands.live_camera_state = async ({ enabled, image = false, targetSocketId } = {}) => {
     if (!room || typeof enabled !== 'boolean') return;
-    const result = await sendRoom('live_camera_state', { enabled }, targetSocketId);
+    const result = await sendRoom('live_camera_state', { enabled, image: enabled && image === true }, targetSocketId);
     if (result !== 'ok') throw new Error('Unable to notify viewers about the camera state.');
   };
 
@@ -600,31 +840,56 @@ export function createRealtimeSocket(options = {}) {
       sendRoom('live_guest_denied', { reason: 'The host declined your request.' }, socketId);
       return;
     }
+    if (request.userId && [...room.guests.values()].some(guest => guest.userId === request.userId)) {
+      sendRoom('live_guest_denied', { reason: 'This account is already joining the live as a guest on another device.' }, socketId);
+      return;
+    }
     if (room.guests.size >= MAX_LIVE_GUESTS) {
       sendRoom('live_guest_denied', { reason: `The stage is full (${MAX_LIVE_GUESTS} guests maximum).` }, socketId);
       return;
     }
-    const info = { socketId, name: request.name, avatar_url: request.avatar_url || null };
+    const info = { socketId, userId: request.userId, name: request.name, avatar_url: request.avatar_url || null, platform: request.platform };
     room.guests.set(socketId, info);
     sendRoom('live_guest_count', { count: room.guests.size, max: MAX_LIVE_GUESTS });
     sendRoom('live_guest_approved', {}, socketId);
     sendRoom('live_stage_guest_info', info);
     sendRoom('live_guest_joined', { socketId, name: request.name });
     dispatch('live_stage_guest', { socketId, name: request.name });
+    dispatch('live_stage_guest_info', info);
   };
 
-  commands.live_mute_guest = ({ socketId, muted } = {}) => {
-    if (!room || !room.isHost || !room.guests.has(socketId)) return;
-    sendRoom('live_force_mute', { muted: Boolean(muted) }, socketId);
-    dispatch('live_mute_state', { socketId, muted: Boolean(muted) });
+  commands.live_mute_guest = async ({ socketId, muted } = {}, ack) => {
+    if (!room || !room.isHost) return ack({ ok: false, error: 'Only the host can mute a guest.' });
+    if (!socketId || !room.guests.has(socketId)) return ack({ ok: false, error: 'This guest is no longer on stage.' });
+    if (muted !== true) return ack({ ok: false, error: 'Only the guest can unmute their microphone.' });
+    const result = await sendRoom('live_force_mute', { muted: true }, socketId);
+    if (result !== 'ok') return ack({ ok: false, error: 'Could not mute the guest. Please try again.' });
+    ack({ ok: true });
   };
 
-  commands.live_self_mute = ({ muted } = {}) => {
+  commands.live_remove_guest = async ({ socketId } = {}, ack) => {
+    if (!room || !room.isHost) return ack({ ok: false, error: 'Only the host can remove a guest.' });
+    if (!socketId || !room.guests.has(socketId)) return ack({ ok: false, error: 'This guest is no longer on stage.' });
+    const activeRoom = room;
+    const result = await sendRoom('live_remove_from_stage', {}, socketId);
+    if (result !== 'ok') return ack({ ok: false, error: 'Could not remove the guest. Please try again.' });
+    if (room !== activeRoom) return ack({ ok: false, error: 'The live session has changed.' });
+    await removeStageGuest(socketId);
+    ack({ ok: true });
+  };
+
+  commands.live_self_mute = async ({ muted } = {}, ack) => {
     const host = hostSocketId();
-    if (room && host) sendRoom('live_mute_state', { socketId: socket.id, muted: Boolean(muted) }, host);
+    if (!room || room.isHost || !host || typeof muted !== 'boolean') {
+      return ack({ ok: false, error: 'Could not notify the host about your microphone.' });
+    }
+    const result = await sendRoom('live_mute_state', { socketId: socket.id, muted }, host);
+    if (result !== 'ok') return ack({ ok: false, error: 'Could not notify the host about your microphone.' });
+    ack({ ok: true });
   };
 
   commands.live_guest_leave = () => {
+    stopGuestRequestRetry();
     const host = hostSocketId();
     if (room && host && !room.isHost) sendRoom('cmd_guest_leave', { socketId: socket.id }, host);
   };

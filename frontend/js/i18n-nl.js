@@ -1,6 +1,11 @@
 (function () { 'use strict';
   // English -> Dutch
   var D = {
+    'Host with side guests': 'Host met gasten aan de zijkanten', 'Invite': 'Uitnodigen', 'No viewers available to invite': 'Geen kijkers beschikbaar om uit te nodigen',
+    'Grid': 'Raster', 'Focus': 'Focus', 'Focus this participant': 'Deze deelnemer uitlichten',
+    'Host only': 'Alleen host', 'Two people': 'Twee personen', 'Host and guests': 'Host en gasten', 'Two above guests': 'Twee boven gasten',
+    'Show chat': 'Chat tonen', 'Hide chat': 'Chat verbergen', 'Manage guests': 'Gasten beheren',
+    'Requests': 'Verzoeken', 'On stage': 'Op het podium', 'Stage layout': 'Podiumindeling', 'Live media controls': 'Live mediabediening',
     /* Navigation & shared */
     'Offer to save this login in my password manager': 'Aanbieden om deze inloggegevens in mijn wachtwoordmanager op te slaan',
     'Your browser or phone decides whether to save it. Avoid saving on shared devices': 'Je browser of telefoon bepaalt of de gegevens worden opgeslagen. Sla ze niet op gedeelde apparaten op',

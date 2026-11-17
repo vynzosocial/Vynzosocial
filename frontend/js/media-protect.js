@@ -1,3 +1,5 @@
+import { setScreenGuard } from './screen-guard.js';
+
 // Best-effort protection: blocks save/drag/context menu in the page and, in the
 // Android app, blocks screenshots while protected media is visible.
 let watching = false;
@@ -30,7 +32,7 @@ function startWatching() {
     });
     if (visible !== secure) {
       secure = visible;
-      window.Capacitor?.Plugins?.ScreenGuard?.setSecure({ enabled: visible }).catch(() => {});
+      setScreenGuard('protected-media', visible).catch(error => console.error('Could not update media screen protection:', error));
     }
   };
   setInterval(update, 500);

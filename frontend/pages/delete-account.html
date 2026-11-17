@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="referrer" content="no-referrer">
+    <link rel="icon" type="image/png" href="../assets/favicon-32.png">
+    <title>Vynzo — Delete account</title>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/reset.css">
+    <link rel="stylesheet" href="../css/layout.css?v=20261031-prof">
+    <link rel="stylesheet" href="../css/settings.css?v=deactivation3">
+    <link rel="stylesheet" href="../css/delete-account.css?v=1">
+    <link rel="stylesheet" href="../css/responsive.css">
+    <link rel="stylesheet" href="../css/mobile.css?v=2">
+    <link rel="stylesheet" href="../css/sidebar-glow.css?v=compact4">
+    <link rel="stylesheet" href="../css/theme.css?v=3">
+    <script src="../js/theme.js?v=1"></script>
+</head>
+<body class="dark-theme">
+    <div id="app-container">
+        <aside class="sidebar desktop-nav">
+            <div class="logo">
+                <img class="brand-logo" src="../assets/icon-192.png" alt="Vynzo"><h2>Vynzo</h2>
+            </div>
+            <nav>
+                <a href="../index.html" class="nav-item">Home</a>
+                <a href="users.html" class="nav-item">Find people</a>
+                <a href="messages.html" class="nav-item">Messages</a>
+                <a href="live.html" class="nav-item">Live</a>
+                <a href="blogs.html" class="nav-item">Blogs</a>
+                <a href="settings.html" class="nav-item active">Settings</a>
+            </nav>
+        </aside>
+
+        <main class="main-content settings-page delete-account-page">
+            <header class="settings-heading">
+                <p class="settings-eyebrow">ACCOUNT</p>
+                <h1>Permanently delete your account</h1>
+                <p>Deletion is permanent. Your profile, posts, stories, messages, connections, and uploaded files will be removed.</p>
+            </header>
+
+            <section class="settings-card account-deletion-card" aria-labelledby="delete-account-heading">
+                <div class="settings-section-heading">
+                    <div>
+                        <h2 id="delete-account-heading">Confirm it’s you</h2>
+                        <p>Enter your current password. We’ll ask you to confirm, then email a 4-digit code to your verified email address.</p>
+                    </div>
+                </div>
+
+                <form id="account-deletion-password-form" class="account-deletion-form" autocomplete="off">
+                    <label class="settings-field" for="account-deletion-password">
+                        <span>Current password</span>
+                        <input id="account-deletion-password" name="deletion-password" type="password" autocomplete="new-password" maxlength="72" required>
+                    </label>
+                    <button id="account-deletion-request-button" class="settings-button account-deletion-button" type="submit">Delete account</button>
+                </form>
+
+                <form id="account-deletion-code-form" class="account-deletion-form" autocomplete="off" hidden>
+                    <p>Enter the 4-digit code sent to your verified email address. It expires in 10 minutes.</p>
+                    <label class="settings-field" for="account-deletion-code">
+                        <span>Email verification code</span>
+                        <input id="account-deletion-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4}" maxlength="4" required>
+                    </label>
+                    <button id="account-deletion-confirm-button" class="settings-button account-deletion-button" type="submit">Verify code and permanently delete</button>
+                    <button id="account-deletion-back-button" class="settings-button settings-button-secondary" type="button">Request a new code</button>
+                </form>
+
+                <p id="account-deletion-status" class="settings-status" role="status" aria-live="polite"></p>
+                <a class="settings-button settings-button-secondary" href="settings.html">Cancel and return to settings</a>
+            </section>
+        </main>
+
+        <nav class="mobile-nav">
+            <a href="../index.html" class="mob-item"><span class="mob-icon">&#127968;</span>Home</a>
+            <a href="users.html" class="mob-item"><span class="mob-icon">&#128269;</span>Find</a>
+            <a href="messages.html" class="mob-item"><span class="mob-icon">&#128172;</span>Inbox</a>
+            <a href="live.html" class="mob-item"><span class="mob-icon">&#128308;</span>Live</a>
+            <a href="blogs.html" class="mob-item"><span class="mob-icon">&#128221;</span>Blogs</a>
+            <a href="settings.html" class="mob-item active"><span class="mob-icon">&#9881;&#65039;</span>Settings</a>
+        </nav>
+    </div>
+
+    <script type="module" src="../js/delete-account.js?v=2"></script>
+</body>
+</html>

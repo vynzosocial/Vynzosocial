@@ -1,11 +1,15 @@
 import { apiRequest } from './api.js?v=sb6';
 import { API_ORIGIN } from './config.js?v=sb4';
-import { createRealtimeSocket } from './realtime.js?v=sb9';
+import { createRealtimeSocket } from './realtime.js?v=sb15';
 import { startLiveFrameGuard } from './content-guard.js?v=1';
-import { createCameraFilter } from './live-camera-filter.js?v=6';
+import { createCameraFilter } from './live-camera-filter.js?v=7';
 import { openShareDialog, SHARE_BASE_URL } from './share.js?v=5';
 import { restoreSupabaseSession } from './supabase-client.js';
 import { shareLoginUrl } from './share-login.js?v=1';
+import { createAudioDevices } from './audio-devices.js?v=1';
+import { attachChatComposer } from './chat-composer.js?v=1';
+import { setScreenGuard } from './screen-guard.js';
+import { createCameraSwitcher } from './camera-devices.js';
 try { screen.orientation?.lock?.('portrait').catch(() => {}); } catch { /* unsupported */ }
 
 let stopLiveFrameGuard = null;
@@ -25,7 +29,38 @@ let peerConnections = {};
 let pendingIceCandidates = {};
 let peerSenders = {};
 let remoteMediaStreams = {};
+const remoteAudioElements = {};
+const audioDevices = createAudioDevices({
+  getTrack: () => localAudioTrack,
+  getOutputs: () => Object.values(remoteAudioElements),
+  onError: showLiveError,
+  async replaceTrack(oldTrack, newTrack) {
+    const stream = cameraStream;
+    if (!stream || localAudioTrack !== oldTrack) throw new Error('Live microphone changed.');
+    const senders = Object.values(peerSenders).map(item => item.audio).filter(Boolean);
+    const replaced = [];
+    try {
+      for (const sender of senders) {
+        await sender.replaceTrack(newTrack);
+        replaced.push(sender);
+      }
+      if (cameraStream !== stream || localAudioTrack !== oldTrack) throw new Error('Live microphone changed.');
+    } catch (error) {
+      const results = await Promise.allSettled(replaced.map(sender => sender.replaceTrack(oldTrack)));
+      if (results.some(result => result.status === 'rejected')) {
+        console.error('Unable to restore all live microphone senders:', results);
+        showLiveError('Microphone switching failed. Rejoin the live to restore audio.');
+      }
+      throw error;
+    }
+    newTrack.enabled = oldTrack.enabled;
+    stream.removeTrack(oldTrack);
+    stream.addTrack(newTrack);
+    localAudioTrack = newTrack;
+  }
+});
 const remoteCameraStates = new Map();
+const remoteImagePeers = new Set();
 let peerNegotiationState = {};
 let pendingNegotiations = {};
 let activeBroadcastSessionId = null;
@@ -37,6 +72,40 @@ let liveStreamsRefreshInterval = null;
 let renderedStreamIds = null;
 const HD_VIDEO_CONSTRAINTS = { width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 360 }, frameRate: { ideal: 30, max: 30 }, facingMode: 'user' };
 const HD_AUDIO_CONSTRAINTS = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, sampleRate: 48000 };
+const cameraSwitcher = createCameraSwitcher({
+  getStream: () => imageStream ? null : cameraStream,
+  constraints: { width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 360 }, frameRate: { ideal: 30, max: 30 } },
+  onError: showLiveError,
+  async replaceTrack(oldTrack, newTrack) {
+    if (cameraFilter) {
+      await cameraFilter.replaceSource(newTrack);
+      return;
+    }
+    const replaced = [];
+    try {
+      for (const { video } of Object.values(peerSenders)) {
+        if (!video) continue;
+        await video.replaceTrack(newTrack);
+        replaced.push(video);
+      }
+    } catch (error) {
+      const results = await Promise.allSettled(replaced.map(sender => sender.replaceTrack(oldTrack)));
+      if (results.some(result => result.status === 'rejected')) {
+        console.error('Unable to restore all live camera senders:', results);
+        showLiveError('Camera switching failed. Rejoin the live to restore video.');
+      }
+      throw error;
+    }
+  },
+  onChanged(track) {
+    localVideoTrack = cameraFilter?.track || track;
+    publishLocalMedia().catch(error => {
+      console.error('Unable to publish the switched camera:', error);
+      showLiveError('Could not send the new camera to all viewers. Turn the camera off and on to retry.');
+    });
+    updateLocalMediaControls('');
+  }
+});
 const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: ['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' }] };
 
 const LIVE_TITLE_KEY = 'vynzo_live_title';
@@ -124,7 +193,7 @@ export async function initLiveStudio() {
     }
   }
 
-  const setScreenSecure = enabled => window.Capacitor?.Plugins?.ScreenGuard?.setSecure({ enabled })?.catch?.(() => {});
+  const setScreenSecure = enabled => setScreenGuard('live', enabled).catch(error => console.error('Could not update live screen protection:', error));
   setScreenSecure(true);
   window.addEventListener('pagehide', () => setScreenSecure(false));
 
@@ -279,7 +348,6 @@ async function joinLiveSession(stream) {
   document.querySelector('.live-container')?.classList.remove('live-stage-ended');
   if (goLiveButton && !activeBroadcastSessionId) goLiveButton.style.display = isHost ? '' : 'none';
   const mainView = document.getElementById('live-main-view');
-  document.body.classList.remove('live-tile-expanded');
   mainView.innerHTML = createLiveStage(
     'Say something in live chat...',
     isHost,
@@ -343,7 +411,7 @@ function joinLiveRoom(sessionId, attempt = 1) {
       activeRoomSessionId = sessionId;
       if (input) input.disabled = false;
       setLiveChatStatus('Connected', true);
-      applyLiveLayout(result.layout, result.hostSocketId);
+      applyLiveLayout(result.layout, result.hostSocketId, result.hostPlatform);
       refreshViewers();
       (result.messages || []).forEach(renderChatMessage);
     });
@@ -370,9 +438,11 @@ function joinLiveRoom(sessionId, attempt = 1) {
 
 function setLiveChatStatus(message, connected) {
   const dot = document.getElementById('live-status-dot');
+  const badge = document.querySelector('.live-you-badge');
+  if (badge) badge.hidden = !connected;
   if (!dot) return;
   dot.classList.toggle('is-on', Boolean(connected));
-  dot.title = connected ? 'Live is on' : 'Live is off';
+  dot.title = message;
   dot.setAttribute('aria-label', dot.title);
 }
 
@@ -396,15 +466,18 @@ let viewersTimer = null;
 async function showProfile(userId) {
   if (!userId) return;
   try {
-    const mod = await import('./users.js?v=report-reasons1');
+    const mod = await import('./users.js?v=repost1');
     await mod.openUserProfile(userId);
   } catch (err) {
     console.error('Unable to open profile:', err);
   }
 }
 
-function applyLiveLayout(layout, hostSocketId) {
+function applyLiveLayout(layout, hostSocketId, hostPlatform) {
   if (hostSocketId !== undefined) liveHostSocketId = hostSocketId;
+  if (liveHostInfo && (hostPlatform === 'web' || hostPlatform === 'app')) liveHostInfo.platform = hostPlatform;
+  const grid = document.getElementById('live-video-grid');
+  if (grid && ['full', 'two', 'four', 'six', 'host-left', 'top-two', 'host-overlay'].includes(layout)) grid.dataset.choice = layout;
   ensureHostPlaceholder();
   updateVideoGridLayout();
 }
@@ -412,7 +485,12 @@ function applyLiveLayout(layout, hostSocketId) {
 function refreshViewers() {
   if (!socket || !socket.connected || !activeRoomSessionId) return;
   socket.timeout(5000).emit('live_viewers', (err, res) => {
-    if (err || !res || !res.ok) return;
+    if (err || !res || !res.ok) {
+      if (document.getElementById('live-viewers-menu')?.dataset.inviteOnly === 'true') {
+        showLiveError(res?.error || 'Unable to load viewers. Please try again.');
+      }
+      return;
+    }
     const total = document.getElementById('live-viewers-total');
     const avatars = document.getElementById('live-viewers-avatars');
     const menu = document.getElementById('live-viewers-menu');
@@ -422,22 +500,28 @@ function refreshViewers() {
     avatars.innerHTML = viewers.slice(0, 1)
       .map(v => liveAvatarHtml(v.avatar_url, v.display_name || v.username, 'live-avatar live-avatar-sm'))
       .join('');
-    menu.replaceChildren(...viewers.map(v => {
+    const inviteOnly = menu.dataset.inviteOnly === 'true' && !isGuestRole();
+    const listedViewers = inviteOnly
+      ? viewers.filter(v => v.socketId && v.socketId !== socket.id && !stageGuestIds.has(v.socketId))
+      : viewers;
+    menu.replaceChildren(...listedViewers.map(v => {
       const row = document.createElement('button');
       row.type = 'button';
       row.className = 'live-viewer-row';
       row.setAttribute('role', 'menuitem');
-      row.innerHTML = `${liveAvatarHtml(v.avatar_url, v.display_name || v.username)}<span>${escapeHtml(v.display_name || v.username)}<small>@${escapeHtml(v.username)}</small></span>`;
+      row.innerHTML = `${liveAvatarHtml(v.avatar_url, v.display_name || v.username)}<span>${escapeHtml(v.display_name || v.username)}${v.platform === 'web' ? ' <b class="live-web-badge" title="W: using the website" aria-label="Using the website">W</b>' : ''}<small>@${escapeHtml(v.username)}</small></span>`;
       row.addEventListener('click', () => {
         menu.hidden = true;
-        showProfile(v.id);
+        document.getElementById('live-viewers-btn')?.setAttribute('aria-expanded', 'false');
+        if (inviteOnly) inviteLiveViewer(v.socketId, v.display_name || v.username);
+        else showProfile(v.id);
       });
       return row;
     }));
-    if (!viewers.length) {
+    if (!listedViewers.length) {
       const empty = document.createElement('p');
       empty.className = 'live-viewers-empty';
-      empty.textContent = 'No signed-in viewers yet.';
+      empty.textContent = inviteOnly ? 'No viewers available to invite.' : 'No signed-in viewers yet.';
       menu.replaceChildren(empty);
     }
   });
@@ -459,6 +543,7 @@ function attachLiveHeader() {
   if (viewersBtn && menu) {
     viewersBtn.addEventListener('click', event => {
       event.stopPropagation();
+      menu.dataset.inviteOnly = 'false';
       menu.hidden = !menu.hidden;
       viewersBtn.setAttribute('aria-expanded', String(!menu.hidden));
       if (!menu.hidden) refreshViewers();
@@ -539,6 +624,16 @@ function liveAvatarHtml(avatarUrl, name, cls = 'live-avatar') {
   return `<span class="${cls}">${initial}${img}</span>`;
 }
 
+function appendLiveWebBadge(element, platform) {
+  if (platform !== 'web') return;
+  const badge = document.createElement('span');
+  badge.className = 'live-web-badge';
+  badge.textContent = ' W';
+  badge.title = 'W: using the website';
+  badge.setAttribute('aria-label', 'Using the website');
+  element.appendChild(badge);
+}
+
 function createLiveStage(placeholder, isHost, hostUsername = '', title = '', hostInfo = {}) {
   const hostName = hostInfo.name || hostUsername || 'Host';
   return `
@@ -547,12 +642,21 @@ function createLiveStage(placeholder, isHost, hostUsername = '', title = '', hos
         <span class="live-role-badge ${isHost ? 'is-host' : 'is-guest'}" style="display:none" aria-hidden="true"></span>
         <button type="button" class="live-host-chip" id="live-host-chip" data-user-id="${escapeHtml(hostInfo.id || '')}" aria-label="View ${escapeHtml(hostName)}'s profile">
           ${liveAvatarHtml(hostInfo.avatar, hostName, 'live-avatar live-avatar-host')}
-          <span class="live-host-text"><strong>${escapeHtml(hostName)}${isHost ? '<span class="live-you-badge">You live</span>' : ''}</strong><small id="live-title-text">${escapeHtml(title)}</small></span>
+          <span class="live-host-text"><strong>${escapeHtml(hostName)}${isHost ? '<span class="live-you-badge" hidden>You live</span>' : ''}</strong><small id="live-title-text">${escapeHtml(title)}</small></span>
         </button>
-        ${isHost
-          ? '<button type="button" class="live-media-button live-header-btn" id="live-edit-title-btn" aria-label="Edit title">&#9998;</button>'
-          : '<button type="button" class="live-media-button live-header-btn" id="live-add-friend-btn" hidden>+ Add friend</button>'}
-        <button type="button" class="live-media-button live-header-btn" id="live-share-btn" aria-label="Share this live">Share</button>
+        ${isHost ? `<details class="live-grid-menu" id="live-grid-menu">
+          <summary class="live-media-button">Grid</summary>
+          <div class="live-grid-options" aria-label="Stage layout">
+            <button type="button" data-layout="full"><span aria-hidden="true">1.</span> <span>Host only</span></button>
+            <button type="button" data-layout="two"><span aria-hidden="true">2.</span> <span>Two people</span></button>
+            <button type="button" data-layout="four">3. 2 × 2</button>
+            <button type="button" data-layout="six">4. 3 × 2</button>
+            <button type="button" data-layout="host-left"><span aria-hidden="true">5.</span> <span>Host and guests</span></button>
+            <button type="button" data-layout="top-two"><span aria-hidden="true">6.</span> <span>Two above guests</span></button>
+            <button type="button" data-layout="host-overlay"><span aria-hidden="true">7.</span> <span>Host with side guests</span></button>
+          </div>
+        </details>` : ''}
+        ${isHost ? '' : '<button type="button" class="live-media-button live-header-btn" id="live-add-friend-btn" hidden>+ Add friend</button>'}
         <div class="live-viewers">
           <button type="button" class="live-viewers-btn" id="live-viewers-btn" aria-haspopup="true" aria-expanded="false"           aria-label="People watching">
             <span class="live-viewers-avatars" id="live-viewers-avatars"></span>
@@ -564,66 +668,83 @@ function createLiveStage(placeholder, isHost, hostUsername = '', title = '', hos
         <button type="button" class="live-exit-x" id="${isHost ? 'live-host-exit-btn' : 'live-guest-exit-btn'}" aria-label="Exit live">&#10005;</button>
       </header>
       <section class="live-chat-panel" aria-label="Live chat">
-        <input type="hidden" id="live-chat-name">
-        ${isHost ? `
-          <div class="live-chat-style-controls" aria-label="Chat appearance controls">
-            <label>Background <input id="chat-background-color" type="color" value="#1a1b22"></label>
-            <label>Text <input id="chat-font-color" type="color" value="#ffffff"></label>
-            <label class="live-chat-size-control">Size <input id="chat-font-size" type="range" min="12" max="24" value="13"><output id="chat-font-size-value">13px</output></label>
-          </div>
-        ` : ''}
-        <div class="live-chat-box" id="live-chat-messages" aria-live="polite"></div>
+        <div class="live-chat-content" id="live-chat-content">
+          ${isHost ? `
+            <div class="live-chat-style-controls" aria-label="Chat appearance controls">
+              <label>Background <input id="chat-background-color" type="color" value="#1a1b22"></label>
+              <label>Text <input id="chat-font-color" type="color" value="#ffffff"></label>
+              <label class="live-chat-size-control">Size <input id="chat-font-size" type="range" min="12" max="24" value="13"><output id="chat-font-size-value">13px</output></label>
+            </div>
+          ` : ''}
+          <div class="live-chat-box" id="live-chat-messages" aria-live="polite"></div>
+        </div>
         <form class="live-controls-bar" id="live-chat-form">
+          <input type="hidden" id="live-chat-name">
           <div class="live-chat-composer">
+            <div class="live-settings-row" aria-label="Live media controls">
+              <button type="button" class="live-media-button live-icon-button is-off" id="live-self-mute-btn" aria-pressed="false" aria-label="Start microphone" title="Start microphone"${isHost ? '' : ' hidden'}>&#127908;</button>
+              ${isHost ? '' : '<button type="button" class="live-media-button" id="live-request-stage-btn">🎤 Request to Join</button>'}
+              <button type="button" class="live-media-button live-icon-button is-off" id="live-enable-camera-btn" aria-label="${isHost ? 'Open camera' : 'Turn camera on'}" title="${isHost ? 'Open camera' : 'Turn camera on'}"${isHost ? '' : ' hidden'}>📷</button>
+              <button type="button" class="live-media-button" id="live-switch-camera-btn" aria-label="Switch camera" hidden>Switch camera</button>
+              <div class="live-media-menu" id="live-media-menu">
+                <button type="button" class="live-media-button live-media-menu-toggle" id="live-media-menu-btn" aria-label="Live settings" aria-haspopup="true" aria-expanded="false" aria-controls="live-media-menu-panel">&#9881; Settings</button>
+                <div class="live-media-menu-panel" id="live-media-menu-panel" aria-label="Live settings" hidden>
+                  <button type="button" class="live-media-button" id="live-chat-toggle" aria-expanded="true" aria-controls="live-chat-content live-chat-input-row">Hide chat</button>
+                  <button type="button" class="live-media-button" id="live-share-btn">Share live</button>
+                  <button type="button" class="live-media-button" id="live-audio-devices-btn">🎧 Audio devices</button>
+                  <button type="button" class="live-media-button live-media-off-button" id="live-turn-media-off-btn" hidden>${isHost ? 'Turn media off' : 'Leave stage'}</button>
+                  ${isHost ? '<button type="button" class="live-media-button" id="live-stop-microphone-btn" hidden>Stop microphone</button>' : ''}
+                  <button type="button" class="live-media-button live-media-image-button" id="live-select-image-btn">${isHost ? 'Choose image' : 'Use image'}</button>
+                  <input id="live-image-file" type="file" accept="image/*" hidden>
+                  <button type="button" class="live-media-button live-media-off-button" id="live-remove-image-btn" hidden>Remove image</button>
+                  <button type="button" class="live-media-button" id="live-mirror-camera-btn" aria-pressed="false" title="Mirror your preview; viewers see the normal camera view" hidden>Mirror camera</button>
+                  <label class="live-camera-filter" id="live-camera-filter-control" title="Effects are processed on your device and visible to live viewers" hidden>
+                    <span>Filter</span>
+                    <select id="live-camera-filter" aria-label="Camera filter or face effect">
+                      <option value="none">None</option>
+                      <option value="warm">Warm</option>
+                      <option value="cool">Cool</option>
+                      <option value="vivid">Vivid</option>
+                      <option value="skin">Skin smoothing</option>
+                      <option value="background-image">Background image...</option>
+                    </select>
+                  </label>
+                  <input id="live-background-file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+                </div>
+              </div>
+            </div>
             <div class="live-chat-emoji-picker" id="live-chat-emoji-picker" role="group" aria-label="Choose an emoji" hidden>
               ${['😀', '😂', '😍', '❤️', '🔥', '👏', '🎉', '👍', '🙏', '😮', '😢', '💯'].map(emoji => `
                 <button type="button" class="live-chat-emoji" aria-label="${emoji}" data-emoji="${emoji}">${emoji}</button>
               `).join('')}
             </div>
-            <div class="live-chat-input-row">
+            <div class="live-chat-input-row" id="live-chat-input-row">
               <button type="button" class="live-chat-emoji-toggle" aria-label="Add emoji" aria-expanded="false" aria-controls="live-chat-emoji-picker">😊</button>
-              <input type="text" class="chat-input" id="live-chat-input" placeholder="${placeholder}" maxlength="500" required autocomplete="off">
+              <textarea class="chat-input" id="live-chat-input" rows="1" placeholder="${placeholder}" aria-label="Write a live chat message" maxlength="500" required></textarea>
               <button type="submit" class="btn-live">Send</button>
             </div>
           </div>
         </form>
       </section>
       <div class="live-video-area">
-        ${isHost ? `<div class="live-host-tools">
-          <span id="live-host-guests" class="live-host-guests"></span>
-        </div>` : ''}        <div class="live-media-controls" aria-label="Camera and image sharing">
+        ${isHost ? `<div class="live-stage-toolbar">
+          <details class="live-host-panel" id="live-host-panel">
+            <summary>Manage guests <span id="live-request-count" aria-live="polite"></span></summary>
+            <div class="live-host-panel-content">
+              <strong>Requests</strong>
+              <div id="live-guest-requests"></div>
+              <strong>On stage</strong>
+              <div id="live-host-guests" class="live-host-guests"></div>
+            </div>
+          </details>
+        </div>` : ''}
+        <div class="live-media-controls" aria-label="Media status">
           <div class="live-media-description">
             <strong></strong>
             <span id="live-media-status"></span>
           </div>
-          <div class="live-media-actions">
-            ${isHost ? '' : '<button type="button" class="live-media-button" id="live-enable-camera-btn">🎤 Request to Join</button>'}
-            <div class="live-media-menu" id="live-media-menu">
-            <button type="button" class="live-media-button live-media-menu-toggle" id="live-media-menu-btn" aria-haspopup="true" aria-expanded="false" aria-controls="live-media-menu-panel">📷 Camera ▾</button>
-            <div class="live-media-menu-panel" id="live-media-menu-panel" role="menu" hidden>
-            ${isHost ? '<button type="button" class="live-media-button" id="live-enable-camera-btn">Open camera</button>' : ''}
-            <button type="button" class="live-media-button" id="live-mirror-camera-btn" aria-pressed="false" title="Mirror your preview; viewers see the normal camera view" hidden>Mirror camera</button>
-            <label class="live-camera-filter" id="live-camera-filter-control" title="Effects are processed on your device and visible to live viewers" hidden>
-              <span>Filter</span>
-              <select id="live-camera-filter" aria-label="Camera filter or face effect">
-                <option value="none">None</option>
-                <option value="warm">Warm</option>
-                <option value="cool">Cool</option>
-                <option value="vivid">Vivid</option>
-                <option value="skin">Skin smoothing</option>
-                <option value="background-image">Background image...</option>
-              </select>
-            </label>
-            <input id="live-background-file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
-            <button type="button" class="live-media-button live-media-image-button" id="live-select-image-btn">${isHost ? 'Choose image' : 'Use image'}</button>
-            <input id="live-image-file" type="file" accept="image/*" hidden>
-            <button type="button" class="live-media-button live-media-off-button" id="live-turn-media-off-btn" hidden>${isHost ? 'Turn media off' : 'Leave stage'}</button>
-            ${isHost ? '' : '<button type="button" class="live-media-button" id="live-self-mute-btn" hidden>&#128263; Mute me</button>'}
-                        </div>
-                        </div>
-                      </div>
         </div>
-        <div class="live-video-grid" id="live-video-grid">
+        <div class="live-video-grid" id="live-video-grid" data-choice="full">
           <div class="live-video-empty" id="live-video-empty">
             <span aria-hidden="true">📹</span>
           </div>
@@ -658,6 +779,7 @@ function attachLiveChatForm(sessionId) {
 
   const chatForm = document.getElementById('live-chat-form');
   const input = document.getElementById('live-chat-input');
+  const resizeComposer = attachChatComposer(input, chatForm);
   const emojiToggle = chatForm.querySelector('.live-chat-emoji-toggle');
   const emojiPicker = chatForm.querySelector('.live-chat-emoji-picker');
 
@@ -678,6 +800,7 @@ function attachLiveChatForm(sessionId) {
     const start = input.selectionStart ?? input.value.length;
     const end = input.selectionEnd ?? start;
     input.setRangeText(emoji, start, end, 'end');
+    resizeComposer();
     input.focus();
     emojiPicker.hidden = true;
     emojiToggle.setAttribute('aria-expanded', 'false');
@@ -713,16 +836,51 @@ function attachLiveChatForm(sessionId) {
         return;
       }
       input.value = '';
+      resizeComposer();
       emojiPicker.hidden = true;
       emojiToggle.setAttribute('aria-expanded', 'false');
     });
   });
 }
 
+let liveGridResizeObserver = null;
+
 function attachLiveMediaControls() {
+  const stage = document.querySelector('.live-stage');
+  const chatToggle = document.getElementById('live-chat-toggle');
+  chatToggle?.addEventListener('click', () => {
+    const collapsed = stage.classList.toggle('is-chat-collapsed');
+    chatToggle.setAttribute('aria-expanded', String(!collapsed));
+    chatToggle.textContent = collapsed ? 'Show chat' : 'Hide chat';
+    updateVideoGridLayout();
+  });
+  const gridMenu = document.getElementById('live-grid-menu');
+  if (liveGridResizeObserver) liveGridResizeObserver.disconnect();
+  const liveGrid = document.getElementById('live-video-grid');
+  if (liveGrid && typeof ResizeObserver !== 'undefined') {
+    liveGridResizeObserver = new ResizeObserver(() => updateVideoGridLayout());
+    liveGridResizeObserver.observe(liveGrid);
+  }
+  gridMenu?.querySelectorAll('[data-layout]').forEach(button => {
+    button.addEventListener('click', () => {
+      button.disabled = true;
+      socket.timeout(5000).emit('live_set_layout', button.dataset.layout, (error, result) => {
+        button.disabled = false;
+        updateVideoGridLayout();
+        if (error || !result?.ok) {
+          showLiveError(result?.error || 'Unable to change the stage layout. Please try again.');
+          return;
+        }
+        gridMenu.open = false;
+      });
+    });
+  });
+  document.getElementById('live-audio-devices-btn')?.addEventListener('click', () => audioDevices.open());
   const cameraButton = document.getElementById('live-enable-camera-btn');
   const imageButton = document.getElementById('live-select-image-btn');
   const imageInput = document.getElementById('live-image-file');
+  const removeImageButton = document.getElementById('live-remove-image-btn');
+  const requestStageButton = document.getElementById('live-request-stage-btn');
   const offButton = document.getElementById('live-turn-media-off-btn');
   const mirrorButton = document.getElementById('live-mirror-camera-btn');
   const filterSelect = document.getElementById('live-camera-filter');
@@ -736,6 +894,20 @@ function attachLiveMediaControls() {
     if (!menuPanel || !menuButton) return;
     menuPanel.hidden = !open;
     menuButton.setAttribute('aria-expanded', String(open));
+    if (open) {
+      const rect = menuButton.getBoundingClientRect();
+      const viewportWidth = document.documentElement.clientWidth;
+      const viewportHeight = document.documentElement.clientHeight;
+      menuPanel.style.bottom = `${Math.max(8, viewportHeight - rect.top + 6)}px`;
+      if (getComputedStyle(menuButton).direction === 'rtl') {
+        menuPanel.style.right = 'auto';
+        menuPanel.style.left = `${Math.max(8, Math.min(rect.left, viewportWidth - menuPanel.offsetWidth - 8))}px`;
+      } else {
+        menuPanel.style.left = 'auto';
+        menuPanel.style.right = `${Math.max(8, Math.min(viewportWidth - rect.right, viewportWidth - menuPanel.offsetWidth - 8))}px`;
+      }
+      menuPanel.style.maxHeight = `${Math.max(80, rect.top - 16)}px`;
+    }
   };
   if (menu && menuButton && menuPanel) {
     menuButton.addEventListener('click', (event) => {
@@ -757,6 +929,22 @@ function attachLiveMediaControls() {
   cameraButton.addEventListener('click', () => {
     if (localVideoTrack && (!isGuestRole() || guestOnStage)) turnCameraOff();
     else enableLocalCamera();
+  });
+  document.getElementById('live-switch-camera-btn')?.addEventListener('click', async event => {
+    if (cameraFilterSetup) {
+      showLiveError('Wait for the camera filter to finish before switching cameras.');
+      return;
+    }
+    const button = event.currentTarget;
+    button.disabled = true;
+    if (filterSelect) filterSelect.disabled = true;
+    if (mirrorButton) mirrorButton.disabled = true;
+    try { await cameraSwitcher.switchCamera(); }
+    finally {
+      button.disabled = false;
+      if (filterSelect) filterSelect.disabled = false;
+      if (mirrorButton) mirrorButton.disabled = false;
+    }
   });
   if (filterSelect) filterSelect.addEventListener('change', () => {
     if (filterSelect.value === 'background-image') {
@@ -803,7 +991,8 @@ function attachLiveMediaControls() {
     });
   }
   if (imageButton) imageButton.addEventListener('click', () => imageInput.click());
-  const titleButton = document.getElementById('live-edit-title-btn');
+  if (removeImageButton) removeImageButton.addEventListener('click', turnCameraOff);
+  if (requestStageButton) requestStageButton.addEventListener('click', () => enableLocalCamera());
   const guestExit = document.getElementById('live-guest-exit-btn');
   if (guestExit) {
     guestExit.addEventListener('click', () => {
@@ -818,54 +1007,17 @@ function attachLiveMediaControls() {
       }
     });
   }
-  if (titleButton) {
-    titleButton.addEventListener('click', () => {
-      const textEl = document.getElementById('live-title-text');
-      if (!textEl || document.getElementById('live-title-inline')) return;
-      const current = textEl.textContent;
-      const holder = document.createElement('div');
-      holder.id = 'live-title-inline';
-      holder.style.cssText = 'position:absolute;z-index:30;left:8px;right:8px;top:100%;margin-top:4px;padding:8px;background:#1d1631;border:1px solid #7a5cff;border-radius:12px';
-      const finish = () => holder.remove();
-      const { element, input } = createTitleEditor({
-        value: current,
-        onCommit: async (next) => {
-          finish();
-          if (!next || next === current) return;
-          try {
-            await apiRequest(`/live/${activeBroadcastSessionId}/title`, {
-              method: 'PATCH',
-              body: JSON.stringify({ title: next })
-            });
-            textEl.textContent = next;
-            refreshLiveStreams();
-          } catch (err) {
-            showLiveError('Could not change the title: ' + err.message);
-          }
-        }
-      });
-      holder.appendChild(element);
-      const host = titleButton.closest('.live-session-context') || titleButton.parentElement;
-      host.style.position = 'relative';
-      host.appendChild(holder);
-      input.focus();
-      input.select();
-    });
-  }
   imageInput.addEventListener('change', () => {
     const image = imageInput.files && imageInput.files[0];
     imageInput.value = '';
     if (image) useLocalImage(image);
   });
-  offButton.addEventListener('click', stopLocalMedia);
+  offButton.addEventListener('click', () => stopLocalMedia());
   const selfMute = document.getElementById('live-self-mute-btn');
   if (selfMute) {
-    selfMute.addEventListener('click', () => {
-      guestMuted = !guestMuted;
-      applyMute();
-      socket.emit('live_self_mute', { muted: guestMuted });
-    });
+    selfMute.addEventListener('click', toggleSelfMute);
   }
+  document.getElementById('live-stop-microphone-btn')?.addEventListener('click', stopHostMicrophone);
 }
 
 async function turnCameraOff() {
@@ -880,9 +1032,9 @@ async function turnCameraOff() {
     if (!localAudioTrack) cameraStream = null;
   }
   localVideoTrack = null;
+  updateLocalMediaControls('');
   try {
     await publishLocalMedia();
-    updateLocalMediaControls('');
   } catch (err) {
     console.error('Unable to turn off the camera:', err);
     showLiveError('Unable to turn off the camera. Please try again.');
@@ -890,8 +1042,13 @@ async function turnCameraOff() {
 }
 
 async function enableLocalCamera(acceptInvite = false) {
+  if (!isGuestRole() && hostMicrophoneStarting) {
+    showLiveError('Wait for the microphone to start before opening the camera.');
+    return;
+  }
   const joiningStage = isGuestRole() && !guestOnStage;
   if (!(await requestGuestSlot(acceptInvite))) return;
+  const stageGeneration = guestStageGeneration;
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     showLiveError('Camera access is not available in this browser.');
     return;
@@ -899,14 +1056,23 @@ async function enableLocalCamera(acceptInvite = false) {
 
   if (joiningStage) {
     // Guests join with the camera off; they open it afterwards.
+    if (!isGuestRole()) {
+      hostCameraStarting = true;
+      applyMute();
+    }
     try {
-      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: HD_AUDIO_CONSTRAINTS });
+      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: audioDevices.audioConstraints(HD_AUDIO_CONSTRAINTS) });
+      if (isGuestRole() && (stageGeneration !== guestStageGeneration || !guestOnStage)) {
+        audioStream.getTracks().forEach(track => track.stop());
+        return;
+      }
       stopCameraFilter();
       stopImageSource();
       if (cameraStream) cameraStream.getTracks().forEach(track => track.stop());
       cameraStream = audioStream;
       localVideoTrack = null;
       localAudioTrack = audioStream.getAudioTracks()[0] || null;
+      applyMute();
       await publishLocalMedia();
     } catch (err) {
       console.warn('Microphone unavailable for guest:', err.message);
@@ -921,29 +1087,44 @@ async function enableLocalCamera(acceptInvite = false) {
   try {
     let stream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: HD_VIDEO_CONSTRAINTS, audio: HD_AUDIO_CONSTRAINTS });
+      stream = await navigator.mediaDevices.getUserMedia({ video: HD_VIDEO_CONSTRAINTS, audio: localAudioTrack || (!isGuestRole() && hostMicrophoneStopped) ? false : audioDevices.audioConstraints(HD_AUDIO_CONSTRAINTS) });
     } catch (audioError) {
+      if (localAudioTrack || (!isGuestRole() && hostMicrophoneStopped)) throw audioError;
       console.warn('Microphone unavailable; trying camera without audio:', audioError.message);
       stream = await navigator.mediaDevices.getUserMedia({ video: HD_VIDEO_CONSTRAINTS });
       showLiveError('Camera is on, but microphone access is unavailable.');
     }
+    if (isGuestRole() && (stageGeneration !== guestStageGeneration || !guestOnStage)) {
+      stream.getTracks().forEach(track => track.stop());
+      return;
+    }
     stopCameraFilter();
     stopImageSource();
-    if (cameraStream) cameraStream.getTracks().forEach(track => track.stop());
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => {
+        if (track === localAudioTrack) stream.addTrack(track);
+        else track.stop();
+      });
+    }
     cameraStream = stream;
     localVideoTrack = stream.getVideoTracks()[0] || null;
     localAudioTrack = stream.getAudioTracks()[0] || null;
+    applyMute();
     await publishLocalMedia();
     if (cameraMirrored) await applyLocalCameraFilter('none');
     updateLocalMediaControls('');
   } catch (err) {
     console.error('Unable to access the live camera:', err);
     showLiveError('Unable to open the camera. Check browser permissions, or choose an image instead.');
+  } finally {
+    hostCameraStarting = false;
+    applyMute();
   }
 }
 
 async function useLocalImage(file) {
   if (!(await requestGuestSlot())) return;
+  const stageGeneration = guestStageGeneration;
   if (file.type && !file.type.startsWith('image/')) {
     showLiveError('Choose a valid image file.');
     return;
@@ -964,6 +1145,10 @@ async function useLocalImage(file) {
   } catch (err) {
     URL.revokeObjectURL(objectUrl);
     showLiveError('This image could not be opened. Choose a different image.');
+    return;
+  }
+  if (isGuestRole() && (stageGeneration !== guestStageGeneration || !guestOnStage)) {
+    URL.revokeObjectURL(objectUrl);
     return;
   }
 
@@ -1008,14 +1193,10 @@ async function useLocalImage(file) {
   imageObjectUrl = objectUrl;
   imageAnimationFrame = requestAnimationFrame(drawImageFrame);
   localVideoTrack = imageStream.getVideoTracks()[0] || null;
+  updateLocalMediaControls(`Sharing ${file.name} with everyone.`);
 
   try {
     await publishLocalMedia();
-    updateLocalMediaControls(
-      localAudioTrack
-        ? `Sharing ${file.name} with everyone. Your microphone is on.`
-        : `Sharing ${file.name} with everyone.`
-    );
   } catch (err) {
     console.error('Unable to share the selected image:', err);
     showLiveError('Unable to share this image. Please try again.');
@@ -1024,10 +1205,11 @@ async function useLocalImage(file) {
 
 async function publishLocalMedia() {
   if (socket?.connected && activeRoomSessionId) {
-    socket.emit('live_camera_state', { enabled: Boolean(localVideoTrack) });
+    socket.emit('live_camera_state', { enabled: Boolean(localVideoTrack), image: Boolean(localVideoTrack && imageStream) });
   }
   if (localVideoTrack) {
     const tile = ensureVideoTile('self', true);
+    tile.frame.dataset.mediaSource = imageStream ? 'image' : 'camera';
     tile.video.srcObject = new MediaStream([localVideoTrack]);
     tile.status.hidden = true;
     setTileCameraOff(tile, false);
@@ -1063,6 +1245,7 @@ async function publishLocalMedia() {
 }
 
 let guestOnStage = false;
+let guestStageGeneration = 0;
 
 function isGuestRole() {
   return !!document.querySelector('.live-role-badge.is-guest');
@@ -1081,14 +1264,22 @@ function requestGuestSlot(acceptInvite = false) {
     guestRequestPending = true;
     updateLocalMediaControls('Request sent. Waiting for the host to accept...');
     let timer = null;
-    const finish = (approved, message) => {
+    let finished = false;
+    const finish = (approved, message, notifyHost = true) => {
+      if (finished) return;
+      finished = true;
       clearTimeout(timer);
       socket.off('live_guest_approved', onApproved);
       socket.off('live_guest_denied', onDenied);
+      socket.off('live_remove_from_stage', onRemoved);
+      socket.off('live_stage_guest_left', onStageLeft);
       guestRequestPending = false;
-      if (approved) guestOnStage = true;
+      if (approved) {
+        guestOnStage = true;
+        updateLocalMediaControls('');
+      }
       else {
-        if (message !== 'NOEMIT') socket.emit('live_guest_leave');
+        if (message !== 'NOEMIT' && notifyHost) socket.emit('live_guest_leave');
         showLiveError(message === 'NOEMIT' ? 'Could not send your request. Please try again.' : message);
         updateLocalMediaControls('');
       }
@@ -1096,8 +1287,14 @@ function requestGuestSlot(acceptInvite = false) {
     };
     const onApproved = () => finish(true);
     const onDenied = ({ reason } = {}) => finish(false, reason || 'The host declined your request.');
+    const onRemoved = () => finish(false, 'The host removed you from the stage. You can continue watching.', false);
+    const onStageLeft = ({ socketId } = {}) => {
+      if (socketId === socket.id) onRemoved();
+    };
     socket.on('live_guest_approved', onApproved);
     socket.on('live_guest_denied', onDenied);
+    socket.on('live_remove_from_stage', onRemoved);
+    socket.on('live_stage_guest_left', onStageLeft);
     timer = setTimeout(() => finish(false, 'The host did not respond. Try again.'), 90000);
 
     socket.timeout(30000).emit('live_guest_join', { acceptInvite }, (err, result) => {
@@ -1112,10 +1309,12 @@ function requestGuestSlot(acceptInvite = false) {
   });
 }
 
-async function stopLocalMedia() {
+async function stopLocalMedia(notifyHost = true) {
+  hostMicrophoneGeneration++;
+  guestStageGeneration++;
   if (guestOnStage) {
     guestOnStage = false;
-    if (socket) socket.emit('live_guest_leave');
+    if (socket && notifyHost) socket.emit('live_guest_leave');
   }
   stopCameraFilter();
   stopImageSource();
@@ -1125,12 +1324,13 @@ async function stopLocalMedia() {
   }
   localVideoTrack = null;
   localAudioTrack = null;
-  guestMuted = false;  try {
+  guestMuted = false;
+  updateLocalMediaControls('');
+  try {
     await publishLocalMedia();
     const isGuest = !!document.querySelector('.live-role-badge.is-guest');
     const cameraBtn = document.getElementById('live-enable-camera-btn');
     if (isGuest && cameraBtn) cameraBtn.textContent = '🎤 Request to Join';
-    updateLocalMediaControls('');
   } catch (err) {
     console.error('Unable to turn off live media:', err);
     showLiveError('Unable to stop sharing media with other participants.');
@@ -1155,13 +1355,25 @@ function stopImageSource() {
 function updateLocalMediaControls(message) {
   const status = document.getElementById('live-media-status');
   const offButton = document.getElementById('live-turn-media-off-btn');
+  const removeImageButton = document.getElementById('live-remove-image-btn');
+  const requestStageButton = document.getElementById('live-request-stage-btn');
+  const guest = isGuestRole();
   if (status) status.textContent = message;
-  if (offButton) offButton.hidden = !localVideoTrack && !localAudioTrack;
+  if (offButton) offButton.hidden = !guest || !guestOnStage;
+  if (removeImageButton) removeImageButton.hidden = !imageStream;
+  if (requestStageButton) {
+    requestStageButton.hidden = !guest || guestOnStage;
+    requestStageButton.disabled = guestRequestPending;
+    requestStageButton.textContent = guestRequestPending ? 'Waiting for host…' : '🎤 Request to Join';
+  }
   const cameraButton = document.getElementById('live-enable-camera-btn');
-  if (cameraButton && (!isGuestRole() || guestOnStage)) {
-    cameraButton.textContent = localVideoTrack
-      ? '📷 Turn camera off'
-      : (isGuestRole() ? '📷 Turn camera on' : 'Open camera');
+  if (cameraButton) {
+    cameraButton.hidden = guest && !guestOnStage;
+    const cameraLabel = localVideoTrack ? 'Turn camera off' : (guest ? 'Turn camera on' : 'Open camera');
+    cameraButton.textContent = '📷';
+    cameraButton.setAttribute('aria-label', cameraLabel);
+    cameraButton.setAttribute('title', cameraLabel);
+    cameraButton.classList?.toggle('is-off', !localVideoTrack);
   }
   applyCameraMirror();
   applyMute();
@@ -1176,6 +1388,8 @@ function applyCameraMirror() {
   );
   const filterControl = document.getElementById('live-camera-filter-control');
   if (filterControl) filterControl.hidden = !hasCameraTrack;
+  const switchButton = document.getElementById('live-switch-camera-btn');
+  if (switchButton) switchButton.hidden = !hasCameraTrack;
   document.querySelector('.live-media-controls')?.classList.toggle('has-camera-filter', hasCameraTrack);
   const preview = document.querySelector('.live-video-frame[data-peer-id="self"] .live-video-player');
   if (mirrorButton) {
@@ -1231,14 +1445,15 @@ async function applyLocalCameraFilter(name, backgroundImage) {
       console.error('Live camera filter failed:', error);
       stopCameraFilter();
       const wasBackground = name.startsWith('background-');
-      if (wasBackground) source.stop();
-      localVideoTrack = !wasBackground && source.readyState === 'live' ? source : null;
+      const activeSource = cameraStream?.getVideoTracks()[0];
+      if (wasBackground) activeSource?.stop();
+      localVideoTrack = !wasBackground && activeSource?.readyState === 'live' ? activeSource : null;
       publishLocalMedia().catch(err => {
         console.error('Unable to restore the camera:', err);
         showLiveError('Unable to restore your camera. Turn media off and try again.');
       });
       showLiveError(wasBackground ? 'Background processing stopped. Video sharing was turned off; turn your camera on to try again.' : 'The camera filter stopped. Check your camera and try again.');
-      updateLocalMediaControls(!wasBackground && source.readyState === 'live'
+      updateLocalMediaControls(!wasBackground && activeSource?.readyState === 'live'
         ? 'Your camera is being shared without a filter.'
         : 'Your camera is off. Turn it on to share video.');
     }, setup.signal, backgroundImage, cameraMirrored);
@@ -1295,14 +1510,126 @@ async function applyLocalCameraFilter(name, backgroundImage) {
 }
 
 let guestMuted = false;
+let hostMuted = false;
+let hostMicrophoneStarting = false;
+let hostCameraStarting = false;
+let hostMicrophoneStopped = false;
+let hostMicrophoneGeneration = 0;
 const hostGuestMuted = {};
 
+function reportGuestMuteState() {
+  socket.timeout(5000).emit('live_self_mute', { muted: guestMuted }, (error, result) => {
+    if (error || !result?.ok) {
+      showLiveError(result?.error || 'Could not notify the host about your microphone.');
+    }
+  });
+}
+
+function toggleSelfMute() {
+  if (!localAudioTrack) {
+    if (!isGuestRole()) startHostMicrophone();
+    return;
+  }
+  if (isGuestRole()) {
+    guestMuted = !guestMuted;
+    applyMute();
+    reportGuestMuteState();
+    const status = document.getElementById('live-media-status');
+    if (!guestMuted && status?.textContent === 'The host muted your microphone. You can unmute yourself.') {
+      status.textContent = '';
+    }
+  } else {
+    hostMuted = !hostMuted;
+    applyMute();
+  }
+}
+
+async function startHostMicrophone() {
+  if (hostMicrophoneStarting || hostCameraStarting || isGuestRole() || localAudioTrack) return;
+  if (!navigator.mediaDevices?.getUserMedia) {
+    showLiveError('Microphone access is not available in this browser.');
+    return;
+  }
+  hostMicrophoneStarting = true;
+  const generation = hostMicrophoneGeneration;
+  const sessionId = selectedLiveSessionId;
+  applyMute();
+  let stream;
+  let track;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: audioDevices.audioConstraints(HD_AUDIO_CONSTRAINTS) });
+    track = stream.getAudioTracks()[0];
+    if (!track) throw new Error('No microphone track was returned.');
+    if (generation !== hostMicrophoneGeneration || sessionId !== selectedLiveSessionId || isGuestRole() || localAudioTrack) {
+      stream.getTracks().forEach(item => item.stop());
+      return;
+    }
+    track.enabled = !hostMuted;
+    if (cameraStream) cameraStream.addTrack(track);
+    else cameraStream = stream;
+    localAudioTrack = track;
+    await publishLocalMedia();
+    hostMicrophoneStopped = false;
+    updateLocalMediaControls('');
+  } catch (error) {
+    stream?.getTracks().forEach(item => item.stop());
+    if (track && localAudioTrack === track) {
+      localAudioTrack = null;
+      cameraStream?.removeTrack(track);
+      if (cameraStream && !cameraStream.getTracks().length) cameraStream = null;
+      try { await publishLocalMedia(); } catch (rollbackError) {
+        console.error('Unable to restore live audio after microphone failure:', rollbackError);
+        showLiveError('Could not restore live audio. Rejoin the live session.');
+      }
+    }
+    console.error('Unable to start the live microphone:', error);
+    showLiveError('Could not start the microphone. Check its connection and permissions.');
+  } finally {
+    hostMicrophoneStarting = false;
+    applyMute();
+  }
+}
+
+async function stopHostMicrophone() {
+  if (isGuestRole() || hostMicrophoneStarting || hostCameraStarting || !localAudioTrack) return;
+  hostMicrophoneStarting = true;
+  hostMicrophoneGeneration++;
+  hostMicrophoneStopped = true;
+  const track = localAudioTrack;
+  track.stop();
+  localAudioTrack = null;
+  cameraStream?.removeTrack(track);
+  if (cameraStream && !cameraStream.getTracks().length) cameraStream = null;
+  updateLocalMediaControls('');
+  try {
+    await publishLocalMedia();
+  } catch (error) {
+    console.error('Unable to update live audio after stopping the microphone:', error);
+    showLiveError('The microphone is stopped, but live audio could not be updated. Rejoin the live session.');
+  } finally {
+    hostMicrophoneStarting = false;
+    applyMute();
+  }
+}
+
 function applyMute() {
-  if (localAudioTrack && isGuestRole()) localAudioTrack.enabled = !guestMuted;
+  const muted = isGuestRole() ? guestMuted : hostMuted;
+  if (localAudioTrack) localAudioTrack.enabled = !muted;
   const muteButton = document.getElementById('live-self-mute-btn');
   if (muteButton) {
-    muteButton.hidden = !localAudioTrack;
-    muteButton.innerHTML = guestMuted ? '&#128266; Unmute me' : '&#128263; Mute me';
+    muteButton.hidden = isGuestRole() && !localAudioTrack;
+    muteButton.disabled = !isGuestRole() && (hostMicrophoneStarting || hostCameraStarting);
+    const micLabel = !localAudioTrack ? 'Start microphone' : muted ? 'Unmute me' : 'Mute me';
+    muteButton.innerHTML = '&#127908;';
+    muteButton.setAttribute('aria-label', micLabel);
+    muteButton.setAttribute('title', micLabel);
+    muteButton.classList?.toggle('is-off', !localAudioTrack || muted);
+    muteButton.setAttribute('aria-pressed', String(muted));
+  }
+  const stopButton = document.getElementById('live-stop-microphone-btn');
+  if (stopButton) {
+    stopButton.hidden = !localAudioTrack;
+    stopButton.disabled = hostMicrophoneStarting || hostCameraStarting;
   }
 }
 
@@ -1310,15 +1637,47 @@ function renderHostGuests() {
   const panel = document.getElementById('live-host-guests');
   if (!panel) return;
   panel.replaceChildren(...Object.entries(hostGuestMuted).map(([socketId, info]) => {
+    const row = document.createElement('span');
+    row.className = 'live-host-guest-controls';
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'live-media-button';
     button.style.cssText = 'padding:3px 10px';
-    button.textContent = `${info.muted ? '\uD83D\uDD07' : '\uD83D\uDD0A'} ${info.name} \u2014 ${info.muted ? 'Unmute' : 'Mute'}`;
+    button.textContent = `${info.muted ? '\uD83D\uDD07' : '\uD83D\uDD0A'} ${info.name} \u2014 ${info.muted ? 'Muted' : 'Mute'}`;
+    button.disabled = info.muted;
     button.addEventListener('click', () => {
-      socket.emit('live_mute_guest', { socketId, muted: !info.muted });
+      if (button.disabled || info.muted) return;
+      button.disabled = true;
+      socket.timeout(5000).emit('live_mute_guest', { socketId, muted: true }, (error, result) => {
+        if (error || !result?.ok) {
+          button.disabled = false;
+          showLiveError(result?.error || 'Could not mute the guest. Please try again.');
+          return;
+        }
+        const menu = document.getElementById('live-host-panel');
+        if (menu) menu.open = false;
+      });
     });
-    return button;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'live-media-button live-remove-guest';
+    remove.textContent = 'Remove from stage';
+    remove.setAttribute('aria-label', `Remove ${info.name} from stage`);
+    remove.addEventListener('click', () => {
+      if (!window.confirm(`Remove ${info.name} from the stage? They can continue watching.`)) return;
+      remove.disabled = true;
+      socket.timeout(5000).emit('live_remove_guest', { socketId }, (error, result) => {
+        if (error || !result?.ok) {
+          remove.disabled = false;
+          showLiveError(result?.error || 'Could not remove the guest. Please try again.');
+        } else {
+          const menu = document.getElementById('live-host-panel');
+          if (menu) menu.open = false;
+        }
+      });
+    });
+    row.append(button, remove);
+    return row;
   }));
 }
 
@@ -1339,12 +1698,13 @@ function ensureVideoTile(peerId, isLocal) {
   const frame = document.createElement('div');
   frame.className = 'live-video-frame';
   frame.dataset.peerId = peerId;
+  frame.dataset.mediaSource = remoteImagePeers.has(peerId) ? 'image' : 'camera';
   const video = document.createElement('video');
   video.className = 'live-video-player';
   video.autoplay = true;
   video.playsInline = true;
-  video.muted = isLocal;
-  video.controls = !isLocal;
+  video.muted = true;
+  video.controls = false;
   const label = document.createElement('span');
   label.className = 'live-video-label';
   label.textContent = isLocal ? 'You' : '';
@@ -1353,46 +1713,23 @@ function ensureVideoTile(peerId, isLocal) {
   status.className = 'live-video-status';
   status.textContent = '';
   status.hidden = true;
+  video.addEventListener('playing', () => {
+    video.controls = false;
+    status.hidden = true;
+  });
   const avatar = document.createElement('div');
   avatar.className = 'live-tile-avatar';
   video.setAttribute('controlslist', 'nofullscreen');
   video.disablePictureInPicture = true;
-  const expandButton = document.createElement('button');
-  expandButton.type = 'button';
-  expandButton.className = 'live-expand-btn';
-  expandButton.textContent = '⛶';
-  expandButton.setAttribute('aria-label', 'Expand video');
-  expandButton.setAttribute('aria-pressed', 'false');
-  expandButton.addEventListener('click', event => {
-    event.stopPropagation();
-    setTileExpanded(frame, !frame.classList.contains('is-expanded'));
-  });
-  frame.append(video, avatar, label, status, expandButton);
+  frame.append(video, avatar, label, status);
   grid.appendChild(frame);
   setTileVisible(frame, isLocal);
-  const knownInfo = isLocal ? null : (peerId === liveHostSocketId && liveHostInfo ? liveHostInfo : tileInfoCache[peerId]);
+  const knownInfo = isLocal || !canShowTile(peerId)
+    ? null
+    : (peerId === liveHostSocketId && liveHostInfo ? liveHostInfo : tileInfoCache[peerId]);
   if (knownInfo) showStageGuestTile(peerId, knownInfo, false);
   return { frame, video, status };
 }
-
-function setTileExpanded(frame, expanded) {
-  document.querySelectorAll('.live-video-frame.is-expanded').forEach(other => {
-    if (other !== frame) setTileExpanded(other, false);
-  });
-  frame.classList.toggle('is-expanded', expanded);
-  document.body.classList.toggle('live-tile-expanded', expanded);
-  const button = frame.querySelector('.live-expand-btn');
-  if (button) {
-    button.textContent = expanded ? '← Back' : '⛶';
-    button.setAttribute('aria-label', expanded ? 'Return to normal size' : 'Expand video');
-    button.setAttribute('aria-pressed', String(expanded));
-  }
-}
-
-document.addEventListener('keydown', event => {
-  if (event.key !== 'Escape') return;
-  document.querySelectorAll('.live-video-frame.is-expanded').forEach(frame => setTileExpanded(frame, false));
-});
 
 const tileInfoCache = {};
 const stageGuestIds = new Set();
@@ -1413,6 +1750,10 @@ function showStageGuestTile(peerId, info, isLocal) {
   if (!isLocal && peerId !== 'self') tileInfoCache[peerId] = info;
   const tile = ensureVideoTile(peerId, isLocal);
   if (!tile) return;
+  if (!isLocal) {
+    const track = remoteMediaStreams[peerId]?.getVideoTracks().find(item => item.readyState === 'live');
+    if (track) tile.video.srcObject = new MediaStream([track]);
+  }
   const { frame, status } = tile;
   frame.dataset.stageGuest = '1';
   const name = info.name || 'Guest';
@@ -1434,6 +1775,8 @@ function showStageGuestTile(peerId, info, isLocal) {
   }
   const labelText = document.createElement('span');
   labelText.textContent = isLocal ? `${name} (You)` : name;
+  appendLiveWebBadge(labelText, info.platform);
+  labelText.title = info.platform === 'web' ? 'W: using the website' : '';
   labelEl.append(chip, labelText);
   const avatar = frame.querySelector('.live-tile-avatar');
   avatar.replaceChildren();
@@ -1445,11 +1788,17 @@ function showStageGuestTile(peerId, info, isLocal) {
   } else {
     avatar.textContent = name.trim().charAt(0).toUpperCase() || '?';
   }
-  const nameEl = document.createElement('span');
-  nameEl.className = 'live-tile-avatar-name';
-  nameEl.textContent = name;
-  avatar.appendChild(nameEl);
-  if (!tile.video.srcObject?.getVideoTracks().some(t => t.readyState === 'live' && !t.muted)) setTileCameraOff(tile, true);
+  const videoActive = tile.video.srcObject?.getVideoTracks().some(t => t.readyState === 'live' && !t.muted)
+    && (isLocal || remoteCameraStates.get(peerId) !== false);
+  setTileCameraOff(tile, !videoActive);
+  if (videoActive && !isLocal) {
+    tile.video.play().catch(error => {
+      console.error('Unable to play returning guest video:', error);
+      tile.video.controls = true;
+      status.textContent = 'Video ready — press play to view.';
+      status.hidden = false;
+    });
+  }
   status.hidden = true;
   setTileVisible(frame, true);
 }
@@ -1457,51 +1806,52 @@ function showStageGuestTile(peerId, info, isLocal) {
 function removeVideoTile(peerId) {
   const frame = Array.from(document.querySelectorAll('.live-video-frame'))
     .find(tile => tile.dataset.peerId === peerId);
-  if (frame) {
-    if (frame.classList.contains('is-expanded')) setTileExpanded(frame, false);
-    frame.remove();
-  }
+  if (frame) frame.remove();
   updateVideoGridLayout();
 }
 
-function showGuestRequest(socketId, name, avatarUrl) {
-  let box = document.getElementById('live-guest-requests');
-  if (!box) {
-    box = document.createElement('div');
-    box.id = 'live-guest-requests';
-    box.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:8px;width:min(92vw,360px)';
-    document.body.appendChild(box);
-  }
+function showGuestRequest(socketId, name, avatarUrl, platform) {
+  const box = document.getElementById('live-guest-requests');
+  if (!box) return;
   if (box.querySelector(`[data-socket-id="${socketId}"]`)) return;
   const row = document.createElement('div');
   row.dataset.socketId = socketId;
-  row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:12px;background:#1d1631;color:#fff;border:1px solid #7a5cff;box-shadow:0 6px 24px rgba(0,0,0,.5)';
+  row.className = 'live-guest-request';
   if (avatarUrl) {
     const photo = document.createElement('img');
     photo.alt = '';
     photo.src = /^https?:/i.test(avatarUrl) ? avatarUrl : `${API_ORIGIN}${avatarUrl}`;
-    photo.style.cssText = 'width:34px;height:34px;border-radius:50%;object-fit:cover;flex:none';
+    photo.className = 'live-guest-request-avatar';
     row.appendChild(photo);
   }
   const text = document.createElement('span');
-  text.style.flex = '1';
-  text.textContent = `${name} wants to join your live`;
+  text.className = 'live-guest-request-text';
+  text.textContent = name;
+  appendLiveWebBadge(text, platform);
+  text.append(' wants to join your live');
+  text.title = `${name}${platform === 'web' ? ' W' : ''} wants to join your live`;
   const decide = (accept) => {
     socket.emit('live_guest_decision', { socketId, accept });
     removeGuestRequest(socketId);
+    const panel = document.getElementById('live-host-panel');
+    if (panel) panel.open = false;
   };
   const accept = document.createElement('button');
   accept.type = 'button';
   accept.textContent = 'Accept';
-  accept.style.cssText = 'padding:6px 12px;border:0;border-radius:16px;background:#2fbf71;color:#fff;font-weight:700';
+  accept.className = 'live-request-accept';
   accept.onclick = () => decide(true);
   const refuse = document.createElement('button');
   refuse.type = 'button';
   refuse.textContent = 'Refuse';
-  refuse.style.cssText = 'padding:6px 12px;border:0;border-radius:16px;background:#e5334b;color:#fff;font-weight:700';
+  refuse.className = 'live-request-refuse';
   refuse.onclick = () => decide(false);
   row.append(text, accept, refuse);
   box.appendChild(row);
+  const count = document.getElementById('live-request-count');
+  if (count) count.textContent = `(${box.children.length})`;
+  const panel = document.getElementById('live-host-panel');
+  if (panel) panel.open = true;
 }
 
 function removeGuestRequest(socketId) {
@@ -1509,7 +1859,23 @@ function removeGuestRequest(socketId) {
   if (!box) return;
   const row = box.querySelector(`[data-socket-id="${socketId}"]`);
   if (row) row.remove();
-  if (!box.children.length) box.remove();
+  const count = document.getElementById('live-request-count');
+  if (count) count.textContent = box.children.length ? `(${box.children.length})` : '';
+}
+
+function openLiveGuestInvites(event) {
+  event.stopPropagation();
+  if (isGuestRole()) return;
+  if (!socket?.connected || !activeRoomSessionId) {
+    showLiveError('Unable to load viewers. Please try again.');
+    return;
+  }
+  const menu = document.getElementById('live-viewers-menu');
+  if (!menu) return;
+  menu.dataset.inviteOnly = 'true';
+  menu.hidden = false;
+  document.getElementById('live-viewers-btn')?.setAttribute('aria-expanded', 'true');
+  refreshViewers();
 }
 
 function updateVideoGridLayout() {
@@ -1519,65 +1885,146 @@ function updateVideoGridLayout() {
   const frames = Array.from(grid.querySelectorAll('.live-video-frame')).filter(f => !f.hidden);
   const hostFrame = frames.find(f => f.dataset.peerId === liveHostSocketId || (isHostRole && f.dataset.peerId === 'self'))
     || (isHostRole ? null : frames.find(f => f.dataset.peerId !== 'self' && !stageGuestIds.has(f.dataset.peerId)));
-  frames.forEach(frame => {
-    frame.style.gridRow = '';
-    frame.style.gridColumn = '';
-    frame.style.zIndex = '';
-    frame.style.order = frame === hostFrame ? '-1' : '';
-    frame.classList.remove('live-tile-off');
+  const capacity = { full: 1, two: 2, four: 4, six: 6, 'host-left': 9, 'top-two': 10, 'host-overlay': 9, overflow: 12 };
+  const layouts = ['full', 'two', 'four', 'six', 'host-left', 'top-two', 'overflow'];
+  const chosen = capacity[grid.dataset.choice] ? grid.dataset.choice : 'full';
+  const layout = capacity[chosen] >= frames.length
+    ? chosen
+    : layouts.find(item => capacity[item] >= frames.length) || 'overflow';
+  document.getElementById('live-grid-menu')?.querySelectorAll('[data-layout]').forEach(button => {
+    button.setAttribute('aria-pressed', String(button.dataset.layout === layout));
+    if (button.dataset.layout === 'full') button.disabled = frames.length > 1;
   });
-
-  // Equal slots by tile count: 1, 2, 2x2, 3x3, then 4 across x 3 rows (12 tiles maximum, host included).
-  const count = frames.length;
-  const slots = count <= 1 ? 1 : count === 2 ? 2 : count <= 4 ? 4 : count <= 9 ? 9 : 12;
-  const cols = slots === 1 ? 1 : slots === 2 ? 2 : slots === 4 ? 2 : slots === 9 ? 3 : 4;
-  const rows = Math.ceil(slots / cols);
-  grid.dataset.layout = count === 2 ? 'two' : 'equal';
+  const guestCount = Math.max(0, frames.length - (hostFrame ? 1 : 0));
+  const guestCols = guestCount <= 2 ? 1 : 2;
+  const guestRows = Math.max(1, Math.ceil(guestCount / guestCols));
+  const dimensions = {
+    full: [1, 1], two: [2, 1], four: [2, 2], six: [3, 2],
+    'host-left': [guestRows + guestCols, guestRows],
+    'top-two': [4, 2 + Math.ceil(Math.max(0, frames.length - 2) / 4)],
+    'host-overlay': [3, 6],
+    overflow: [4, 3]
+  };
+  const [cols, rows] = dimensions[layout];
+  grid.dataset.layout = layout;
   grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
   grid.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
   grid.style.gridAutoRows = 'minmax(0, 1fr)';
-
+  grid.style.justifyContent = '';
+  grid.style.alignContent = '';
+  grid.style.gap = '';
   grid.querySelectorAll('.live-slot-empty').forEach(el => el.remove());
-  for (let i = count; i < slots && count > 0; i++) {
-    const empty = document.createElement('div');
-    empty.className = 'live-slot-empty';
-    empty.style.cssText = 'order:1000;border-radius:12px;border:1px dashed rgba(255,255,255,.18);background:rgba(255,255,255,.03);min-height:0';
-    grid.appendChild(empty);
+  const stage = grid.closest('.live-stage');
+  const overlay = layout === 'host-overlay';
+  stage?.classList.toggle('live-multi', layout !== 'full' && !overlay);
+  stage?.classList.toggle('live-solo', layout === 'full' || overlay);
+  if (layout !== 'full') {
+    const cs = getComputedStyle(grid);
+    const gap = Math.max(parseFloat(cs.columnGap) || 0, parseFloat(cs.rowGap) || 0);
+    const innerWidth = grid.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+    const innerHeight = grid.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+    const side = Math.floor(overlay
+      ? Math.min((innerWidth - gap * 2) / 4.4, (innerHeight - gap * 5) / 5.8)
+      : Math.min((innerWidth - gap * (cols - 1)) / cols, (innerHeight - gap * (rows - 1)) / rows));
+    if (side > 0) {
+      grid.style.gap = `${gap}px`;
+      grid.style.gridTemplateColumns = overlay ? `${side}px minmax(0, 1fr) ${side}px` : `repeat(${cols}, ${side}px)`;
+      grid.style.gridTemplateRows = overlay ? `minmax(0, 1fr) repeat(4, ${side}px) minmax(0, 1.8fr)` : `repeat(${rows}, ${side}px)`;
+      grid.style.gridAutoRows = `${side}px`;
+      grid.style.justifyContent = 'center';
+      grid.style.alignContent = 'center';
+    }
   }
-  grid.closest('.live-stage')?.classList.toggle('live-multi', slots > 1);
-
-  // Every tile is a 1:1 square sized to the largest square that fits its grid cell.
-  const cs = getComputedStyle(grid);
-  const gap = parseFloat(cs.columnGap) || 0;
-  const rowGap = parseFloat(cs.rowGap) || 0;
-  const innerW = grid.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
-  const innerH = grid.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
-  const side = Math.floor(Math.min((innerW - gap * (cols - 1)) / cols, (innerH - rowGap * (rows - 1)) / rows));
-  if (side > 0) {
-    grid.style.gridTemplateColumns = `repeat(${cols}, ${side}px)`;
-    grid.style.gridTemplateRows = `repeat(${rows}, ${side}px)`;
-    grid.style.gridAutoRows = `${side}px`;
-    grid.style.justifyContent = 'center';
-    grid.style.alignContent = 'center';
-    grid.querySelectorAll('.live-video-frame, .live-slot-empty').forEach(el => {
-      el.style.width = `${side}px`;
-      el.style.height = `${side}px`;
-      el.style.aspectRatio = '1 / 1';
-    });
+  const ordered = frames.filter(frame => frame !== hostFrame).sort((a, b) => {
+    const aId = a.dataset.peerId === 'self' ? socket.id : a.dataset.peerId;
+    const bId = b.dataset.peerId === 'self' ? socket.id : b.dataset.peerId;
+    return aId < bId ? -1 : aId > bId ? 1 : 0;
+  });
+  if (hostFrame) ordered.unshift(hostFrame);
+  ordered.forEach((frame, index) => {
+    let column = index % cols + 1;
+    let row = Math.floor(index / cols) + 1;
+    let columnSpan = 1;
+    let rowSpan = 1;
+    if (overlay) {
+      if (frame === hostFrame) {
+        column = 1; row = 1; columnSpan = 3; rowSpan = 6;
+      } else {
+        const guestIndex = hostFrame ? index - 1 : index;
+        column = guestIndex < 4 ? 1 : 3; row = 2 + guestIndex % 4;
+      }
+    } else if (layout === 'host-left') {
+      if (frame === hostFrame) {
+        column = 1; row = 1; columnSpan = guestRows; rowSpan = guestRows;
+      } else {
+        const guestIndex = hostFrame ? index - 1 : index;
+        column = 1 + guestRows + guestIndex % guestCols; row = 1 + Math.floor(guestIndex / guestCols);
+      }
+    } else if (layout === 'top-two') {
+      if (index < 2) {
+        column = 1 + index * 2; row = 1; columnSpan = 2; rowSpan = 2;
+      } else {
+        column = 1 + (index - 2) % 4; row = 3 + Math.floor((index - 2) / 4);
+      }
+    }
+    frame.style.gridColumn = `${column} / span ${columnSpan}`;
+    frame.style.gridRow = `${row} / span ${rowSpan}`;
+    frame.style.order = '';
+    frame.style.zIndex = overlay ? (frame === hostFrame ? '0' : '1') : '';
+    frame.dataset.layoutHost = frame === hostFrame ? '1' : '0';
+    frame.style.width = '100%';
+    frame.style.height = '100%';
+    frame.style.aspectRatio = layout === 'full' || (overlay && frame === hostFrame) ? 'auto' : '1 / 1';
+    frame.classList.remove('live-tile-off');
+  });
+  if (overlay) {
+    for (let index = guestCount; index < 8; index++) {
+      const slot = document.createElement(isHostRole ? 'button' : 'div');
+      slot.className = 'live-slot-empty';
+      slot.style.gridColumn = index < 4 ? '1' : '3';
+      slot.style.gridRow = String(2 + index % 4);
+      if (isHostRole) {
+        slot.type = 'button';
+        slot.innerHTML = '<span aria-hidden="true">+</span><span>Invite</span>';
+        slot.addEventListener('click', openLiveGuestInvites);
+      } else {
+        slot.innerHTML = '<span aria-hidden="true">+</span>';
+        slot.setAttribute('aria-hidden', 'true');
+      }
+      grid.appendChild(slot);
+    }
   }
   const emptyState = document.getElementById('live-video-empty');
-  if (emptyState) emptyState.hidden = count > 0;
+  if (emptyState) emptyState.hidden = frames.length > 0;
 }
 
 function setTileVisible(frame, visible) {
   if (!frame) return;
-  if (!visible && frame.classList.contains('is-expanded')) setTileExpanded(frame, false);
   frame.hidden = !visible;
   frame.style.display = visible ? '' : 'none';
   updateVideoGridLayout();
 }
 
 function registerLiveListeners() {
+  socket.off('live_room_disconnected');
+  socket.on('live_room_disconnected', ({ sessionId }) => {
+    if (selectedLiveSessionId !== sessionId) return;
+    activeRoomSessionId = null;
+    closeAllPeerConnections();
+    const input = document.getElementById('live-chat-input');
+    if (input) input.disabled = true;
+    setLiveChatStatus('Reconnecting to live...', false);
+  });
+  socket.off('live_room_reconnected');
+  socket.on('live_room_reconnected', ({ sessionId }) => {
+    if (selectedLiveSessionId !== sessionId) return;
+    activeRoomSessionId = sessionId;
+    const input = document.getElementById('live-chat-input');
+    if (input) input.disabled = false;
+    setLiveChatStatus('Connected', true);
+    refreshViewers();
+  });
+
   socket.off('live_chat_message');
   socket.on('live_chat_message', renderChatMessage);
 
@@ -1606,29 +2053,58 @@ function registerLiveListeners() {
     }
   });
 
+  socket.off('live_session_replaced');
+  socket.on('live_session_replaced', () => {
+    activeRoomSessionId = null;
+    selectedLiveSessionId = null;
+    activeBroadcastSessionId = null;
+    closeAllPeerConnections();
+    stopLocalMedia(false).catch(error => console.error('Unable to stop live media after switching devices:', error));
+    window.location.href = '../index.html';
+  });
+
   socket.off('live_guest_request');
-  socket.on('live_guest_request', ({ socketId, name, avatar_url }) => showGuestRequest(socketId, name, avatar_url));
+  socket.on('live_guest_request', ({ socketId, name, avatar_url, platform }) => showGuestRequest(socketId, name, avatar_url, platform));
 
   socket.off('live_stage_guest');
   socket.on('live_stage_guest', ({ socketId, name }) => {
     hostGuestMuted[socketId] = { name, muted: false };
     renderHostGuests();
   });
+  socket.off('live_remove_from_stage');
+  socket.on('live_remove_from_stage', () => {
+    if (!isGuestRole()) return;
+    myStageInfo = null;
+    stageGuestIds.delete(socket.id);
+    stopLocalMedia(false).catch(error => {
+      console.error('Unable to stop media after stage removal:', error);
+      showLiveError('You were removed from the stage, but media could not be updated. Rejoin the live.');
+    });
+    showLiveError('The host removed you from the stage. You can continue watching.');
+  });
   socket.off('live_stage_guest_left');
   socket.on('live_stage_guest_left', ({ socketId }) => {
     delete hostGuestMuted[socketId];
     renderHostGuests();
+    stageGuestIds.delete(socketId);
+    delete tileInfoCache[socketId];
     if (socketId === socket.id) {
       myStageInfo = null;
+      if (isGuestRole() && guestOnStage) {
+        stopLocalMedia(false).catch(error => {
+          console.error('Unable to stop media after stage removal:', error);
+          showLiveError('You were removed from the stage, but media could not be updated. Rejoin the live.');
+        });
+        showLiveError('The host removed you from the stage. You can continue watching.');
+      }
       if (!localVideoTrack) removeVideoTile('self');
       return;
     }
     const frame = Array.from(document.querySelectorAll('.live-video-frame')).find(f => f.dataset.peerId === socketId);
     if (frame?.dataset.stageGuest) removeVideoTile(socketId);
-    stageGuestIds.delete(socketId);
   });
   socket.off('live_member_joined');
-  socket.on('live_member_joined', ({ name, socketId }) => renderSystemChatMessage(`\u2728 ${name || 'A viewer'} joined the live`, socketId, name));
+  socket.on('live_member_joined', ({ name, socketId, platform }) => renderSystemChatMessage(`\u2728 ${name || 'A viewer'}${platform === 'web' ? ' W' : ''} joined the live`, socketId, name, platform));
 
   socket.off('live_host_invite');
   socket.on('live_host_invite', ({ name }) => {
@@ -1642,11 +2118,15 @@ function registerLiveListeners() {
   });
 
   socket.off('live_camera_state');
-  socket.on('live_camera_state', ({ socketId, enabled }) => {
+  socket.on('live_camera_state', ({ socketId, enabled, image }) => {
     if (socketId === socket.id) return;
     remoteCameraStates.set(socketId, enabled);
+    if (enabled && image) remoteImagePeers.add(socketId);
+    else remoteImagePeers.delete(socketId);
+    if (!canShowTile(socketId)) return;
     const tile = ensureVideoTile(socketId, false);
     if (!tile) return;
+    tile.frame.dataset.mediaSource = remoteImagePeers.has(socketId) ? 'image' : 'camera';
     if (!enabled) {
       setTileCameraOff(tile, true);
     } else if (tile.video.srcObject?.getVideoTracks().some(track => track.readyState === 'live' && !track.muted)) {
@@ -1675,10 +2155,12 @@ function registerLiveListeners() {
   });
   socket.off('live_force_mute');
   socket.on('live_force_mute', ({ muted }) => {
-    guestMuted = Boolean(muted);
+    if (!isGuestRole() || muted !== true) return;
+    guestMuted = true;
     applyMute();
+    reportGuestMuteState();
     const status = document.getElementById('live-media-status');
-    if (status) status.textContent = guestMuted ? 'The host muted your microphone. You can unmute yourself.' : 'The host unmuted your microphone.';
+    if (status) status.textContent = 'The host muted your microphone. You can unmute yourself.';
   });
   socket.off('live_guest_request_cancel');
   socket.on('live_guest_request_cancel', ({ socketId }) => removeGuestRequest(socketId));
@@ -1686,7 +2168,7 @@ function registerLiveListeners() {
   socket.off('live_guest_count');
 
   socket.off('live_layout');
-  socket.on('live_layout', ({ layout, hostSocketId }) => applyLiveLayout(layout, hostSocketId));
+  socket.on('live_layout', ({ layout, hostSocketId, hostPlatform }) => applyLiveLayout(layout, hostSocketId, hostPlatform));
   socket.off('live_viewers_changed');
   socket.on('live_viewers_changed', scheduleViewersRefresh);
 
@@ -1698,7 +2180,7 @@ function registerLiveListeners() {
 
   socket.off('viewer_joined');
   socket.on('viewer_joined', async ({ socketId }) => {
-    socket.emit('live_camera_state', { enabled: Boolean(localVideoTrack), targetSocketId: socketId });
+    socket.emit('live_camera_state', { enabled: Boolean(localVideoTrack), image: Boolean(localVideoTrack && imageStream), targetSocketId: socketId });
     if (!socketId || peerConnections[socketId]) return;
     try {
       ensureVideoTile(socketId, false);
@@ -1811,20 +2293,23 @@ function inviteLiveViewer(socketId, name) {
   });
 }
 
-function renderSystemChatMessage(text, socketId, name) {
+function renderSystemChatMessage(text, socketId, name, platform) {
   const chatBox = document.getElementById('live-chat-messages');
   if (!chatBox) return;
   const div = document.createElement('div');
   div.className = 'live-chat-message live-chat-system';
-  div.style.cssText = 'text-align:center;font-size:12px;font-weight:600;color:#ffd700;opacity:.95';
-  if (socketId && !isGuestRole() && socketId !== socket?.id) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'live-chat-invite';
-    button.textContent = name || 'A viewer';
-    button.setAttribute('aria-label', `Invite ${name || 'viewer'} to join`);
-    button.addEventListener('click', () => inviteLiveViewer(socketId, name));
-    div.append('\u2728 ', button, ' joined the live');
+  if (socketId) {
+    const canInvite = !isGuestRole() && socketId !== socket?.id;
+    const user = document.createElement(canInvite ? 'button' : 'span');
+    user.textContent = name || 'A viewer';
+    appendLiveWebBadge(user, platform);
+    if (canInvite) {
+      user.type = 'button';
+      user.className = 'live-chat-invite';
+      user.setAttribute('aria-label', `Invite ${name || 'viewer'} to join`);
+      user.addEventListener('click', () => inviteLiveViewer(socketId, name));
+    }
+    div.append('\u2728 ', user, ' joined the live');
   } else {
     div.textContent = text;
   }
@@ -1857,6 +2342,8 @@ function renderChatMessage(msg) {
   const username = document.createElement(canInvite ? 'button' : 'span');
   username.className = 'live-chat-user';
   username.textContent = name;
+  appendLiveWebBadge(username, msg.platform);
+  username.title = msg.platform === 'web' ? 'W: using the website' : '';
   if (canInvite) {
     username.type = 'button';
     username.classList.add('live-chat-invite');
@@ -1864,6 +2351,7 @@ function renderChatMessage(msg) {
     username.addEventListener('click', () => inviteLiveViewer(msg.socketId, name));
   }
   const content = document.createElement('span');
+  content.className = 'live-chat-content';
   content.textContent = msg.content;
   div.append(avatar, username, content);
   chatBox.appendChild(div);
@@ -1951,25 +2439,52 @@ function createPeerConnection(socketId, addSendTransceivers = true) {
 
   pc.ontrack = (event) => {
     const remoteStream = remoteMediaStreams[socketId];
+    if (!remoteStream) return;
     if (!remoteStream.getTracks().includes(event.track)) remoteStream.addTrack(event.track);
+    if (event.track.kind === 'audio') {
+      let audio = remoteAudioElements[socketId];
+      if (!audio) {
+        audio = document.createElement('audio');
+        audio.autoplay = true;
+        audio.playsInline = true;
+        audio.hidden = true;
+        document.body.append(audio);
+        remoteAudioElements[socketId] = audio;
+      }
+      audio.srcObject = new MediaStream([event.track]);
+      audioDevices.applyOutput(audio).then(() => {
+        if (remoteAudioElements[socketId] === audio) return audio.play();
+      }).catch(err => {
+        console.error('Unable to play participant audio:', err);
+        showLiveError('Unable to play live audio. Check your browser audio permissions.');
+      });
+      return;
+    }
     if (event.track.kind !== 'video') return;
 
-    const tile = ensureVideoTile(socketId, false);
-    if (!tile) return;
-    tile.video.srcObject = remoteStream;
+    const initialTile = ensureVideoTile(socketId, false);
+    if (initialTile) initialTile.video.srcObject = new MediaStream([event.track]);
     const showVideo = () => {
       if (!canShowTile(socketId) || remoteCameraStates.get(socketId) === false) return;
+      const tile = ensureVideoTile(socketId, false);
+      if (!tile) return;
+      tile.video.srcObject = new MediaStream([event.track]);
       tile.status.hidden = true;
       setTileCameraOff(tile, false);
       setTileVisible(tile.frame, true);
       tile.video.play().catch((err) => {
         console.error('Unable to play participant video:', err);
+        tile.video.controls = true;
         tile.status.textContent = 'Video ready — press play to view.';
         tile.status.hidden = false;
       });
     };
     event.track.onunmute = showVideo;
     event.track.onmute = () => {
+      const frame = Array.from(document.querySelectorAll('.live-video-frame'))
+        .find(item => item.dataset.peerId === socketId);
+      if (!frame) return;
+      const tile = { frame, video: frame.querySelector('video') };
       if (tile.frame.dataset.stageGuest) {
         setTileCameraOff(tile, true);
         return;
@@ -2066,6 +2581,7 @@ function bindPeerSenders(socketId, pc) {
 
 function closePeerConnection(socketId) {
   remoteCameraStates.delete(socketId);
+  remoteImagePeers.delete(socketId);
   const connection = peerConnections[socketId];
   if (connection) connection.close();
   delete peerConnections[socketId];
@@ -2074,12 +2590,19 @@ function closePeerConnection(socketId) {
   delete pendingNegotiations[socketId];
   delete pendingIceCandidates[socketId];
   delete remoteMediaStreams[socketId];
+  if (remoteAudioElements[socketId]) {
+    remoteAudioElements[socketId].srcObject = null;
+    remoteAudioElements[socketId].remove();
+    delete remoteAudioElements[socketId];
+  }
   removeVideoTile(socketId);
   tuneSenderQuality().catch(() => {});
 }
 
 function closeAllPeerConnections() {
+  audioDevices.close();
   Object.keys(peerConnections).forEach(closePeerConnection);
+  remoteImagePeers.clear();
 }
 
 export async function startBroadcasting(title, category, visibility = 'public', audienceIds = []) {
@@ -2100,7 +2623,6 @@ export async function startBroadcasting(title, category, visibility = 'public', 
     broadcastStartedAt = Date.now();
     const mainView = document.getElementById('live-main-view');
     const currentUser = JSON.parse(localStorage.getItem('vynzo_user') || '{}');
-    document.body.classList.remove('live-tile-expanded');
     mainView.innerHTML = createLiveStage(
       'Say something in live chat...',
       true,

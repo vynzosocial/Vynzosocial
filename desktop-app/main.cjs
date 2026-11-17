@@ -179,9 +179,6 @@ function configureShellIpc() {
       reloadWebsite();
     } else if (type === 'update') {
       return updates.check(true);
-    } else if (type === 'menu') {
-      contents.focus();
-      Menu.getApplicationMenu().popup({ window: mainWindow, x: Math.max(0, mainWindow.getContentBounds().width - 360), y: TITLE_HEIGHT });
     }
   });
 }
@@ -232,6 +229,7 @@ function createWindow(browserSession) {
   siteView = new WebContentsView({
     webPreferences: {
       session: browserSession,
+      backgroundThrottling: false,
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
@@ -250,6 +248,7 @@ function createWindow(browserSession) {
   mainWindow.on('resize', resizeView);
   resizeView();
   const contents = siteContents();
+  contents.setUserAgent(`${contents.getUserAgent()} VynzoSocialDesktop/${APP_VERSION}`);
   contents.setWindowOpenHandler(({ url }) => {
     if (isTrustedUrl(url)) loadWebsite(url);
     else openExternal(url);

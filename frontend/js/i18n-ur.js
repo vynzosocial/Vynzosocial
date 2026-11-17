@@ -2,6 +2,11 @@
   'use strict';
   // English (key, without leading/trailing punctuation or emoji) -> Urdu
   var D = {
+    'Host with side guests': 'میزبان اور دونوں طرف مہمان', 'Invite': 'دعوت دیں', 'No viewers available to invite': 'دعوت دینے کے لیے کوئی ناظرین دستیاب نہیں',
+    'Grid': 'گرڈ', 'Focus': 'فوکس', 'Focus this participant': 'اس شریک پر فوکس کریں',
+    'Host only': 'صرف میزبان', 'Two people': 'دو افراد', 'Host and guests': 'میزبان اور مہمان', 'Two above guests': 'مہمانوں کے اوپر دو افراد',
+    'Show chat': 'چیٹ دکھائیں', 'Hide chat': 'چیٹ چھپائیں', 'Manage guests': 'مہمانوں کا انتظام',
+    'Requests': 'درخواستیں', 'On stage': 'اسٹیج پر', 'Stage layout': 'اسٹیج کی ترتیب', 'Live media controls': 'لائیو میڈیا کنٹرولز',
     /* Navigation & shared */
     'Offer to save this login in my password manager': 'یہ لاگ ان میرے پاس ورڈ مینیجر میں محفوظ کرنے کی پیشکش کریں',
     'Your browser or phone decides whether to save it. Avoid saving on shared devices': 'آپ کا براؤزر یا فون فیصلہ کرتا ہے کہ اسے محفوظ کرنا ہے یا نہیں۔ مشترکہ آلات پر محفوظ نہ کریں',

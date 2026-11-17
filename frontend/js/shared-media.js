@@ -16,6 +16,27 @@ async function showSharedMedia() {
     return;
   }
   try {
+    const publicUrl = new URL('/shared-public-media', 'https://www.vynzosocial.com');
+    publicUrl.search = new URLSearchParams({ kind, id, type });
+    const check = await fetch(publicUrl, { headers: { Range: 'bytes=0-0' } });
+    if (check.ok) {
+      await check.body?.cancel();
+      const media = document.createElement(type === 'video' ? 'video' : 'img');
+      if (type === 'video') {
+        media.controls = true;
+        media.playsInline = true;
+        media.preload = 'metadata';
+      } else media.alt = 'Shared image';
+      media.addEventListener('error', () => {
+        status.hidden = false;
+        status.textContent = 'Could not load this media. Please try again.';
+      }, { once: true });
+      media.src = publicUrl.toString();
+      document.getElementById('shared-content').append(media);
+      status.hidden = true;
+      return;
+    }
+    if (check.status !== 404) throw new Error('Public media is temporarily unavailable. Please try again.');
     await restoreSupabaseSession();
     if (!localStorage.getItem('vynzo_token')) {
       login.href = shareLoginUrl(location);

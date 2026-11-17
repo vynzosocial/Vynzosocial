@@ -1,6 +1,7 @@
 import './supabase-client.js';
 import { API_BASE_URL, API_ORIGIN } from './config.js?v=sb4';
 import { supabase } from './supabase-client.js';
+import { unregisterPush } from './native-push.mjs';
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabase-config.js';
 import { shareLoginUrl } from './share-login.js?v=1';
 
@@ -20,6 +21,10 @@ export async function apiRequest(endpoint, options = {}) {
     || apiPath.startsWith('/users/search')
     || /^\/users\/[^/]+\/profile$/.test(apiPath)
     || /^\/users\/[^/]+\/follow$/.test(apiPath);
+  const useSupabaseAccountApi = apiPath === '/auth/deactivate'
+    || apiPath === '/auth/delete-account/request-code'
+    || apiPath === '/auth/delete-account/confirm'
+    || apiPath === '/activity';
   const useSupabaseMessageApi = apiPath === '/messages'
     || apiPath.startsWith('/messages/');
   const useSupabaseLiveApi = apiPath === '/live'
@@ -35,6 +40,8 @@ export async function apiRequest(endpoint, options = {}) {
       || useSupabaseMessageApi
       || useSupabaseLiveApi
       || useSupabaseUserApi
+      || useSupabaseAccountApi
+      || apiPath === '/calls/authorize-invite'
       || apiPath.startsWith('/moderation/'))
     && !apiPath.endsWith('/moderate');
   if (!API_ORIGIN && !useSupabaseApi) {
@@ -106,6 +113,11 @@ export async function apiRequest(endpoint, options = {}) {
     if (useSupabaseApi && response.status === 401) {
       const { data: refreshed } = await supabase.auth.refreshSession();
       if (!refreshed?.session && !options._retried) {
+        try {
+          await unregisterPush(token ? { access_token: token } : null);
+        } catch (error) {
+          console.error('Could not remove notification device after session expiry:', error);
+        }
         await supabase.auth.signOut().catch(() => {});
         localStorage.removeItem('vynzo_token');
         localStorage.removeItem('vynzo_user');
@@ -155,7 +167,9 @@ export async function apiBlobRequest(endpoint, options = {}) {
   }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.error || 'This photo is no longer available.');
+    const error = new Error(body.error || 'This photo is no longer available.');
+    error.code = body.code;
+    throw error;
   }
   return response.blob();
 }

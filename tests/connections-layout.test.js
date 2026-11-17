@@ -49,7 +49,7 @@ test('connection names open profiles and live indicators retain the stream link'
   const indicator = identity.children[0].children[1];
   assert.equal(indicator.href, 'live.html?sessionId=live%201');
   assert.equal(indicator.attributes['aria-label'], 'Watch averylongusername live');
-  assert.equal(identity.children.length, 3);
+  assert.equal(identity.children.length, 4);
   assert.equal(view.className, 'account-profile-button');
 });
 
@@ -76,10 +76,78 @@ test('search results and offline users do not receive connection or live styling
   assert.equal(row.children[1].children.length, 3);
 });
 
+test('Find People preserves full usernames for both search results and connections', () => {
+  for (const isConnection of [false, true]) {
+    for (const username of ['vynzo_team', 'VynzoSocial', 'a'.repeat(50)]) {
+      const { row } = render({ id: '7', username }, isConnection);
+      assert.equal(row.children[1].children[1].textContent, `@${username}`);
+    }
+  }
+  const css = fs.readFileSync(path.join(root, 'css', 'people-glow.css'), 'utf8');
+  assert.match(css, /\.people-page \.account-search-identity strong,\s*\.people-page \.account-search-identity small\s*\{[^}]*white-space: normal;[^}]*overflow-wrap: anywhere;/);
+  assert.match(css, /grid-template-columns: 40px repeat\(2, minmax\(0, 1fr\)\)/);
+});
+
+test('connection cards identify friends, outgoing follows, and followers separately', () => {
+  const friend = render({ id: '1', username: 'friend', is_friend: true, is_following: true }, true);
+  const following = render({ id: '2', username: 'following', is_following: true }, true);
+  const follower = render({ id: '3', username: 'follower', is_following: false }, true);
+  assert.equal(friend.row.children[1].children[3].textContent, 'Friend (you follow each other)');
+  assert.equal(following.row.children[1].children[3].textContent, "Following (doesn't follow you back)");
+  assert.equal(follower.row.children[1].children[3].textContent, "Follows you (you don't follow back)");
+});
+
+test('two connection groups combine outgoing follows and exclude mutual friends from followers', async () => {
+  const rows = [];
+  const requests = [];
+  const data = [
+    { id: 'friend', is_friend: true, is_following: true },
+    { id: 'following', is_following: true },
+    { id: 'follower', is_following: false }
+  ];
+  const tabs = ['following', 'followers'].map(type => ({
+    dataset: { type }, events: {}, classList: { toggle() {} }, setAttribute() {},
+    addEventListener(name, callback) { this.events[name] = callback; }
+  }));
+  const list = {
+    replaceChildren() { rows.length = 0; },
+    appendChild(row) { rows.push(row); },
+    contains() { return false; }
+  };
+  const sandbox = {
+    document: { hidden: false, getElementById: () => list, querySelectorAll: () => tabs },
+    window: { setInterval() {} },
+    apiRequest: async url => {
+      requests.push(url);
+      return { users: url.endsWith('type=following') ? data.filter(user => user.is_following) : data.filter(user => user.id !== 'following') };
+    },
+    createAccountResult: (user, _connection, onFollowChanged) => ({ ...user, onFollowChanged }),
+    renderSearchMessage() {},
+    console
+  };
+  const code = users.slice(users.indexOf('function liveFirst('), users.indexOf('\nasync function searchAccounts('));
+  vm.runInNewContext(`${code}\ninitConnections();`, sandbox);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(rows.map(user => user.id), ['friend', 'following']);
+  await tabs[1].events.click();
+  assert.deepEqual(rows.map(user => user.id), ['follower']);
+  data[2].is_following = true;
+  await rows[0].onFollowChanged();
+  assert.deepEqual(rows, []);
+  await tabs[0].events.click();
+  assert.deepEqual(rows.map(user => user.id), ['friend', 'following', 'follower']);
+  assert.deepEqual(requests, [
+    '/users/connections?type=following',
+    '/users/connections?type=followers',
+    '/users/connections?type=followers',
+    '/users/connections?type=following'
+  ]);
+});
+
 test('connection refresh moves live users and restores their original positions', async () => {
   const timers = [];
   const rows = [];
-  const tab = { dataset: { type: 'friends' }, classList: { toggle() {} }, setAttribute() {}, addEventListener() {} };
+  const tab = { dataset: { type: 'following' }, classList: { toggle() {} }, setAttribute() {}, addEventListener() {} };
   const list = {
     replaceChildren() { rows.length = 0; },
     appendChild(row) { rows.push(row); },

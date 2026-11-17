@@ -24,8 +24,11 @@ export function parseSharedMessage(content) {
   } else if (/^(🖼 Image|🎬 Video|🖼 Story|🎬 Story) by @/.test(text)) {
     preview = { type: text.startsWith('🎬') ? 'video' : 'image' };
   } else return null;
-  if (!preview || !['live', 'image', 'video'].includes(preview.type)) return null;
+  if (!preview || !['live', 'image', 'video', 'blog'].includes(preview.type)) return null;
   if (preview.type === 'live' && (url.origin !== 'https://www.vynzosocial.com' || url.pathname !== '/pages/live.html')) return null;
+  if (preview.type === 'blog' && (url.origin !== 'https://www.vynzosocial.com' || url.pathname !== '/share-blog' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(preview.id || '') ||
+      url.searchParams.get('id') !== preview.id)) return null;
   if (preview.r2 && (!['post', 'story'].includes(preview.kind) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(preview.id || ''))) return null;
   return { text, url: url.toString(), preview };
 }

@@ -100,6 +100,13 @@ textarea.bl-input { min-height: 80px; resize: vertical; }
 .bl-item pre { white-space: pre-wrap; font-size: .78rem; color: var(--text-muted, #9aa); }
 .bl-item input.bl-input { margin-top: 8px; }
 
+@media (max-width: 768px) {
+  .blogs-page {
+    height: calc(100% - 60px - env(safe-area-inset-bottom, 0px));
+    min-height: 0;
+  }
+}
+
 @media (max-width: 720px) {
   .blogs-page { padding: 14px 12px 90px; }
   .bl-two { grid-template-columns: 1fr; }

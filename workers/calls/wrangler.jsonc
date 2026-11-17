@@ -1,0 +1,17 @@
+{
+  "name": "vynzo-calls",
+  "main": "index.mjs",
+  "compatibility_date": "2026-11-02",
+  "workers_dev": true,
+  "vars": {
+    "ACCOUNT_LIFECYCLE_ENABLED": "true",
+    "VYNZO_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_i-NMgPe43-Tt-Afc9aQXoQ_dsBx6RwR",
+    "CALL_PUSH_ENABLED": "true"
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "CALL_COORDINATOR", "class_name": "CallCoordinator" }]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["CallCoordinator"] }
+  ]
+}

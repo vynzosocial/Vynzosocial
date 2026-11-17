@@ -1,5 +1,8 @@
 package com.vynzosocial.app.ota;
 
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import androidx.core.content.pm.PackageInfoCompat;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -58,6 +61,24 @@ public class OtaPlugin extends Plugin {
 
     @PluginMethod
     public void getInfo(PluginCall call) {
-        call.resolve(info("info"));
+        try {
+            PackageInfo app = getContext().getPackageManager().getPackageInfo(getContext().getPackageName(), 0);
+            JSObject result = info("info");
+            result.put("appVersion", app.versionName);
+            result.put("appBuild", PackageInfoCompat.getLongVersionCode(app));
+            call.resolve(result);
+        } catch (PackageManager.NameNotFoundException error) {
+            call.reject("Could not read the installed application version.", error);
+        }
+    }
+
+    @PluginMethod
+    public void applyUpdate(PluginCall call) {
+        if (OtaManager.stagedVersion(getContext()) <= OtaManager.currentVersion(getContext())) {
+            call.reject("No update is ready to apply.");
+            return;
+        }
+        call.resolve();
+        getActivity().runOnUiThread(() -> getActivity().recreate());
     }
 }

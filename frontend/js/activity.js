@@ -1,5 +1,7 @@
 ﻿import { supabase } from './supabase-client.js';
 
+import { apiRequest } from './api.js?v=activity-gateway1';
+
 const POLL_MS = 60000;
 const KIND_LABEL = {
   image: 'liked your photo',
@@ -85,7 +87,7 @@ function render() {
       row.addEventListener('click', async event => {
         event.stopPropagation();
         try {
-          const { openUserProfile } = await import('./users.js?v=report-reasons1');
+          const { openUserProfile } = await import('./users.js?v=repost1');
           setOpen(false);
           openUserProfile(item.actor_id);
         } catch (err) {
@@ -118,9 +120,9 @@ function updateGlow() {
 
 async function load() {
   try {
-    const { data, error } = await supabase.rpc('get_my_activity', { p_limit: 60 });
-    if (error) throw error;
-    items = Array.isArray(data) ? data : [];
+    const { activity } = await apiRequest('/activity');
+    if (!Array.isArray(activity)) throw new Error('Invalid activity feed response.');
+    items = activity;
     if (!panel.hidden) items.forEach(item => { item.fresh = item.fresh || isNew(item); });
     updateGlow();
     if (!panel.hidden) render();

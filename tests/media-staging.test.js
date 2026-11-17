@@ -124,11 +124,37 @@ test('requires a valid MP4 playback copy for video and no playback copy for imag
   await assert.rejects(createUploadPermits({
     ...base, original: { contentType: 'image/jpeg', size: 4 }, playback: { contentType: 'video/mp4', size: 4 }
   }), /playback copy/);
+  const cover = { contentType: 'image/webp', size: 4 };
   const result = await createUploadPermits({
-    ...base, original: video, playback: { contentType: 'video/mp4', size: 4 }
+    ...base, original: video, playback: { contentType: 'video/mp4', size: 4 }, cover
   });
   assert.ok(result.permits.original);
   assert.ok(result.permits.playback);
+});
+
+test('video cover permits are bounded and promoted only when explicitly moderated', async () => {
+  const base = { userId, kind: 'post', secret };
+  const original = { contentType: 'video/webm', size: 4 };
+  const playback = { contentType: 'video/mp4', size: 4 };
+  const cover = { contentType: 'image/webp', size: 4 };
+  await assert.rejects(createUploadPermits({ ...base, original, playback, cover: { ...cover, contentType: 'image/jpeg' } }));
+  await assert.rejects(createUploadPermits({ ...base, original, playback, cover: { ...cover, size: 2 * 1024 * 1024 + 1 } }));
+  await assert.rejects(createUploadPermits({ ...base, original, playback }));
+  const upload = await createUploadPermits({ ...base, original, playback, cover });
+  const MEDIA = bucket();
+  const env = { MEDIA, UPLOAD_PERMIT_SECRET: secret, MEDIA_CONTROL_SECRET: secret };
+  for (const [variant, metadata] of Object.entries({ original, playback, cover })) {
+    const claims = makeClaims({ uploadId: upload.uploadId, variant, ...metadata });
+    assert.equal((await worker.fetch(makeRequest(claims, { token: upload.permits[variant] }), env)).status, 201);
+  }
+  const ref = { kind: 'post', userId, uploadId: upload.uploadId };
+  const control = (action, body) => worker.fetch(new Request(`https://media.example/internal/${action}`, {
+    method: 'POST', headers: { 'X-Media-Control': secret }, body: JSON.stringify(body)
+  }), env);
+  assert.equal((await control('promote', { ...ref, mediaType: 'video', hasCover: true })).status, 200);
+  assert.equal(await (await control('read', { ...ref, prefix: 'media', variant: 'cover' })).text(), 'test');
+  await control('delete', { ...ref, prefix: 'media' });
+  assert.equal((await control('read', { ...ref, prefix: 'media', variant: 'cover' })).status, 404);
 });
 
 test('only trusted control operations can inspect, promote, read and delete staged media', async () => {
@@ -142,7 +168,7 @@ test('only trusted control operations can inspect, promote, read and delete stag
   }), env);
   assert.equal((await control('inspect', ref, 'wrong-control-secret-with-thirty-two-characters')).status, 401);
   const inspected = await control('inspect', ref);
-  assert.deepEqual(await inspected.json(), { original: { size: 4, contentType: 'image/jpeg' }, playback: null });
+  assert.deepEqual(await inspected.json(), { original: { size: 4, contentType: 'image/jpeg' }, playback: null, cover: null });
   assert.equal((await control('promote', { ...ref, mediaType: 'image' })).status, 200);
   assert.equal(await (await control('read', { ...ref, prefix: 'media', variant: 'original' })).text(), 'test');
   assert.equal((await control('promote', { ...ref, mediaType: 'image' })).status, 409);
@@ -158,7 +184,8 @@ test('promotion rejects missing variants and mismatched media types', async () =
   const ref = { kind: 'post', userId, uploadId };
   async function promote(mediaType) {
     return worker.fetch(new Request('https://media.example/internal/promote', {
-      method: 'POST', headers: { 'X-Media-Control': secret }, body: JSON.stringify({ ...ref, mediaType })
+      method: 'POST', headers: { 'X-Media-Control': secret },
+      body: JSON.stringify({ ...ref, mediaType, ...(mediaType === 'video' ? { hasCover: true } : {}) })
     }), env);
   }
   assert.equal((await promote('video')).status, 404);
@@ -233,7 +260,7 @@ test('scheduled reconciliation deletes only old references confirmed orphaned', 
   };
   try {
     await reconcileMedia(env);
-    assert.deepEqual(deleted, [`media/post/${userId}/${uploadId}/original`, `media/post/${userId}/${uploadId}/playback`]);
+    assert.deepEqual(deleted, [`media/post/${userId}/${uploadId}/original`, `media/post/${userId}/${uploadId}/playback`, `media/post/${userId}/${uploadId}/cover`]);
   } finally {
     global.fetch = originalFetch;
   }
@@ -275,4 +302,14 @@ test('scheduled staging cleanup retains recent uploads and deletes abandoned upl
   };
   await removeExpiredStaging({ MEDIA }, now);
   assert.deepEqual(deleted, ['staging/old']);
+});
+
+test('scheduled media cleanup pauses completely when account preservation is enabled', () => {
+  let scheduled = false;
+  const env = {
+    ACCOUNT_LIFECYCLE_PRESERVE_MEDIA: 'true',
+    MEDIA: { async list() { assert.fail('preservation must not list or delete media'); } }
+  };
+  worker.scheduled({}, env, { waitUntil() { scheduled = true; } });
+  assert.equal(scheduled, false);
 });

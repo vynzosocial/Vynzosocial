@@ -1,5 +1,6 @@
 import { createClient } from './vendor/supabase-js-2.91.0.js';
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabase-config.js';
+import { syncPushSession, unregisterPush } from './native-push.mjs';
 
 const isConfigured = SUPABASE_PUBLISHABLE_KEY !== '__VYNZO_SUPABASE_PUBLISHABLE_KEY__';
 
@@ -47,9 +48,12 @@ export function syncLegacySession(session) {
   }));
 }
 
-export async function signOutSupabase() {
+export async function signOutSupabase({ scope = 'global', unregister = true } = {}) {
   if (supabase) {
-    const { error } = await supabase.auth.signOut();
+    const { data, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    if (unregister) await unregisterPush(data.session);
+    const { error } = await supabase.auth.signOut({ scope });
     if (error) throw error;
   }
   syncLegacySession(null);
@@ -60,6 +64,7 @@ export async function restoreSupabaseSession() {
   const { data, error } = await supabase.auth.getSession();
   if (error) throw error;
   if (data.session) syncLegacySession(data.session);
+  await syncPushSession(data.session);
 }
 
 if (supabase) {
@@ -71,5 +76,8 @@ if (supabase) {
         window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
       }
     } else if (event === 'SIGNED_OUT') syncLegacySession(null);
+    window.setTimeout(() => {
+      syncPushSession(session).catch(error => console.error('Could not synchronize notification device:', error));
+    }, 0);
   });
 }

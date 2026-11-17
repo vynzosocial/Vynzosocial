@@ -1,6 +1,11 @@
 (function () {
   'use strict';
   var D = {
+    'Host with side guests': 'होस्ट और दोनों ओर मेहमान', 'Invite': 'आमंत्रित करें', 'No viewers available to invite': 'आमंत्रित करने के लिए कोई दर्शक उपलब्ध नहीं है',
+    'Grid': 'ग्रिड', 'Focus': 'फोकस', 'Focus this participant': 'इस प्रतिभागी पर फोकस करें',
+    'Host only': 'केवल होस्ट', 'Two people': 'दो लोग', 'Host and guests': 'होस्ट और मेहमान', 'Two above guests': 'मेहमानों के ऊपर दो लोग',
+    'Show chat': 'चैट दिखाएं', 'Hide chat': 'चैट छिपाएं', 'Manage guests': 'मेहमानों को प्रबंधित करें',
+    'Requests': 'अनुरोध', 'On stage': 'मंच पर', 'Stage layout': 'मंच का लेआउट', 'Live media controls': 'लाइव मीडिया नियंत्रण',
     'Offer to save this login in my password manager': 'इस लॉगिन को मेरे पासवर्ड मैनेजर में सेव करने का विकल्प दें',
     'Your browser or phone decides whether to save it. Avoid saving on shared devices': 'आपका ब्राउज़र या फोन तय करता है कि इसे सेव करना है या नहीं। साझा डिवाइस पर सेव न करें',
     'Use a saved login': 'सेव किया हुआ लॉगिन इस्तेमाल करें',

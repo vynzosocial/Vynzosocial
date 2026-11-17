@@ -2,7 +2,26 @@
   'use strict';
   // English (key, without leading/trailing punctuation or emoji) -> Arabic
   var D = {
+    'Host with side guests': 'المضيف مع ضيوف على الجانبين', 'Invite': 'دعوة', 'No viewers available to invite': 'لا يوجد مشاهدون متاحون للدعوة',
+    'Grid': 'شبكة', 'Focus': 'تركيز', 'Focus this participant': 'التركيز على هذا المشارك',
+    'Host only': 'المضيف فقط', 'Two people': 'شخصان', 'Host and guests': 'المضيف والضيوف', 'Two above guests': 'شخصان فوق الضيوف',
+    'Show chat': 'إظهار الدردشة', 'Hide chat': 'إخفاء الدردشة', 'Manage guests': 'إدارة الضيوف',
+    'Requests': 'الطلبات', 'On stage': 'على المنصة', 'Stage layout': 'تخطيط المنصة', 'Live media controls': 'عناصر التحكم في البث',
     /* Navigation & shared */
+    'Report a problem': 'الإبلاغ عن مشكلة',
+    'Tell us about a problem with the app': 'أخبرنا عن مشكلة في التطبيق',
+    'Describe the problem': 'صِف المشكلة',
+    'Attach an image (optional)': 'إرفاق صورة (اختياري)',
+    'JPEG, PNG or WebP, up to 5 MB. Your report and image will be emailed to Vynzo support': 'صورة JPEG أو PNG أو WebP بحد أقصى 5 ميجابايت. سيتم إرسال بلاغك وصورتك إلى دعم Vynzo عبر البريد الإلكتروني',
+    'Send report': 'إرسال البلاغ',
+    'Please describe the problem': 'يرجى وصف المشكلة',
+    'Choose a JPEG, PNG or WebP image up to 5 MB': 'اختر صورة JPEG أو PNG أو WebP بحجم لا يزيد عن 5 ميجابايت',
+    'Sending report': 'جارٍ إرسال البلاغ',
+    'Your report was sent. Thank you': 'تم إرسال بلاغك. شكرًا لك',
+    'Please log in to report a problem': 'يرجى تسجيل الدخول للإبلاغ عن مشكلة',
+    'Could not send your report. Please try again later': 'تعذر إرسال بلاغك. يرجى المحاولة لاحقًا',
+    'Too many reports. Please try again later': 'تم إرسال عدد كبير من البلاغات. يرجى المحاولة لاحقًا',
+    'The request timed out. Check your connection before trying again': 'انتهت مهلة الطلب. تحقق من اتصالك قبل المحاولة مجددًا',
     'Offer to save this login in my password manager': 'عرض حفظ بيانات تسجيل الدخول في مدير كلمات المرور',
     'Your browser or phone decides whether to save it. Avoid saving on shared devices': 'يقرر المتصفح أو الهاتف ما إذا كان سيحفظها. تجنب الحفظ على الأجهزة المشتركة',
     'Use a saved login': 'استخدام بيانات دخول محفوظة',

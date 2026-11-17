@@ -1,6 +1,12 @@
-const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+﻿const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+const MIN_DURATION_SECONDS = 1;
+const MAX_DURATION_SECONDS = 60;
+const MAX_LANDSCAPE_WIDTH = 1280;
+const MAX_LANDSCAPE_HEIGHT = 720;
+const VIDEO_BITRATE = 1_500_000;
+const FRAME_RATE = 30;
 
-export async function encodePlaybackVideo(file, onProgress) {
+export async function encodePlaybackVideo(file, onProgress, { trimToSeconds } = {}) {
   if (!(file instanceof File) || !file.type.startsWith('video/') || file.size === 0) {
     throw new Error('Choose a video to encode.');
   }
@@ -9,6 +15,9 @@ export async function encodePlaybackVideo(file, onProgress) {
   }
   if (typeof VideoEncoder === 'undefined' || typeof VideoDecoder === 'undefined') {
     throw new Error('This device does not support video encoding.');
+  }
+  if (trimToSeconds !== undefined && (!Number.isFinite(trimToSeconds) || trimToSeconds <= MIN_DURATION_SECONDS || trimToSeconds > MAX_DURATION_SECONDS)) {
+    throw new Error('The video duration limit is invalid.');
   }
 
   const { Input, Output, BlobSource, BufferTarget, ALL_FORMATS, Mp4OutputFormat, Conversion, Quality } =
@@ -22,19 +31,38 @@ export async function encodePlaybackVideo(file, onProgress) {
       throw new Error('This video must contain one video track and at most one audio track.');
     }
 
-    const duration = await input.computeDuration() - await input.getFirstTimestamp();
-    if (!Number.isFinite(duration) || duration <= 0) {
-      throw new Error('The video duration could not be determined.');
+    const firstTimestamp = await input.getFirstTimestamp();
+    const duration = await input.computeDuration() - firstTimestamp;
+    if (!Number.isFinite(duration) || duration < MIN_DURATION_SECONDS || duration > MAX_DURATION_SECONDS) {
+      throw new Error('Videos must be between 1 and 60 seconds long.');
     }
+    // Leave room for codec frame padding while enforcing the camera's hard limit.
+    const outputDuration = trimToSeconds === undefined ? duration : Math.min(duration, trimToSeconds - 0.1);
     const width = await videoTracks[0].getDisplayWidth();
     const height = await videoTracks[0].getDisplayHeight();
-    const videoBitrate = Math.max(250000, Math.min(8000000, Math.floor(file.size * 8 / duration * 0.7 - 192000)));
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width < 2 || height < 2) {
+      throw new Error('The video dimensions could not be determined.');
+    }
+    const maxWidth = width >= height ? MAX_LANDSCAPE_WIDTH : MAX_LANDSCAPE_HEIGHT;
+    const maxHeight = width >= height ? MAX_LANDSCAPE_HEIGHT : MAX_LANDSCAPE_WIDTH;
+    const scale = Math.min(1, maxWidth / width, maxHeight / height);
+    const outputWidth = Math.max(2, Math.floor(width * scale / 2) * 2);
+    const outputHeight = Math.max(2, Math.floor(height * scale / 2) * 2);
     const target = new BufferTarget();
     const output = new Output({ format: new Mp4OutputFormat({ fastStart: 'in-memory' }), target });
     const conversion = await Conversion.init({
       input,
       output,
-      video: { codec: 'avc', quality: new Quality({ bitrate: videoBitrate }), forceTranscode: true },
+      ...(trimToSeconds === undefined ? {} : { trim: { start: firstTimestamp, end: firstTimestamp + outputDuration } }),
+      video: {
+        codec: 'avc',
+        width: outputWidth,
+        height: outputHeight,
+        fit: 'contain',
+        frameRate: FRAME_RATE,
+        quality: new Quality({ bitrate: VIDEO_BITRATE }),
+        forceTranscode: true
+      },
       audio: { codec: 'aac' },
       showWarnings: false
     });
@@ -47,8 +75,8 @@ export async function encodePlaybackVideo(file, onProgress) {
     if (!target.buffer || target.buffer.byteLength === 0) {
       throw new Error('The video encoder produced an empty file.');
     }
-    if (target.buffer.byteLength >= file.size || target.buffer.byteLength > MAX_VIDEO_BYTES) {
-      throw new Error('This device could not produce a smaller playback copy of this video.');
+    if (target.buffer.byteLength > MAX_VIDEO_BYTES) {
+      throw new Error('The optimized video exceeds the 50 MB upload limit.');
     }
 
     const playback = new File([target.buffer], `${file.name.replace(/\.[^.]+$/, '')}-playback.mp4`, { type: 'video/mp4' });
@@ -57,9 +85,9 @@ export async function encodePlaybackVideo(file, onProgress) {
     const resultAudio = await resultInput.getAudioTracks();
     const resultDuration = await resultInput.computeDuration() - await resultInput.getFirstTimestamp();
     if (resultVideo.length !== videoTracks.length || resultAudio.length !== audioTracks.length ||
-        await resultVideo[0].getDisplayWidth() !== width || await resultVideo[0].getDisplayHeight() !== height ||
-        !Number.isFinite(resultDuration) ||
-        Math.abs(duration - resultDuration) > Math.max(0.25, duration * 0.01)) {
+        await resultVideo[0].getDisplayWidth() !== outputWidth || await resultVideo[0].getDisplayHeight() !== outputHeight ||
+        !Number.isFinite(resultDuration) || resultDuration < MIN_DURATION_SECONDS || resultDuration > (trimToSeconds ?? MAX_DURATION_SECONDS) ||
+        Math.abs(outputDuration - resultDuration) > Math.max(0.25, outputDuration * 0.01)) {
       throw new Error('The encoded video did not preserve its tracks and duration.');
     }
 

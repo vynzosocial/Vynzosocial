@@ -87,9 +87,13 @@ html body .home-create-button.video-create-button {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  min-width: 0;
+  width: 100%;
 }
 
-html body .home-post-actions .home-create-button {
+html body.home-page .home-post-actions .home-create-button {
+  min-width: 0;
+  max-width: 100%;
   flex-direction: column;
   gap: 4px;
   min-height: 84px;
@@ -97,6 +101,7 @@ html body .home-post-actions .home-create-button {
   border-radius: 16px;
   border-color: rgba(255, 215, 120, 0.45);
   white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .home-post-actions .home-create-button .btn-icon {

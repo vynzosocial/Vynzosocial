@@ -2,6 +2,11 @@
   'use strict';
   // English -> Portuguese (Brazil)
   var D = {
+    'Host with side guests': 'Anfitrião com convidados nas laterais', 'Invite': 'Convidar', 'No viewers available to invite': 'Nenhum espectador disponível para convidar',
+    'Grid': 'Grade', 'Focus': 'Foco', 'Focus this participant': 'Destacar este participante',
+    'Host only': 'Somente anfitrião', 'Two people': 'Duas pessoas', 'Host and guests': 'Anfitrião e convidados', 'Two above guests': 'Dois acima dos convidados',
+    'Show chat': 'Mostrar chat', 'Hide chat': 'Ocultar chat', 'Manage guests': 'Gerenciar convidados',
+    'Requests': 'Solicitações', 'On stage': 'No palco', 'Stage layout': 'Layout do palco', 'Live media controls': 'Controles da transmissão',
     /* Navigation & shared */
     'Offer to save this login in my password manager': 'Oferecer salvar este acesso no meu gerenciador de senhas',
     'Your browser or phone decides whether to save it. Avoid saving on shared devices': 'Seu navegador ou telefone decide se irá salvar. Evite salvar em dispositivos compartilhados',

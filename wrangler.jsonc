@@ -1,5 +1,6 @@
 {
 	"name": "vynzosocial",
+	"main": "workers/site/index.mjs",
 	"compatibility_date": "2026-11-02",
 	"workers_dev": true,
 	"routes": [
@@ -11,7 +12,12 @@
 	"vars": {
 		"VYNZO_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_i-NMgPe43-Tt-Afc9aQXoQ_dsBx6RwR"
 	},
+	"services": [
+		{ "binding": "MEDIA_UPLOAD", "service": "vynzo-media" }
+	],
 	"assets": {
-		"directory": "./dist"
+		"directory": "./dist",
+		"binding": "ASSETS",
+		"run_worker_first": true
 	}
 }

@@ -5,6 +5,7 @@
   "workers_dev": true,
   "triggers": { "crons": ["30 3 * * *"] },
   "vars": {
+    "ACCOUNT_LIFECYCLE_PRESERVE_MEDIA": "true",
     "MEDIA_AUTH_URL": "https://qyfphwrmwvnwsklfsbbo.supabase.co/functions/v1/vynzo-api/api/media/authorize",
     "MEDIA_RECONCILE_URL": "https://qyfphwrmwvnwsklfsbbo.supabase.co/functions/v1/vynzo-api/api/media/reconcile",
     "MEDIA_AUTH_KEY": "sb_publishable_i-NMgPe43-Tt-Afc9aQXoQ_dsBx6RwR"

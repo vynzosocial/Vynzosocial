@@ -1,5 +1,5 @@
 import { apiRequest } from './api.js?v=sb6';
-import { createRealtimeSocket } from './realtime.js?v=sb9';
+import { createRealtimeSocket } from './realtime.js?v=sb15';
 
 const POLL_MS = 30000;
 const links = [...document.querySelectorAll('a[href$="messages.html"]')];

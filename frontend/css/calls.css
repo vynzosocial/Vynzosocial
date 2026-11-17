@@ -32,6 +32,10 @@
   color: #cdbfe3;
 }
 
+.call-panel.is-screen-guard-pending video {
+  visibility: hidden;
+}
+
 .call-avatar {
   width: 120px;
   height: 120px;
@@ -52,14 +56,329 @@
 
 .call-actions {
   display: flex;
-  gap: 22px;
+  gap: clamp(6px, 4vw, 22px);
   margin-top: 26px;
+}
+
+.group-call-incoming .call-actions {
+  gap: 24px;
+}
+
+.group-call-incoming .call-btn {
+  flex: 0 0 68px;
+  box-sizing: border-box;
+  padding: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.group-call-panel {
+  justify-content: flex-start;
+  padding-bottom: calc(116px + env(safe-area-inset-bottom));
+}
+
+.group-call-panel:not(.is-voice-call) {
+  padding-bottom: calc(38px + env(safe-area-inset-bottom) + var(--call-actions-height, 116px));
+}
+
+.group-call-header {
+  padding: 8px;
+  font-weight: 600;
+}
+
+.group-call-grid {
+  display: grid;
+  width: 100%;
+  max-width: 1200px;
+  flex: 1;
+  grid-template-columns: repeat(auto-fit, minmax(min(150px, 45%), 1fr));
+  grid-auto-rows: minmax(100px, 1fr);
+  gap: 8px;
+  overflow: auto;
+}
+
+.group-call-tile {
+  position: relative;
+  min-height: 100px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #241639;
+}
+
+.group-call-tile video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.group-call-tile.is-preview-mirrored video {
+  transform: scaleX(-1);
+}
+
+.group-call-panel.is-one-to-one {
+  padding: 0;
+}
+
+.group-call-panel.is-one-to-one .group-call-header {
+  position: absolute;
+  top: calc(8px + env(safe-area-inset-top));
+  z-index: 3;
+  text-shadow: 0 1px 8px #000;
+}
+
+.group-call-grid.is-one-to-one {
+  position: absolute;
+  inset: 0;
+  display: block;
+  max-width: none;
+  overflow: hidden;
+}
+
+.group-call-grid.is-one-to-one .group-call-tile {
+  position: absolute;
+  inset: 0;
+  border-radius: 0;
+}
+
+.group-call-grid.is-one-to-one .group-call-tile.is-call-inset {
+  inset: calc(70px + env(safe-area-inset-top)) 14px auto auto;
+  z-index: 2;
+  width: min(28vw, 130px);
+  height: min(38vw, 180px);
+  min-height: 90px;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  border-radius: 12px;
+}
+
+.group-call-grid.is-one-to-one .group-call-tile:not(.is-call-inset) > .group-call-name {
+  bottom: calc(38px + env(safe-area-inset-bottom) + var(--call-actions-height, 116px));
+}
+
+.call-swap-video {
+  position: absolute;
+  z-index: 4;
+  top: 4px;
+  right: 4px;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  cursor: pointer;
+}
+
+.call-swap-video[hidden] {
+  display: none;
+}
+
+.group-call-tile.is-voice video {
+  opacity: 0;
+}
+
+.group-call-avatar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  width: 48px;
+  height: 48px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 2px solid rgba(255, 120, 210, 0.8);
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ff3caa, #6b4bff);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.group-call-avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.group-call-incoming > .group-call-avatar {
+  position: relative;
+  top: auto;
+  left: auto;
+  width: 120px;
+  height: 120px;
+  font-size: 48px;
+}
+
+.group-call-tile.is-voice .group-call-avatar {
+  top: 50%;
+  left: 50%;
+  width: min(96px, 60%);
+  height: auto;
+  aspect-ratio: 1;
+  font-size: 40px;
+  transform: translate(-50%, -50%);
+}
+
+.group-call-tile > span {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  left: 4px;
+  padding: 4px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  font-size: 12px;
+}
+
+.group-call-name {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.group-call-name .call-participant-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.call-web-badge {
+  display: inline-block;
+  margin-inline-start: 0.3em;
+  color: #ff3b4e;
+  font-weight: 800;
+  text-shadow: none;
+}
+
+.group-call-name .call-web-badge {
+  flex-shrink: 0;
+  margin-inline-start: 0;
+}
+
+.group-call-panel.is-voice-call {
+  padding-top: calc(24px + env(safe-area-inset-top));
+}
+
+.is-voice-call .group-call-header {
+  flex-shrink: 0;
+  font-size: 22px;
+}
+
+.is-voice-call .group-call-grid {
+  --voice-columns: 2;
+  --voice-rows: 1;
+  flex: 1;
+  max-width: 720px;
+  max-height: 400px;
+  min-height: 0;
+  margin-block: auto;
+  padding: 8px;
+  grid-template-columns: repeat(var(--voice-columns), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--voice-rows), minmax(0, 1fr));
+  gap: clamp(8px, 2vh, 24px) 8px;
+  overflow: hidden;
+}
+
+.is-voice-call .group-call-grid[data-voice-columns="1"] {
+  --voice-columns: 1;
+}
+
+.is-voice-call .group-call-grid[data-voice-columns="3"] {
+  --voice-columns: 3;
+}
+
+.is-voice-call .group-call-grid[data-voice-rows="2"] {
+  --voice-rows: 2;
+}
+
+.is-voice-call .group-call-tile {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  overflow: visible;
+  border-radius: 0;
+  background: transparent;
+}
+
+.is-voice-call .group-call-tile video {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.is-voice-call .group-call-tile .group-call-avatar {
+  position: relative;
+  inset: auto;
+  width: auto;
+  max-width: 100%;
+  height: min(112px, calc(70vw / var(--voice-columns)), calc(100% - 44px));
+  flex-shrink: 0;
+  font-size: min(36px, 6vh);
+  transform: none;
+  box-shadow: 0 0 28px rgba(180, 90, 255, 0.35);
+}
+
+.is-voice-call .group-call-tile > .group-call-name {
+  position: static;
+  max-width: 100%;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: clamp(11px, 3vw, 14px);
+  line-height: 1.4;
+}
+
+.group-call-friends {
+  position: absolute;
+  z-index: 4;
+  right: 16px;
+  bottom: 110px;
+  left: 16px;
+  display: grid;
+  max-height: 45vh;
+  overflow: auto;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #211632;
+}
+
+.group-call-friends button {
+  padding: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: #573580;
+  color: #fff;
+}
+
+.group-call-panel .call-actions {
+  width: calc(100% - 24px);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.group-call-panel .call-btn {
+  width: 52px;
+  height: 52px;
+  font-size: 12px;
 }
 
 .call-active .call-actions {
   position: absolute;
   bottom: calc(26px + env(safe-area-inset-bottom));
   z-index: 3;
+  width: calc(100% - 24px);
+  flex-wrap: wrap;
+  justify-content: center;
   margin: 0;
 }
 
@@ -130,7 +449,17 @@
 }
 
 .is-video .call-voice-info {
-  display: none;
+  display: block;
+  position: absolute;
+  top: calc(80px + env(safe-area-inset-top));
+  left: 14px;
+  z-index: 2;
+}
+
+.is-video .call-voice-info .call-avatar {
+  width: 52px;
+  height: 52px;
+  font-size: 24px;
 }
 
 .call-local {
@@ -145,6 +474,33 @@
   border: 2px solid rgba(255, 255, 255, 0.5);
   border-radius: 12px;
   background: #111;
+}
+
+.call-local.is-unmirrored {
+  transform: none;
+}
+
+.call-legacy-swap {
+  top: calc(84px + env(safe-area-inset-top));
+  right: 18px;
+}
+
+.is-swapped .call-local {
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+}
+
+.is-swapped .call-remote {
+  inset: calc(80px + env(safe-area-inset-top)) 14px auto auto;
+  z-index: 2;
+  width: 96px;
+  height: 140px;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-radius: 12px;
 }
 
 .call-toast {
@@ -180,4 +536,40 @@
   color: #fff;
   font-size: 18px;
   cursor: pointer;
+}
+
+@media (max-height: 450px) {
+  .group-call-panel.is-voice-call {
+    gap: 4px;
+    padding-top: calc(6px + env(safe-area-inset-top));
+    padding-bottom: calc(78px + env(safe-area-inset-bottom));
+  }
+
+  .is-voice-call .group-call-header {
+    padding: 4px;
+    font-size: 16px;
+  }
+
+  .is-voice-call .group-call-grid {
+    padding-block: 4px;
+    gap: 6px;
+  }
+
+  .is-voice-call .group-call-tile {
+    gap: 4px;
+  }
+
+  .is-voice-call .group-call-tile .group-call-avatar {
+    height: min(80px, calc(70vw / var(--voice-columns)), calc(100% - 30px));
+    font-size: 18px;
+  }
+
+  .is-voice-call .group-call-tile > .group-call-name {
+    padding: 2px 6px;
+    font-size: 11px;
+  }
+
+  .is-voice-call .call-actions {
+    bottom: calc(10px + env(safe-area-inset-bottom));
+  }
 }

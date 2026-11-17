@@ -36,7 +36,8 @@ test('stages, publishes, serves, revokes and deletes a post through the API and 
       { id: userId, username: 'owner', is_private: false, posts_privacy: 'everyone' },
       { id: viewerId, username: 'viewer', is_private: false, posts_privacy: 'everyone' }
     ],
-    posts: [], stories: [], follows: [], blocks: [], likes: [], story_likes: [], story_comments: []
+    posts: [], stories: [], follows: [], blocks: [], likes: [], story_likes: [], story_comments: [],
+    conversations: [], conversation_members: []
   };
   function query(table) {
     let filters = [];
@@ -87,6 +88,17 @@ test('stages, publishes, serves, revokes and deletes a post through the API and 
   };
   global.__mediaTestClient = {
     from: query,
+    rpc: async () => ({ data: true, error: null }),
+    storage: {
+      from: bucketName => ({
+        download: async objectPath => {
+          assert.equal(bucketName, 'uploads');
+          return objectPath === `${userId}/photo.jpg`
+            ? { data: new Blob(['legacy image'], { type: 'image/jpeg' }), error: null }
+            : { data: null, error: { status: 404, message: 'Not found' } };
+        }
+      })
+    },
     auth: { getUser: async token => ({ data: { user: { id: token } }, error: null }) }
   };
   const env = {
@@ -101,6 +113,7 @@ test('stages, publishes, serves, revokes and deletes a post through the API and 
         name: 'test-dependencies',
         setup(build) {
           build.onResolve({ filter: /^npm:@supabase\/supabase-js/ }, () => ({ path: 'supabase', namespace: 'test' }));
+          build.onResolve({ filter: /^npm:nodemailer/ }, () => ({ path: 'nodemailer', namespace: 'test' }));
           build.onResolve({ filter: /community-rules\.ts$/ }, () => ({ path: 'rules', namespace: 'test' }));
           build.onResolve({ filter: /media-moderation\.ts$/ }, () => ({ path: 'moderation', namespace: 'test' }));
           build.onResolve({ filter: /blogs\.ts$/ }, () => ({ path: 'blogs', namespace: 'test' }));
@@ -108,6 +121,7 @@ test('stages, publishes, serves, revokes and deletes a post through the API and 
           build.onLoad({ filter: /.*/, namespace: 'test' }, args => ({
             contents: {
               supabase: 'export const createClient = () => globalThis.__mediaTestClient;',
+              nodemailer: 'export default { createTransport: () => ({ sendMail: async () => ({}) }) };',
               rules: 'export const GUIDELINES_MESSAGE = ""; export const suspensionMessage = async () => null; export const violatesGuidelines = () => false;',
               moderation: 'export const MEDIA_WARNING = ""; export const scanImages = async () => false; export const toDataUrl = () => "";',
               blogs: 'export const handleBlogs = () => {};',
@@ -128,8 +142,29 @@ test('stages, publishes, serves, revokes and deletes a post through the API and 
       method, headers: { Authorization: `Bearer ${user}`, 'Content-Type': 'application/json' },
       ...(body ? { body: JSON.stringify(body) } : {})
     }));
+    const authorize = extra => api('/calls/authorize-invite', 'POST', userId, { targetId: viewerId, ...extra });
+    assert.equal((await authorize()).status, 404);
+    rows.follows.push({ follower_id: userId, following_id: viewerId, status: 'accepted' });
+    rows.follows.push({ follower_id: viewerId, following_id: userId, status: 'accepted' });
+    assert.equal((await authorize()).status, 200);
+    rows.users[1].allow_calls = false;
+    assert.equal((await authorize()).status, 404);
+    rows.users[1].allow_calls = true;
+    rows.blocks.push({ blocker_id: viewerId, blocked_id: userId });
+    assert.equal((await authorize()).status, 404);
+    rows.blocks.length = 0;
+    rows.follows.length = 0;
+    const conversationId = '971c48cc-4358-4ed1-bafe-27571bedb81a';
+    rows.conversations.push({ id: conversationId, is_group: false });
+    rows.conversation_members.push({ conversation_id: conversationId, user_id: userId }, { conversation_id: conversationId, user_id: viewerId });
+    assert.equal((await authorize({ conversationId })).status, 200);
+    rows.conversations[0].is_group = true;
+    assert.equal((await authorize({ conversationId })).status, 404);
+    rows.conversations.length = 0;
+    rows.conversation_members.length = 0;
     const staging = await api('/media/stage', 'POST', userId, {
-      kind: 'post', original: { contentType: 'image/jpeg', size: 4 }, playback: null
+      kind: 'post', original: { contentType: 'image/jpeg', size: 4 }, playback: null,
+      cover: { contentType: 'image/jpeg', size: 5 }
     });
     assert.equal(staging.status, 200);
     const upload = await staging.json();
@@ -139,6 +174,12 @@ test('stages, publishes, serves, revokes and deletes a post through the API and 
       body: 'test'
     }), env);
     assert.equal(put.status, 201);
+    const coverPut = await worker.fetch(new Request('https://media.example/stage', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'image/jpeg', 'Content-Length': '5', 'X-Upload-Permit': upload.permits.cover },
+      body: 'thumb'
+    }), env);
+    assert.equal(coverPut.status, 201);
     const published = await api('/media/publish', 'POST', userId, {
       kind: 'post', uploadId: upload.uploadId, mediaType: 'image', protected: false, caption: 'hello'
     });
@@ -155,21 +196,39 @@ test('stages, publishes, serves, revokes and deletes a post through the API and 
     assert.equal(response.status, 200);
     assert.equal(await response.text(), 'test');
     assert.equal((await api(`/media/playback?kind=post&id=${upload.uploadId}`, 'GET', viewerId)).status, 200);
+    const previewRoute = `/media/public-preview?kind=post&id=${upload.uploadId}`;
+    const preview = await api(previewRoute, 'GET', '');
+    assert.equal(preview.status, 200);
+    assert.equal(await preview.text(), 'thumb');
+    assert.equal(preview.headers.get('cache-control'), 'no-store');
+    const imageCoverKey = `media/post/${userId}/${upload.uploadId}/cover`;
+    const savedImageCover = media.get(imageCoverKey);
+    media.delete(imageCoverKey);
+    assert.equal(await (await api(previewRoute, 'GET', '')).text(), 'test');
+    media.set(imageCoverKey, savedImageCover);
+    rows.posts[0].is_protected = true;
+    assert.equal((await api(previewRoute, 'GET', '')).status, 404);
+    rows.posts[0].is_protected = false;
+    rows.users[0].posts_privacy = 'friends';
+    assert.equal((await api(previewRoute, 'GET', '')).status, 404);
+    rows.users[0].posts_privacy = 'everyone';
     rows.posts[0].privacy = 'only_me';
+    assert.equal((await api(previewRoute, 'GET', '')).status, 404);
     assert.equal((await global.fetch(url)).status, 403);
     assert.equal((await api(`/media/playback?kind=post&id=${upload.uploadId}`, 'GET', viewerId)).status, 404);
     const deleted = await api(`/posts/${upload.uploadId}`, 'DELETE', userId);
     assert.equal(deleted.status, 200);
     assert.equal(rows.posts.length, 0);
     assert.equal(media.size, 0);
+    assert.equal((await api(previewRoute, 'GET', '')).status, 404);
 
     const videoStage = await api('/media/stage', 'POST', userId, {
       kind: 'story', original: { contentType: 'video/webm', size: 8 },
-      playback: { contentType: 'video/mp4', size: 4 }
+      playback: { contentType: 'video/mp4', size: 4 }, cover: { contentType: 'image/webp', size: 5 }
     });
     const videoUpload = await videoStage.json();
     assert.equal(videoStage.status, 200);
-    for (const [variant, type, content] of [['original', 'video/webm', 'original'], ['playback', 'video/mp4', 'play']]) {
+    for (const [variant, type, content] of [['original', 'video/webm', 'original'], ['playback', 'video/mp4', 'play'], ['cover', 'image/webp', 'cover']]) {
       const staged = await worker.fetch(new Request('https://media.example/stage', {
         method: 'PUT',
         headers: { 'Content-Type': type, 'Content-Length': String(content.length), 'X-Upload-Permit': videoUpload.permits[variant] },
@@ -181,7 +240,17 @@ test('stages, publishes, serves, revokes and deletes a post through the API and 
       kind: 'story', uploadId: videoUpload.uploadId, mediaType: 'video', protected: false
     });
     assert.equal(storyPublished.status, 201);
-    assert.equal(media.size, 2);
+    assert.equal(media.size, 3);
+    const storyPreviewRoute = `/media/public-preview?kind=story&id=${videoUpload.uploadId}`;
+    assert.equal(await (await api(storyPreviewRoute, 'GET', '')).text(), 'cover');
+    const coverKey = `media/story/${userId}/${videoUpload.uploadId}/cover`;
+    const savedCover = media.get(coverKey);
+    media.delete(coverKey);
+    assert.equal((await api(storyPreviewRoute, 'GET', '')).status, 404);
+    media.set(coverKey, savedCover);
+    rows.users[0].is_private = true;
+    assert.equal((await api(storyPreviewRoute, 'GET', '')).status, 404);
+    rows.users[0].is_private = false;
     const storyList = await api('/stories?scope=all', 'GET', viewerId);
     assert.equal(storyList.status, 200);
     const storyUrl = (await storyList.json()).usersWithStories[0].stories[0].media_url;
@@ -192,6 +261,7 @@ test('stages, publishes, serves, revokes and deletes a post through the API and 
     assert.equal(originalResponse.status, 200);
     assert.equal(await (await global.fetch((await originalResponse.json()).url)).text(), 'original');
     rows.stories[0].expires_at = new Date(Date.now() - 1000).toISOString();
+    assert.equal((await api(storyPreviewRoute, 'GET', '')).status, 404);
     assert.equal((await global.fetch(storyUrl)).status, 403);
     const ref = { kind: 'story', userId, uploadId: videoUpload.uploadId };
     const reconcileRequest = control => handler(new Request('https://api.local/functions/v1/vynzo-api/api/media/reconcile', {
@@ -215,7 +285,18 @@ test('stages, publishes, serves, revokes and deletes a post through the API and 
       assert.equal((await playback.json()).url, legacyUrl);
       assert.equal((await api(`/media/original?kind=${kind}&id=${id}`, 'GET', userId)).status, 404);
     }
+    const legacyPreview = `/media/public-preview?kind=post&id=${legacyPostId}`;
+    assert.equal((await api(legacyPreview, 'GET', '')).status, 404);
+    rows.posts[0].media_url = `https://api.local/storage/v1/object/public/uploads/${userId}/photo.jpg`;
+    const legacyImage = await api(legacyPreview, 'GET', '');
+    assert.equal(legacyImage.status, 200);
+    assert.equal(await legacyImage.text(), 'legacy image');
+    rows.posts[0].media_url = `https://api.local/storage/v1/object/public/uploads/${viewerId}/photo.jpg`;
+    assert.equal((await api(legacyPreview, 'GET', '')).status, 404);
+    rows.posts[0].media_url = `https://api.local/storage/v1/object/public/uploads/${userId}/missing.jpg`;
+    assert.equal((await api(legacyPreview, 'GET', '')).status, 404);
     rows.posts[0].privacy = 'only_me';
+    assert.equal((await api(legacyPreview, 'GET', '')).status, 404);
     rows.stories[0].expires_at = new Date(Date.now() - 1000).toISOString();
     assert.equal((await api(`/media/playback?kind=post&id=${legacyPostId}`, 'GET', viewerId)).status, 404);
     assert.equal((await api(`/media/playback?kind=story&id=${legacyStoryId}`, 'GET', viewerId)).status, 404);
