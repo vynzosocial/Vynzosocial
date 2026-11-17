@@ -200,6 +200,5 @@
 }
 
 @media (max-width: 600px) {
-  .activity-btn span:not(.activity-badge) { display: none; }
   .activity-btn { padding: 6px 10px; }
 }

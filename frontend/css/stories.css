@@ -47,6 +47,22 @@
   min-width: 0;
 }
 
+.story-upload-status-row {
+  min-width: 0;
+  margin-top: -4px;
+}
+
+.story-upload-status-row:has(.home-upload-status:empty) {
+  display: none;
+}
+
+.story-upload-status-row .home-upload-status {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
 .home-stories-section .stories-carousel-container:has(.story-empty-state) {
   min-height: 84px;
   padding-block: 12px 0;
@@ -281,7 +297,7 @@
 .story-viewer-header-actions {
   display: flex;
   flex: 0 1 auto;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
@@ -528,3 +544,46 @@
 }
 .story-privacy-select option { color: #000; }
 .story-privacy-select[hidden] { display: none; }
+
+@media (max-width: 760px) {
+  .home-page .home-stories-section .home-section-heading {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .home-page .story-upload-control {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .home-page .story-upload-control .story-create-button {
+    flex: 1 1 auto;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 600px) {
+  .story-viewer-header {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  #story-viewer-author {
+    flex: 1 0 100%;
+  }
+
+  .story-viewer-header-actions {
+    flex: 1 0 100%;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .story-privacy-select {
+    max-width: min(120px, 40vw);
+  }
+
+  .story-delete-btn,
+  .story-close-btn {
+    white-space: nowrap;
+  }
+}

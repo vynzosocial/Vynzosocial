@@ -129,6 +129,8 @@ body:not([data-feed-scope="me"]) .home-feed-heading p {
 /* Protected media + delete */
 .protect-option{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted,#9aa);cursor:pointer;margin:4px 8px 4px 0}
 .protect-option input{accent-color:#8b5cf6}
+.vc-dialog > .protect-option{align-self:flex-start;margin:0 0 6px;color:#f3ecff;font-size:13px}
+.vc-dialog > .protect-option input{width:18px;height:18px}
 .is-protected-media img,.is-protected-media video{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .protected-badge{position:absolute;top:8px;left:8px;padding:2px 8px;border-radius:999px;font-size:11px;background:rgba(0,0,0,.6);color:#fff;pointer-events:none}
 .post-thumbnail-button{position:relative}

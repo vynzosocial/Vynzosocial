@@ -429,10 +429,6 @@
     white-space: nowrap;
   }
 
-  .home-page .story-upload-control .home-upload-status {
-    flex-basis: 100%;
-  }
-
   .home-page .home-post-composer {
     width: 100%;
     padding: 10px;

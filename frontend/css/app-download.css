@@ -202,6 +202,7 @@
 }
 
 .instagram-icon-link,
+.facebook-icon-link,
 .snapchat-icon-link {
   display: inline-flex;
   align-items: center;
@@ -215,6 +216,22 @@
 .instagram-icon-link {
   background: radial-gradient(circle at 30% 107%, #fdf497 0%, #fdf497 5%, #fd5949 45%, #d6249f 60%, #285aeb 90%);
   color: #fff;
+}
+
+.facebook-icon-link {
+  background: #1877f2;
+  color: #fff;
+  text-decoration: none;
+}
+
+.facebook-icon-link span {
+  font: 700 28px/1 Arial, sans-serif;
+  transform: translateY(4px);
+}
+
+.facebook-icon-link:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
 }
 
 .snapchat-icon-link {

@@ -165,6 +165,8 @@ function setOpen(open) {
 
 function build() {
   const topBar = document.querySelector('.top-bar');
+  const feedTabs = topBar?.querySelector('.feed-tabs');
+  const forYouTab = feedTabs?.querySelector('[data-scope="all"]');
   const anchor = document.getElementById('theme-toggle');
   if (!topBar) return false;
 
@@ -186,7 +188,8 @@ function build() {
       </header>
       <div class="activity-list" aria-live="polite"></div>
     </section>`;
-  topBar.insertBefore(wrap, anchor || null);
+  if (feedTabs && forYouTab) feedTabs.insertBefore(wrap, forYouTab.nextSibling);
+  else topBar.insertBefore(wrap, anchor || null);
   button = wrap.querySelector('#activity-btn');
   panel = wrap.querySelector('#activity-panel');
   list = wrap.querySelector('.activity-list');
