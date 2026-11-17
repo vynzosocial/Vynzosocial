@@ -6,6 +6,7 @@ const capacitor = window.Capacitor;
 const plugin = PUSH_NOTIFICATIONS_ENABLED && capacitor?.isNativePlatform?.() ? capacitor.Plugins?.VynzoPush : null;
 let lifecycle;
 let started;
+let unreadSyncUnavailable = false;
 
 if (plugin) {
   lifecycle = createPushLifecycle({
@@ -69,6 +70,19 @@ export async function enableNativePush() {
   if (!lifecycle) throw new Error('Android notifications are unavailable.');
   await started;
   await lifecycle.enable();
+}
+
+export async function syncNativeUnreadNotifications({ userId, readConversationIds, before }) {
+  if (!plugin || unreadSyncUnavailable) return;
+  await started;
+  if (!userId) return;
+  try {
+    await plugin.syncUnreadNotifications({ userId, readConversationIds, before });
+  } catch (error) {
+    if (error.code !== 'UNIMPLEMENTED') throw error;
+    unreadSyncUnavailable = true;
+    console.warn('Install Android 1.8 or newer to clear read-message notifications and the launcher badge automatically.');
+  }
 }
 
 export const hasNativePush = Boolean(lifecycle);

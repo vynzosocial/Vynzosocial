@@ -26,6 +26,8 @@ const messageRenderSignatures = new WeakMap();
 const conversationRenderData = new WeakMap();
 const latestMessageMediaSources = new WeakMap();
 const pendingMessages = new Map();
+const conversationsAwaitingRead = new Map();
+let readReceiptVersion = 0;
 const MAX_VIDEO_SECONDS = 60;
 const MAX_VOICE_SECONDS = 300;
 const VOICE_PATTERN = /\.(weba|m4a|ogg)(\?.*)?$/i;
@@ -166,7 +168,7 @@ async function refreshCurrentConversation() {
   placeMessageItems(container, [...orderedRows, ...pendingRows(conversationId)]);
   for (const row of newRows) hydrateSharedPreviews(row);
   if (wasAtBottom) container.scrollTop = container.scrollHeight;
-  if (hasNewIncoming && document.visibilityState === 'visible') markConversationRead(conversationId);
+  if (hasNewIncoming || conversationsAwaitingRead.has(conversationId)) markConversationRead(conversationId);
 }
 
 function createMessageRow(message, currentUser) {
@@ -291,7 +293,7 @@ function renderConversations(conversations, currentUser) {
   const container = document.getElementById('conversations-list');
   if (!container) return;
 
-  const unreadOf = conv => (conv.id === currentConversationId ? 0 : (conv.unread_count || 0));
+  const unreadOf = conv => Number(conv.unread_count) || 0;
   const timeOf = conv => new Date(conv.last_message?.created_at || conv.created_at || 0).getTime();
   conversations = [...conversations].sort((a, b) => {
     const unreadDiff = (unreadOf(b) > 0) - (unreadOf(a) > 0);
@@ -440,7 +442,15 @@ function notifyPeer(conversationId) {
 }
 
 function markConversationRead(conversationId) {
-  apiRequest(`/messages/${encodeURIComponent(conversationId)}/read`, { method: 'POST' }).then(() => { notifyPeer(conversationId); refreshConversations().catch(() => {}); }).catch(err => {
+  const version = ++readReceiptVersion;
+  conversationsAwaitingRead.set(conversationId, version);
+  if (document.hidden || currentConversationId !== conversationId) return;
+  apiRequest(`/messages/${encodeURIComponent(conversationId)}/read`, { method: 'POST' }).then(() => {
+    if (conversationsAwaitingRead.get(conversationId) === version) conversationsAwaitingRead.delete(conversationId);
+    notifyPeer(conversationId);
+    document.dispatchEvent(new CustomEvent('vynzo:messages-read'));
+    refreshConversations().catch(err => console.error('Could not refresh read conversations:', err));
+  }).catch(err => {
     console.error('Could not mark conversation as read:', err);
   });
 }

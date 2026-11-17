@@ -5,6 +5,21 @@ OTA update cannot install the native Firebase service. Install the signed APK
 over an existing installation signed with the same key; uninstalling is not
 normally necessary.
 
+Inbox counts appear on every signed-in page, refresh on message events and
+resume, and clear after the server acknowledges a conversation as read.
+Background chats are not marked read until they become visible.
+Supported installed browsers also receive the unread count through the web
+Badging API and clear it when the inbox has no unread messages.
+
+Android 1.8 (version code 9) adds native read-notification cleanup. After an
+unread-count refresh, it removes notifications for read conversations, which
+also clears their launcher badges. It only clears conversations explicitly
+confirmed read, preserving unread or unlisted conversations, incoming call
+notifications, and notifications posted after the refresh began. Calls
+keep their existing answer/end/expiry cancellation. Launcher badge appearance
+and numeric support depend on the Android launcher. Older APKs need the new
+APK for this cleanup; an OTA alone cannot add the native method.
+
 The rollout uses the push-device migration and API, the call coordinator, and
 a compatible Android binary. Configure these server-only secrets:
 

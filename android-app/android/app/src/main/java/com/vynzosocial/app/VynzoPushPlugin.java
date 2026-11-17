@@ -3,7 +3,9 @@ package com.vynzosocial.app;
 import android.Manifest;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.app.NotificationManager;
 import android.os.Build;
+import android.service.notification.StatusBarNotification;
 import android.util.Base64;
 import androidx.core.app.NotificationManagerCompat;
 import com.getcapacitor.JSObject;
@@ -18,6 +20,10 @@ import com.google.firebase.messaging.FirebaseMessaging;
 import java.lang.ref.WeakReference;
 import java.security.SecureRandom;
 import java.util.UUID;
+import java.util.HashSet;
+import java.util.Set;
+import org.json.JSONArray;
+import org.json.JSONException;
 
 @CapacitorPlugin(name = "VynzoPush", permissions = {
     @Permission(alias = "notifications", strings = { Manifest.permission.POST_NOTIFICATIONS })
@@ -109,6 +115,46 @@ public class VynzoPushPlugin extends Plugin {
         result.put("enabled", NotificationManagerCompat.from(getContext()).areNotificationsEnabled());
         result.put("ownerId", preferences.getString("owner_id", null));
         call.resolve(result);
+    }
+
+    @PluginMethod
+    public void syncUnreadNotifications(PluginCall call) {
+        String owner = getContext().getSharedPreferences("vynzo_push", 0).getString("owner_id", null);
+        String userId = call.getString("userId");
+        JSONArray ids = call.getArray("readConversationIds");
+        Long before = call.getLong("before");
+        if (owner == null || !owner.equals(userId)) {
+            call.reject("Notification account changed. Please sign in again.");
+            return;
+        }
+        if (ids == null || before == null || before <= 0) {
+            call.reject("Invalid unread notification state.");
+            return;
+        }
+        Set<String> readIds = new HashSet<>();
+        try {
+            for (int i = 0; i < ids.length(); i++) {
+                String id = ids.getString(i);
+                if (!PushPayload.validId(id)) throw new JSONException("Invalid conversation.");
+                readIds.add(id);
+            }
+        } catch (JSONException error) {
+            call.reject("Invalid read conversation.", error);
+            return;
+        }
+        NotificationManager manager = (NotificationManager) getContext().getSystemService(android.content.Context.NOTIFICATION_SERVICE);
+        long cutoff = Math.min(before, System.currentTimeMillis());
+        for (StatusBarNotification notification : manager.getActiveNotifications()) {
+            if (shouldClearMessageNotification(notification.getTag(), notification.getPostTime(), cutoff, readIds)) {
+                manager.cancel(notification.getTag(), notification.getId());
+            }
+        }
+        call.resolve();
+    }
+
+    static boolean shouldClearMessageNotification(String tag, long postedAt, long before, Set<String> readIds) {
+        return tag != null && tag.startsWith("message:") && postedAt <= before
+            && readIds.contains(tag.substring("message:".length()));
     }
 
     @PluginMethod

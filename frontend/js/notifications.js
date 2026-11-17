@@ -2,6 +2,7 @@
 import { createRealtimeSocket } from './realtime.js?v=sb15';
 import { initCalls } from './calls.js?v=audio3';
 import { enableNativePush, hasNativePush } from './native-push.mjs';
+import { initInboxCount } from './inbox-count.js';
 
 const ASKED_KEY = 'vynzo_notify_prompt_dismissed';
 const ANDROID_ASKED_KEY = 'vynzo_android_notify_prompt_dismissed';
@@ -145,6 +146,7 @@ export async function initNotifications() {
   if (!token || !me.id) return;
   started = true;
   baseTitle = document.title;
+  initInboxCount();
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {

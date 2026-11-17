@@ -63,6 +63,10 @@ older cannot report their installed version through the OTA bridge; a web
 update alone cannot add this native capability.
 Mobile Settings displays only the installed version number, without platform,
 build, or web-update details.
-Users of previous website APKs can install version 1.7 over them
+Version 1.8 (version code 9) adds native cleanup of notifications for read
+conversations, clearing their launcher badges while preserving unread chats,
+active incoming calls, and newly posted notifications. Inbox numbers now work
+on every signed-in page, including Messages, and background chats remain unread.
+Users of previous website APKs can install version 1.8 over them
 without uninstalling because it uses the same signing key. The published
-download is `vynzo-android-1.7.apk`; previous downloads remain available.
+download is `vynzo-android-1.8.apk`; previous downloads remain available.
