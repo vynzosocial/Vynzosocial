@@ -693,9 +693,11 @@
   overflow-wrap: anywhere;
 }
 
-.account-profile-instagram {
+.account-profile-instagram,
+.account-profile-facebook,
+.account-profile-snapchat {
   display: inline-block;
-  margin: 0 0 14px;
+  margin: 0 16px 14px 0;
   color: var(--primary, #e1306c);
   font-weight: 600;
   text-decoration: none;

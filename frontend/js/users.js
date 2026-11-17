@@ -561,6 +561,24 @@ function renderUserProfile(container, profile, posts) {
     instagram.textContent = `📷 Instagram @${profile.instagram_username}`;
     container.appendChild(instagram);
   }
+  if (/^[A-Za-z0-9.]{1,50}$/.test(profile.facebook_username || '')) {
+    const facebook = document.createElement('a');
+    facebook.className = 'account-profile-facebook';
+    facebook.href = `https://www.facebook.com/${profile.facebook_username}`;
+    facebook.target = '_blank';
+    facebook.rel = 'noopener noreferrer';
+    facebook.textContent = `📘 Facebook @${profile.facebook_username}`;
+    container.appendChild(facebook);
+  }
+  if (/^[A-Za-z0-9._-]{1,30}$/.test(profile.snapchat_username || '')) {
+    const snapchat = document.createElement('a');
+    snapchat.className = 'account-profile-snapchat';
+    snapchat.href = `https://www.snapchat.com/add/${profile.snapchat_username}`;
+    snapchat.target = '_blank';
+    snapchat.rel = 'noopener noreferrer';
+    snapchat.textContent = `👻 Snapchat @${profile.snapchat_username}`;
+    container.appendChild(snapchat);
+  }
 
   const postsHeading = document.createElement('h3');
   postsHeading.className = 'account-profile-posts-heading';

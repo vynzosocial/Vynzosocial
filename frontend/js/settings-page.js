@@ -11,6 +11,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const bioInput = document.getElementById('profile-bio');
   const bioCount = document.getElementById('bio-character-count');
   const instagramInput = document.getElementById('profile-instagram');
+  const facebookInput = document.getElementById('profile-facebook');
+  const snapchatInput = document.getElementById('profile-snapchat');
   const photoInput = document.getElementById('profile-photo-input');
   const photoPreview = document.getElementById('profile-photo-preview');
   const photoFallback = document.getElementById('profile-photo-fallback');
@@ -40,6 +42,8 @@ document.addEventListener('DOMContentLoaded', () => {
     usernameInput.value = user.username || '';
     bioInput.value = user.bio || '';
     instagramInput.value = user.instagram_username || '';
+    facebookInput.value = user.facebook_username || '';
+    snapchatInput.value = user.snapchat_username || '';
     bioCount.textContent = String(bioInput.value.length);
     loadProfile(user).catch(err => {
       console.error('Could not load profile settings:', err);
@@ -109,7 +113,9 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({
           username: usernameInput.value,
           bio: bioInput.value,
-          instagram: instagramInput.value
+          instagram: instagramInput.value,
+          facebook: facebookInput.value,
+          snapchat: snapchatInput.value
         })
       });
       storeUpdatedUser(result.user, result.token);
@@ -258,6 +264,8 @@ async function loadProfile(user) {
   document.getElementById('profile-username').value = profile.username || '';
   document.getElementById('profile-bio').value = profile.bio || '';
   document.getElementById('profile-instagram').value = profile.instagram_username || '';
+  document.getElementById('profile-facebook').value = profile.facebook_username || '';
+  document.getElementById('profile-snapchat').value = profile.snapchat_username || '';
   document.getElementById('bio-character-count').textContent = String((profile.bio || '').length);
   renderPhoto(
     document.getElementById('profile-photo-preview'),

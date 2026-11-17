@@ -881,9 +881,31 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
       }
       profileUpdate.instagram_username = instagram || null
     }
+    const socialFields = [
+      {
+        key: 'facebook', column: 'facebook_username',
+        strip: /^https?:\/\/(www\.|m\.)?(facebook|fb)\.com\//i,
+        pattern: /^[A-Za-z0-9.]{1,50}$/,
+        error: 'Enter a valid Facebook username (letters, numbers and periods, up to 50 characters).'
+      },
+      {
+        key: 'snapchat', column: 'snapchat_username',
+        strip: /^https?:\/\/(www\.)?snapchat\.com\/(add\/)?/i,
+        pattern: /^[A-Za-z0-9._-]{1,30}$/,
+        error: 'Enter a valid Snapchat username (letters, numbers, periods, underscores and hyphens, up to 30 characters).'
+      }
+    ]
+    for (const field of socialFields) {
+      if (typeof body?.[field.key] !== 'string') continue
+      const value = body[field.key].trim().replace(field.strip, '').replace(/^@/, '').replace(/[/?#].*$/, '')
+      if (value && !field.pattern.test(value)) {
+        return jsonResponse(400, { error: field.error }, headers)
+      }
+      profileUpdate[field.column] = value || null
+    }
     const { data: user, error } = await admin.from('users').update(profileUpdate)
       .eq('id', viewerId)
-      .select('id,username,email,display_name,bio,avatar_url,instagram_username')
+      .select('id,username,email,display_name,bio,avatar_url,instagram_username,facebook_username,snapchat_username')
       .maybeSingle()
     if (error?.code === '23505') return jsonResponse(409, { error: 'That username is already in use.' }, headers)
     throwOnError(error)
@@ -1112,7 +1134,7 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
       return jsonResponse(404, { error: 'Account not found' }, headers)
     }
     const { data: user, error } = await admin.from('users')
-      .select('id,username,display_name,bio,instagram_username,avatar_url,is_private,is_verified,created_at,message_privacy,allow_calls,posts_privacy,following_privacy,read_receipts')
+      .select('id,username,display_name,bio,instagram_username,facebook_username,snapchat_username,avatar_url,is_private,is_verified,created_at,message_privacy,allow_calls,posts_privacy,following_privacy,read_receipts')
       .eq('id', targetId)
       .maybeSingle()
     throwOnError(error)
@@ -1305,6 +1327,8 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
         display_name: user.display_name,
         bio: user.bio,
         instagram_username: user.instagram_username || null,
+        facebook_username: user.facebook_username || null,
+        snapchat_username: user.snapchat_username || null,
         avatar_url: user.avatar_url,
         is_private: user.is_private,
         ...(isOwner ? {
