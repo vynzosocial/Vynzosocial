@@ -241,14 +241,11 @@
                             </div>
                             <div class="story-upload-control">
                                 <button id="add-story-btn" class="home-create-button story-create-button" type="button" aria-haspopup="dialog"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" stroke-dasharray="3 2.4"/><path d="M12 8.5v7M8.5 12h7"/></svg><span>Add story</span></button>
+                                <span id="story-upload-status" class="home-upload-status" aria-live="polite"></span>
                                 <input id="story-upload-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
                                 <input id="story-video-input" type="file" accept="video/mp4,video/webm,video/quicktime" hidden>
                             </div>
                         </header>
-                        <div class="story-composer-options">
-                            <label class="protect-option"><input type="checkbox" id="story-protect"> Protect (no download / screenshot)</label>
-                            <span id="story-upload-status" class="home-upload-status" aria-live="polite"></span>
-                        </div>
                         <div id="stories-container" class="stories-carousel-container">
                             <div style="font-size: 12px; color: var(--text-muted); padding: 10px;">Loading stories...</div>
                         </div>

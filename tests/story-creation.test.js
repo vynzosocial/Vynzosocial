@@ -13,6 +13,19 @@ const chooser = video.slice(video.indexOf('export function openStoryOptions('), 
   .replace('export function', 'function');
 const selectedFile = fs.readFileSync(path.join(root, 'selected-file.js'), 'utf8').replace(/^export /gm, '');
 
+test('Download original is grouped with story actions rather than the crowded header', () => {
+  const start = stories.indexOf('function ensureStoryViewer()');
+  const end = stories.indexOf('\nfunction ', start + 1);
+  const viewer = stories.slice(start, end);
+  const actionsStart = viewer.indexOf('<div class="story-viewer-actions">');
+  const actionsEnd = viewer.indexOf('</div>', actionsStart);
+  const headerStart = viewer.indexOf('<header class="story-viewer-header">');
+  const headerEnd = viewer.indexOf('</header>', headerStart);
+  assert.ok(actionsStart >= 0 && actionsEnd > actionsStart);
+  assert.match(viewer.slice(actionsStart, actionsEnd), /id="story-original-btn"/);
+  assert.doesNotMatch(viewer.slice(headerStart, headerEnd), /id="story-original-btn"/);
+});
+
 function setup(token = 'signed-in') {
   const nodes = [], uploads = [], cameraCallbacks = [];
   function element(tag) {
@@ -49,10 +62,11 @@ function setup(token = 'signed-in') {
   };
   vm.runInNewContext(`${helpers}\n${chooser}\n${selectedFile}\n${stories}`, context);
   context.refreshStoriesCarousel = async () => [];
-  context.uploadStory = async (file, button) => uploads.push({ file, button });
+  context.uploadStory = async (file, button, isProtected) => uploads.push({ file, button, isProtected });
   return {
     context, body, elements, uploads, cameraCallbacks,
     initialize: () => context.initStoriesCarousel(),
+    protection: () => nodes.find(node => node.id === 'story-protect'),
     choice: label => nodes.find(node => node.tag === 'button' && node.children[0]?.textContent === label)
   };
 }
@@ -66,6 +80,10 @@ for (const [label, inputId, type] of [
     await state.initialize();
     state.elements['add-story-btn'].click();
     assert.equal(state.body.children[0].children[0]['aria-label'], 'Add story');
+    const protection = state.protection();
+    assert.ok(protection);
+    protection.checked = true;
+    protection.listeners.change();
     state.choice(label).click();
     assert.equal(state.elements[inputId].clicks, 1);
     assert.equal(state.body.children.length, 0);
@@ -75,6 +93,7 @@ for (const [label, inputId, type] of [
     await state.elements[inputId].listeners.change();
     assert.equal(state.uploads[0].file, file);
     assert.equal(state.uploads[0].button, state.elements['add-story-btn']);
+    assert.equal(state.uploads[0].isProtected, true);
     assert.equal(state.elements[inputId].value, '');
     assert.equal(state.elements[inputId].disabled, false);
   });

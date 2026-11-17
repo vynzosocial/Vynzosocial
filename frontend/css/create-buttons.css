@@ -122,7 +122,6 @@ html body .home-user-chip .home-user-name {
 
 /* Upload controls (add story / photo / video / camera) belong to the "Me" tab only. */
 body:not([data-feed-scope="me"]) .story-upload-control,
-body:not([data-feed-scope="me"]) .story-composer-options,
 body:not([data-feed-scope="me"]) .home-post-composer,
 body:not([data-feed-scope="me"]) .home-feed-heading p {
   display: none !important;

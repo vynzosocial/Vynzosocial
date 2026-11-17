@@ -13,6 +13,7 @@ let currentStoryGroup = [];
 let currentStoryIndex = 0;
 let currentStoryUsername = 'user';
 let viewerIsAdmin = false;
+let storyProtectionEnabled = false;
 
 const mediaUrl = url => /^https?:/i.test(url) ? url : `${MEDIA_BASE_URL}${url}`;
 
@@ -26,14 +27,16 @@ export async function initStoriesCarousel() {
         window.location.href = './pages/login.html';
         return;
       }
+      storyProtectionEnabled = false;
       openStoryOptions({
-        onFile: file => uploadStory(file, addButton),
+        onFile: file => uploadStory(file, addButton, storyProtectionEnabled),
+        onProtectionChange: isProtected => { storyProtectionEnabled = isProtected; },
         imageInput: fileInput,
         videoInput
       });
     });
     for (const input of [fileInput, videoInput]) {
-      input.addEventListener('change', () => uploadSelectedFile(input, file => uploadStory(file, addButton)));
+      input.addEventListener('change', () => uploadSelectedFile(input, file => uploadStory(file, addButton, storyProtectionEnabled)));
     }
   }
   document.addEventListener('vynzo:scope', refreshStoriesCarousel);
@@ -132,7 +135,7 @@ function renderStories(container, usersWithStories) {
   });
 }
 
-async function uploadStory(file, button) {
+async function uploadStory(file, button, isProtected = false) {
   const status = document.getElementById('story-upload-status');
 
   if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
@@ -148,7 +151,6 @@ async function uploadStory(file, button) {
   status.textContent = 'Uploading...';
 
   try {
-    const isProtected = document.getElementById('story-protect')?.checked || false;
     let data;
     if (R2_UPLOADS_ENABLED) {
       data = await uploadPublicMedia(file, {
@@ -188,20 +190,22 @@ function ensureStoryViewer() {
       <div class="story-progress-container" id="story-progress-container"></div>
       <header class="story-viewer-header">
         <span id="story-viewer-author"></span>
-        <select class="story-privacy-select" id="story-privacy-select" aria-label="Who can watch this story" hidden>
-          <option value="everyone">🌍 Everyone</option>
-          <option value="friends">👥 Friends</option>
-          <option value="only_me">🔒 Only me</option>
-        </select>
-        <button class="story-delete-btn" id="story-delete-btn" type="button" hidden>Delete</button>
-        <button class="story-delete-btn" id="story-original-btn" type="button" hidden>Download original</button>
-        <button class="story-close-btn" type="button" aria-label="Close story">&times;</button>
+        <div class="story-viewer-header-actions">
+          <select class="story-privacy-select" id="story-privacy-select" aria-label="Who can watch this story" hidden>
+            <option value="everyone">🌍 Everyone</option>
+            <option value="friends">👥 Friends</option>
+            <option value="only_me">🔒 Only me</option>
+          </select>
+          <button class="story-delete-btn" id="story-delete-btn" type="button" hidden>Delete</button>
+          <button class="story-close-btn" type="button" aria-label="Close story">&times;</button>
+        </div>
       </header>
       <div class="story-media-wrapper" id="story-media-wrapper"></div>
       <div class="story-viewer-actions">
         <button class="story-like-btn" id="story-like-btn" type="button"></button>
         <button class="story-comments-count" id="story-comments-count" type="button"></button>
         <button class="story-share-btn" id="story-share-btn" type="button">Share</button>
+        <button class="story-original-btn" id="story-original-btn" type="button" hidden>Download original</button>
       </div>
       <section class="story-comments-panel" aria-label="Story comments">
         <div class="story-comments-list" id="story-comments-list"></div>
