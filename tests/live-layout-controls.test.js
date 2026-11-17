@@ -19,6 +19,9 @@ test('only the host has the grid layout menu in the header', () => {
     assert.match(markup, /id="live-chat-toggle" aria-expanded="true"/);
     const menuPanel = markup.slice(markup.indexOf('id="live-media-menu-panel"'), markup.indexOf('id="live-chat-input"'));
     assert.ok(menuPanel.includes('id="live-chat-toggle"'), 'Hide chat is inside Settings');
+    assert.ok(menuPanel.includes('id="live-switch-camera-btn"'), 'Switch camera is inside Settings for hosts and guests');
+    assert.equal(markup.slice(0, markup.indexOf('id="live-media-menu-panel"')).includes('id="live-switch-camera-btn"'), false);
+    assert.equal(markup.match(/id="live-switch-camera-btn"/g).length, 1);
     assert.doesNotMatch(markup, /live-(?:grid|focus)-view-btn/);
     const header = markup.slice(markup.indexOf('<header'), markup.indexOf('</header>'));
     assert.equal(header.includes('id="live-grid-menu"'), host);

@@ -91,9 +91,10 @@ Each image can have its own transition effect, or use the same transition for al
   **Record video** also provide **Switch camera** before capture/recording.
 - Chat photo and video capture provide **Switch camera** before recording.
   Camera switching is disabled during recording to keep the clip intact.
-- Live streams and video calls, including group calls, provide **Switch camera**
-  while sharing video. Switching keeps the existing microphone and mute state;
-  live filters stay applied.
+- Live streams provide **Settings > Switch camera** while sharing video, on
+  both web and mobile. Video calls, including group calls, provide a
+  **Switch camera** button. Switching keeps the existing microphone and mute
+  state; live filters stay applied.
 - Phones switch between front and rear cameras; computers cycle available
   webcams. Camera permission and a second accessible camera are required.
   If switching fails, the app attempts to restart the previous camera and

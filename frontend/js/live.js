@@ -685,7 +685,6 @@ function createLiveStage(placeholder, isHost, hostUsername = '', title = '', hos
               <button type="button" class="live-media-button live-icon-button is-off" id="live-self-mute-btn" aria-pressed="false" aria-label="Start microphone" title="Start microphone"${isHost ? '' : ' hidden'}>&#127908;</button>
               ${isHost ? '' : '<button type="button" class="live-media-button" id="live-request-stage-btn">🎤 Request to Join</button>'}
               <button type="button" class="live-media-button live-icon-button is-off" id="live-enable-camera-btn" aria-label="${isHost ? 'Open camera' : 'Turn camera on'}" title="${isHost ? 'Open camera' : 'Turn camera on'}"${isHost ? '' : ' hidden'}>📷</button>
-              <button type="button" class="live-media-button" id="live-switch-camera-btn" aria-label="Switch camera" hidden>Switch camera</button>
               <div class="live-media-menu" id="live-media-menu">
                 <button type="button" class="live-media-button live-media-menu-toggle" id="live-media-menu-btn" aria-label="Live settings" aria-haspopup="true" aria-expanded="false" aria-controls="live-media-menu-panel">&#9881; Settings</button>
                 <div class="live-media-menu-panel" id="live-media-menu-panel" aria-label="Live settings" hidden>
@@ -697,6 +696,7 @@ function createLiveStage(placeholder, isHost, hostUsername = '', title = '', hos
                   <button type="button" class="live-media-button live-media-image-button" id="live-select-image-btn">${isHost ? 'Choose image' : 'Use image'}</button>
                   <input id="live-image-file" type="file" accept="image/*" hidden>
                   <button type="button" class="live-media-button live-media-off-button" id="live-remove-image-btn" hidden>Remove image</button>
+                  <button type="button" class="live-media-button" id="live-switch-camera-btn" aria-label="Switch camera" hidden>Switch camera</button>
                   <button type="button" class="live-media-button" id="live-mirror-camera-btn" aria-pressed="false" title="Mirror your preview; viewers see the normal camera view" hidden>Mirror camera</button>
                   <label class="live-camera-filter" id="live-camera-filter-control" title="Effects are processed on your device and visible to live viewers" hidden>
                     <span>Filter</span>
