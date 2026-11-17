@@ -50,11 +50,6 @@ html body .home-create-button.story-create-button {
   animation: none;
 }
 
-html body .home-create-button.story-create-button#camera-story-btn {
-  --btn-glow: rgba(139, 92, 255, 0.5);
-  background: linear-gradient(110deg, #8b5cff, #3d8bff);
-}
-
 html body .home-create-button.photo-create-button {
   --btn-glow: rgba(0, 190, 255, 0.45);
   background: linear-gradient(110deg, #00b4ff, #3d6bff);
@@ -127,6 +122,7 @@ html body .home-user-chip .home-user-name {
 
 /* Upload controls (add story / photo / video / camera) belong to the "Me" tab only. */
 body:not([data-feed-scope="me"]) .story-upload-control,
+body:not([data-feed-scope="me"]) .story-composer-options,
 body:not([data-feed-scope="me"]) .home-post-composer,
 body:not([data-feed-scope="me"]) .home-feed-heading p {
   display: none !important;

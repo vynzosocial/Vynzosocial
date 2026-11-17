@@ -3,7 +3,7 @@ import { API_ORIGIN as MEDIA_BASE_URL, R2_UPLOADS_ENABLED } from './config.js?v=
 import { downloadOriginal, refreshExpiredMedia, uploadPublicMedia } from './r2-uploads.js';
 import { timeAgo } from './time-ago.js';
 import { protectMedia } from './media-protect.js';
-import { openCamera } from './camera-capture.js';
+import { openStoryOptions } from './video-create.js?v=repost1';
 import { attachEmojiPicker } from './emoji-picker.js';
 import { openShareDialog, absoluteMediaUrl } from './share.js?v=5';
 import { uploadSelectedFile } from './selected-file.js';
@@ -19,23 +19,23 @@ const mediaUrl = url => /^https?:/i.test(url) ? url : `${MEDIA_BASE_URL}${url}`;
 export async function initStoriesCarousel() {
   const addButton = document.getElementById('add-story-btn');
   const fileInput = document.getElementById('story-upload-input');
-  if (addButton && fileInput) {
+  const videoInput = document.getElementById('story-video-input');
+  if (addButton && fileInput && videoInput) {
     addButton.addEventListener('click', () => {
       if (!localStorage.getItem('vynzo_token')) {
         window.location.href = './pages/login.html';
         return;
       }
-      fileInput.click();
+      openStoryOptions({
+        onFile: file => uploadStory(file, addButton),
+        imageInput: fileInput,
+        videoInput
+      });
     });
-    fileInput.addEventListener('change', () => uploadSelectedFile(fileInput, file => uploadStory(file, addButton)));
-  }
-  document.getElementById('camera-story-btn')?.addEventListener('click', () => {
-    if (!localStorage.getItem('vynzo_token')) {
-      window.location.href = './pages/login.html';
-      return;
+    for (const input of [fileInput, videoInput]) {
+      input.addEventListener('change', () => uploadSelectedFile(input, file => uploadStory(file, addButton)));
     }
-    openCamera(file => uploadStory(file, addButton));
-  });
+  }
   document.addEventListener('vynzo:scope', refreshStoriesCarousel);
   await refreshStoriesCarousel();
 }
@@ -65,7 +65,7 @@ function renderStories(container, usersWithStories) {
   if (!usersWithStories.length) {
     const empty = document.createElement('span');
     empty.className = 'story-empty-state';
-    empty.textContent = 'No active stories yet';
+    empty.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/><path d="M12 8v8M8 12h8"/></svg><span>No active stories yet</span>';
     container.appendChild(empty);
     return;
   }

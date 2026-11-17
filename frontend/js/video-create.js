@@ -72,6 +72,27 @@ export function openPhotoOptions({ onFile, fileInput }) {
   dialog.dialog.append(capture, upload);
 }
 
+export function openStoryOptions({ onFile, imageInput, videoInput }) {
+  const dialog = openDialog('Add story');
+  const image = actionButton('Image', 'Choose a photo or GIF from your device');
+  const video = actionButton('Video', 'Choose a video from your device');
+  const camera = actionButton('Camera', 'Use your camera, front or rear', true);
+  image.addEventListener('click', () => {
+    dialog.close();
+    imageInput.click();
+  });
+  video.addEventListener('click', () => {
+    dialog.close();
+    videoInput.click();
+  });
+  camera.addEventListener('click', () => {
+    dialog.close();
+    openCamera(onFile);
+  });
+  dialog.dialog.append(image, video, camera);
+  image.focus();
+}
+
 /**
  * Create a video from images with audio
  */

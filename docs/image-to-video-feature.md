@@ -87,8 +87,12 @@ Each image can have its own transition effect, or use the same transition for al
 
 ### Camera capture alternatives (mobile and web)
 
-- **Image** offers **Take photo** or **Upload image**. Story camera and
-  **Record video** also provide **Switch camera** before capture/recording.
+- **Add story** offers **Image**, **Video**, and **Camera** in one chooser.
+  Image and Video open separate device pickers; Camera takes photos or records
+  video with **Switch camera** available before capture/recording. The Stories
+  card keeps protection and upload progress below its compact heading.
+- **Image** posts offer **Take photo** or **Upload image**. **Record video**
+  also provides **Switch camera** before recording.
 - Chat photo and video capture provide **Switch camera** before recording.
   Camera switching is disabled during recording to keep the clip intact.
 - Live streams provide **Settings > Switch camera** while sharing video, on
