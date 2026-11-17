@@ -251,6 +251,8 @@
   display: flex;
   justify-content: center;
   align-items: center;
+  /* Keep the viewer between the device's top and bottom safe areas (status bar, notch, gesture bar) */
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   display: none;
 }
 
@@ -323,9 +325,10 @@
 }
 
 .story-viewer-actions #story-original-btn {
-  flex: 0 0 auto;
-  margin-left: auto;
+  flex: 1 1 100%;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .story-viewer-actions #story-original-btn[hidden] {
@@ -512,9 +515,10 @@
     max-height: none;
   }
 
-  /* Lift the comment box clear of the phone's navigation buttons */
+  /* Lift the comment box clear of the phone's navigation buttons
+     (the device inset itself is applied on .story-viewer-modal) */
   .story-comments-panel {
-    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 44px);
+    padding-bottom: 44px;
   }
 
   .story-comments-list {

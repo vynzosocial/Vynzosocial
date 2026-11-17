@@ -384,6 +384,31 @@ a.settings-button {
   margin-bottom: 0;
 }
 
+.settings-card.application-version-card .settings-section-heading {
+  align-items: baseline;
+  flex-wrap: wrap;
+  margin-bottom: 0;
+}
+
+.application-version-card #application-version {
+  color: var(--text-dark);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.application-version-card #application-version.error {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.application-version-card #application-build {
+  margin-top: 8px;
+}
+
+.application-version-card #application-build:empty {
+  display: none;
+}
+
 .settings-page:not(.delete-account-page) .profile-photo-section {
   gap: 12px;
   margin-bottom: 18px;
