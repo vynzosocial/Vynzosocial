@@ -171,6 +171,32 @@ for (const guest of [false, true]) {
   });
 }
 
+test('self-mute syncs the active microphone track to live audio senders', async () => {
+  const track = { enabled: true };
+  let calls = 0;
+  const context = {
+    localAudioTrack: track,
+    guestMuted: false,
+    hostMuted: false,
+    hostMicrophoneStarting: false,
+    hostCameraStarting: false,
+    isGuestRole: () => false,
+    document: { getElementById: () => null },
+    peerSenders: {
+      one: { audio: { replaceTrack(next) { calls += 1; return Promise.resolve(next); } } },
+      two: { audio: { replaceTrack(next) { calls += 1; return Promise.resolve(next); } } }
+    },
+    socket: { timeout: () => ({ emit(_event, _data, callback) { callback(null, { ok: true }); } }) },
+    console
+  };
+  vm.runInNewContext(mute, context);
+  context.toggleSelfMute();
+  await new Promise(resolve => setImmediate(resolve));
+  context.toggleSelfMute();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls, 4);
+});
+
 test('a guest stays muted on remote unmute and can unmute their own microphone', () => {
   const handlers = new Map(), events = [];
   const track = { enabled: true };

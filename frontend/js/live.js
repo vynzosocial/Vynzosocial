@@ -1525,6 +1525,19 @@ function reportGuestMuteState() {
   });
 }
 
+function syncLiveAudioSenderMuteState() {
+  if (!localAudioTrack) return;
+  const senderEntries = (typeof peerSenders === 'object' && peerSenders)
+    ? Object.values(peerSenders)
+    : [];
+  const senders = senderEntries.map(entry => entry?.audio).filter(Boolean);
+  if (!senders.length) return;
+  Promise.all(senders.map(sender => Promise.resolve(sender.replaceTrack(localAudioTrack))))
+    .catch((error) => {
+      console.warn('Could not synchronize live microphone mute state:', error);
+    });
+}
+
 function toggleSelfMute() {
   if (!localAudioTrack) {
     if (!isGuestRole()) startHostMicrophone();
@@ -1614,7 +1627,10 @@ async function stopHostMicrophone() {
 
 function applyMute() {
   const muted = isGuestRole() ? guestMuted : hostMuted;
-  if (localAudioTrack) localAudioTrack.enabled = !muted;
+  if (localAudioTrack) {
+    localAudioTrack.enabled = !muted;
+    syncLiveAudioSenderMuteState();
+  }
   const muteButton = document.getElementById('live-self-mute-btn');
   if (muteButton) {
     muteButton.hidden = isGuestRole() && !localAudioTrack;
