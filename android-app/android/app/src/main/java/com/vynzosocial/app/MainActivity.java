@@ -18,6 +18,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ShareTargetPlugin.class);
         registerPlugin(PasswordManagerPlugin.class);
         registerPlugin(VynzoPushPlugin.class);
+        registerPlugin(AppUpdatePlugin.class);
         registerPlugin(OtaPlugin.class);
         super.onCreate(savedInstanceState);
         styleSystemBars();

@@ -32,3 +32,40 @@
 
 .home-update button:disabled { opacity: .7; cursor: wait; }
 .home-update span:not(:empty) { padding-inline-end: 8px; font-size: 13px; }
+
+.android-update {
+  position: fixed;
+  z-index: 9999;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100vw - 24px);
+  padding: 8px;
+  border: 1px solid #9c79e8;
+  border-radius: 12px;
+  background: #26153f;
+  color: #fff;
+}
+.android-update[hidden] { display: none; }
+.android-update button, .android-update-dialog button {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: #7545b5;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+.android-update-dialog {
+  width: min(420px, calc(100% - 32px));
+  padding: 20px;
+  border: 1px solid #9c79e8;
+  border-radius: 12px;
+  background: #26153f;
+  color: #fff;
+}
+.android-update-dialog::backdrop { background: rgba(0, 0, 0, .7); }
+.android-update-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.android-update-dialog button:disabled { opacity: .7; cursor: wait; }

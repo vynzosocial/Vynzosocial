@@ -18,7 +18,7 @@ npm run build
 ```
 
 The Windows x64 installer is generated at
-`desktop-app/release/VynzoSocial-Setup-1.2.4-x64.exe`. The assisted installer installs
+`desktop-app/release/VynzoSocial-Setup-1.2.5-x64.exe`. The assisted installer installs
 for the current user without administrator access and creates desktop and
 Start menu shortcuts. Login data is retained between launches and upgrades.
 Uninstalling does not automatically remove saved login data.
@@ -30,7 +30,7 @@ compatibility. Normal launches continue to use `%APPDATA%\Vynzo`, including
 the original `persist:vynzo-desktop` browser session, so the branding change
 does not move the saved login into a new profile.
 
-Version 1.2.4 is offered as a direct, unsigned EXE download with the brief notice
+Version 1.2.5 is offered as a direct, unsigned EXE download with the brief notice
 **This installer is not code-signed.** inside its confirmation dialog. Windows SmartScreen
 may warn or block installation. Do not ask users to disable Windows security.
 Trusted code signing remains recommended for a production release; no signing
@@ -63,10 +63,8 @@ Removing the URL restores the disabled coming-soon state. Build and publish the
 website and signed Android web update after activation.
 
 The public direct-download file is
-`windows/VynzoSocial-Setup-1.2.4-x64.exe` in `vynzo-app-downloads`.
-This release publishes only that installer, without changing `latest.yml` or
-automatically upgrading existing desktop users. Keep prior binaries and the
-existing automatic-update feed intact.
+`windows/VynzoSocial-Setup-1.2.5-x64.exe` in `vynzo-app-downloads`.
+The automatic-update feed also offers version 1.2.5. Keep prior binaries available.
 
 Clicking the button opens the confirmation dialog without downloading anything.
 Cancel, Escape, and an outside click dismiss it. **Yes, download** requests the
@@ -207,7 +205,8 @@ charges.
 
 An update-enabled app checks on startup, downloads automatically, displays
 download progress in the title-bar button and application menu, and asks
-permission before restarting. Choosing Later leaves the Update button
+permission before restarting, recommending the update for new features and
+improvements. Choosing Later leaves the Update button
 available without interrupting an active call or upload. Clicking it offers the
 restart prompt again. Once the installed version is current, the button hides.
 Normal quitting does not silently install. Failures are logged and expose a

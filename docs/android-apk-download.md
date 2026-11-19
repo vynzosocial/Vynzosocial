@@ -53,6 +53,23 @@ so a matching local JDK is required.
 
 Users may need to allow their browser to install apps from unknown sources.
 Web OTA updates do not replace a new APK when native code or permissions change.
+
+The Android Home screen can offer a newer APK based on the release information
+in `frontend/android-release.json`, which is delivered in the signed web update.
+After the user chooses Update, binaries with the AppUpdate plugin download the
+APK inside the app, verify its SHA-256, package and version, and open Android's
+installer. Android must be allowed to install apps from VynzoSocial, and the
+user must approve installation. Older binaries need a one-time manual download
+and installation before they can use the native updater. An installed app must
+be reopened to receive and activate the signed web update containing the offer.
+
+For each new direct-download release, upload and verify the signed APK first,
+then update `frontend/android-release.json` with its exact version, versionCode,
+public download URL and SHA-256 before publishing the signed web update. Keep
+the APK filename in the download Worker's allowlist. The native installer permits
+only the Vynzo download host and Android enforces the installed app's signing
+identity. This updater is for direct-download APKs; Play distribution must meet
+Google Play's restrictions on the `REQUEST_INSTALL_PACKAGES` permission.
 Version 1.6 (version code 7) makes navigation 35% smaller on every page, reduces
 Settings card spacing and button sizes, and keeps Log out last in Settings.
 It retains the combined deactivation/deletion control, empty password fields,
@@ -74,4 +91,5 @@ download is `vynzo-android-1.8.apk`; previous downloads remain available.
 Version 1.9 (version code 10) adds Android background notifications when an
 eligible friend chooses to announce a live session. It uses the same signing
 key, so users can install it over the previous direct-download release.
-The current download is `vynzo-android-1.9.apk`.
+Version 1.10 (version code 11) adds the in-app APK updater described above.
+The current download is `vynzo-android-1.10.apk`.

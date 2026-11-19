@@ -345,7 +345,7 @@ if (!app.requestSingleInstanceLock()) {
           type: 'info',
           title: 'VynzoSocial update ready',
           message: 'Restart VynzoSocial to install the desktop update?',
-          detail: 'Finish any active call, upload, or unsaved work before restarting. Choose Later to keep using this version; the Update button stays available until you install.',
+          detail: 'We recommend updating for new features and improvements. Finish any active call, upload, or unsaved work before restarting. Choose Later to keep using this version; the Update button stays available until you install.',
           buttons: ['Restart and install', 'Later'],
           defaultId: 1,
           cancelId: 1,

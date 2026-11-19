@@ -1,3 +1,5 @@
+import { initAndroidUpdate } from './android-update.mjs';
+
 const WEB_CHECK_MS = 60_000;
 const APP_CHECK_MS = 30 * 60_000;
 const APP_STATUS_MS = 5_000;
@@ -82,6 +84,7 @@ function init() {
     console.error('Android update plugin is unavailable.');
     return;
   }
+  initAndroidUpdate(capacitor, plugin);
   const translate = text => window.VynzoI18n?.tr(text) || text;
   const controller = createUpdateController({
     nativePlugin: plugin,

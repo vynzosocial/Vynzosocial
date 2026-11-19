@@ -1,6 +1,6 @@
 import { parseRange } from '../shared/byte-range.mjs';
 
-const FILES = new Set(['vynzo-android-1.0.apk', 'vynzo-android-1.1.apk', 'vynzo-android-1.2.apk', 'vynzo-android-1.3.apk', 'vynzo-android-1.4.apk', 'vynzo-android-1.5.apk', 'vynzo-android-1.6.apk', 'vynzo-android-1.7.apk', 'vynzo-android-1.8.apk', 'vynzo-android-1.9.apk']);
+const FILES = new Set(['vynzo-android-1.0.apk', 'vynzo-android-1.1.apk', 'vynzo-android-1.2.apk', 'vynzo-android-1.3.apk', 'vynzo-android-1.4.apk', 'vynzo-android-1.5.apk', 'vynzo-android-1.6.apk', 'vynzo-android-1.7.apk', 'vynzo-android-1.8.apk', 'vynzo-android-1.9.apk', 'vynzo-android-1.10.apk']);
 const WINDOWS_RELEASE = /^windows\/VynzoSocial-Setup-\d+\.\d+\.\d+-x64\.exe(?:\.blockmap)?$/;
 
 export default {

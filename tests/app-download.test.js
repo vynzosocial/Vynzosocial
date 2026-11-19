@@ -19,7 +19,7 @@ test('download worker serves only the published APK for GET and HEAD', async () 
       return { size: 3, httpEtag: '"etag"' };
     }
   };
-  const url = 'https://example.test/vynzo-android-1.9.apk';
+  const url = 'https://example.test/vynzo-android-1.10.apk';
   const response = await worker.fetch(new Request(url), { DOWNLOADS: bucket });
   assert.equal(response.status, 200);
   assert.equal(await response.text(), 'apk');
@@ -28,7 +28,8 @@ test('download worker serves only the published APK for GET and HEAD', async () 
   assert.equal((await worker.fetch(new Request(url, { method: 'HEAD' }), { DOWNLOADS: bucket })).status, 200);
   assert.equal((await worker.fetch(new Request(url, { method: 'POST' }), { DOWNLOADS: bucket })).status, 405);
   assert.equal((await worker.fetch(new Request('https://example.test/other'), { DOWNLOADS: bucket })).status, 404);
-  assert.deepEqual(calls, [['get', 'vynzo-android-1.9.apk'], ['head', 'vynzo-android-1.9.apk']]);
+  assert.deepEqual(calls, [['get', 'vynzo-android-1.10.apk'], ['head', 'vynzo-android-1.10.apk']]);
+  assert.equal((await worker.fetch(new Request('https://example.test/vynzo-android-1.9.apk'), { DOWNLOADS: bucket })).status, 200);
   assert.equal((await worker.fetch(new Request('https://example.test/vynzo-android-1.8.apk'), { DOWNLOADS: bucket })).status, 200);
   assert.equal((await worker.fetch(new Request('https://example.test/vynzo-android-1.7.apk'), { DOWNLOADS: bucket })).status, 200);
   assert.equal((await worker.fetch(new Request('https://example.test/vynzo-android-1.6.apk'), { DOWNLOADS: bucket })).status, 200);
@@ -38,7 +39,7 @@ test('download worker serves only the published APK for GET and HEAD', async () 
 test('welcome and signed-in home pages link to the published APK', () => {
   const html = fs.readFileSync(path.join(__dirname, '../frontend/index.html'), 'utf8');
   const css = fs.readFileSync(path.join(__dirname, '../frontend/css/app-download.css'), 'utf8');
-  const url = 'https://vynzo-app-download.vynzolive.workers.dev/vynzo-android-1.9.apk';
+  const url = 'https://vynzo-app-download.vynzolive.workers.dev/vynzo-android-1.10.apk';
   assert.equal(html.split(`href="${url}"`).length - 1, 2);
   assert.match(html, /class="app-download-link welcome-app-download"/);
   assert.match(html, /class="home-app-download"/);
@@ -111,7 +112,7 @@ async function exerciseWindowsDownload(doc, state) {
   const dialog = doc.getElementById('windows-download-dialog');
   const confirm = doc.getElementById('windows-download-confirm');
   const status = doc.getElementById('windows-download-status');
-  const url = 'https://vynzo-app-download.vynzolive.workers.dev/windows/VynzoSocial-Setup-1.2.4-x64.exe';
+  const url = 'https://vynzo-app-download.vynzolive.workers.dev/windows/VynzoSocial-Setup-1.2.5-x64.exe';
   const result = { state };
   const card = doc.querySelector('.windows-download-card').getBoundingClientRect();
   result.compact = card.width <= 260 && card.height >= 44 && card.height <= 48;
