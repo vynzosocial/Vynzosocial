@@ -5,6 +5,7 @@ import java.util.UUID;
 
 final class PushPayload {
     private static final long MAX_RING_MS = 45_000;
+    private static final long MAX_LIVE_ALERT_MS = 90_000;
     final String kind;
     final String id;
     final long remainingMs;
@@ -20,11 +21,12 @@ final class PushPayload {
         String id = data.get("id");
         if (!validId(id)) return null;
         if ("message".equals(kind) || "call_end".equals(kind)) return new PushPayload(kind, id, 0);
-        if (!"voice_call".equals(kind) && !"video_call".equals(kind)) return null;
+        boolean live = "live_started".equals(kind);
+        if (!live && !"voice_call".equals(kind) && !"video_call".equals(kind)) return null;
         try {
             long expiresAt = Long.parseLong(data.get("expires_at"));
             if (expiresAt <= now) return null;
-            return new PushPayload(kind, id, Math.min(MAX_RING_MS, expiresAt - now));
+            return new PushPayload(kind, id, Math.min(live ? MAX_LIVE_ALERT_MS : MAX_RING_MS, expiresAt - now));
         } catch (NumberFormatException error) {
             return null;
         }

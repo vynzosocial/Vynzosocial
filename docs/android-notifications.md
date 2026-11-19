@@ -44,6 +44,20 @@ pending invitation. The app checks with the coordinator first and reports an
 expired invitation instead of joining it. Microphone and, for video calls,
 camera permission must be granted.
 
+On the Live page, **Notify friends who can watch** is off by default and applies
+only to the next broadcast. It alerts mutual friends who can watch, excluding
+blocked and inactive accounts. With **Selected friends**, only the chosen
+friends are eligible. Each host can send alerts at most once every five minutes.
+Tapping an alert opens the livestream, where normal viewing permissions apply.
+
+Open web, desktop, iOS, and Android clients receive alerts through Supabase
+Realtime. Android background alerts require a native build that supports the
+live notification channel; an OTA alone cannot add this support. The push
+expires after 90 seconds and does not include the host name or stream title.
+Closed browsers, Windows and iOS apps do not receive live alerts.
+Deploy the live-friend-alerts database migration before the Edge Function and
+shared frontend; verify with two signed-in friend accounts before rollout.
+
 Test on two Android devices with notifications allowed and denied, app open,
 backgrounded and closed. Check voice and video calls, cancellation, message
 taps, account switching, sign-out, and multiple devices before considering the

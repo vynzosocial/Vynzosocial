@@ -18,7 +18,8 @@ import { currentLoginEmail, resolveAccountLogin, verifyLoginIdentity } from './a
 import { isPublicPreview } from './public-preview.mjs'
 import { deviceSecretHash, validDeviceRegistration, validDeviceRemoval } from './push-devices.mjs'
 import { createFcmSender } from './fcm-sender.mjs'
-import { sendMessagePush } from './message-push.mjs'
+import { sendMessagePush, sendRecipientPush } from './message-push.mjs'
+import { livePush } from './push-delivery.mjs'
 import { handleCallPush } from './call-push.mjs'
 
 declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void }
@@ -2819,6 +2820,54 @@ async function handleMessages(request: Request, viewerId: string, headers: Recor
   return jsonResponse(404, { error: 'Endpoint not found' }, headers)
 }
 
+async function notifyLiveFriends(sessionId: string, hostId: string) {
+  const { data: recipients, error } = await admin.rpc('send_live_friend_alerts', {
+    p_session_id: sessionId, p_host_id: hostId
+  })
+  throwOnError(error)
+  if (!Array.isArray(recipients) || !recipients.length || Deno.env.get('PUSH_NOTIFICATIONS_ENABLED') !== 'true') return
+
+  let sender: ReturnType<typeof createFcmSender> | undefined
+  const message = livePush(sessionId)
+  // Bound the query size and page devices so large friend lists are not truncated.
+  for (let offset = 0; offset < recipients.length; offset += 100) {
+    await sendRecipientPush({
+      recipientIds: recipients.slice(offset, offset + 100),
+      message,
+      async getInstallations(ids: string[]) {
+        const devices: { installationId: string; userId: string }[] = []
+        let lastId: string | undefined
+        while (true) {
+          let query = admin.from('push_devices').select('installation_id,user_id').in('user_id', ids)
+            .order('installation_id').limit(200)
+          if (lastId) query = query.gt('installation_id', lastId)
+          const { data, error } = await query
+          throwOnError(error)
+          for (const device of data || []) devices.push({ installationId: device.installation_id, userId: device.user_id })
+          if (!data || data.length < 200) break
+          lastId = data.at(-1)?.installation_id
+        }
+        return devices
+      },
+      async send(payload: Parameters<ReturnType<typeof createFcmSender>['send']>[0]) {
+        if (!sender) {
+          const configuration = Deno.env.get('FIREBASE_SERVICE_ACCOUNT')
+          if (!configuration) throw new Error('Firebase push credentials are not configured.')
+          sender = createFcmSender({ serviceAccount: JSON.parse(configuration) })
+        }
+        return await sender.send(payload)
+      },
+      async removeUnregistered(installationId: string) {
+        const { error } = await admin.from('push_devices').delete().eq('installation_id', installationId)
+        throwOnError(error)
+      },
+      onFailure(stage: string, error: unknown) {
+        console.error('Live friend push failure:', { stage, ...getErrorMetadata(error) })
+      }
+    })
+  }
+}
+
 async function handleLive(request: Request, viewerId: string | undefined, headers: Record<string, string>) {
   const url = new URL(request.url)
   const pathSegments = url.pathname.split('/').filter(Boolean)
@@ -2952,6 +3001,14 @@ async function handleLive(request: Request, viewerId: string | undefined, header
       const { error: cleanupError } = await admin.from('live_sessions').delete().eq('id', session.id).eq('host_id', viewerId)
       if (cleanupError) console.error('Failed to clean up incomplete livestream start:', cleanupError)
       throwOnError(endPreviousError)
+    }
+    if (body?.notify_friends === true) {
+      try {
+        EdgeRuntime.waitUntil(notifyLiveFriends(session.id, viewerId)
+          .catch(error => console.error('Live friend alert task failed:', getErrorMetadata(error), error)))
+      } catch (error) {
+        console.error('Could not schedule live friend alerts:', getErrorMetadata(error), error)
+      }
     }
     return jsonResponse(201, { message: 'Livestream started successfully', session }, headers)
   }

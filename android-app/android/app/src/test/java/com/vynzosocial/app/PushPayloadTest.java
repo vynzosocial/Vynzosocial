@@ -32,6 +32,13 @@ public class PushPayloadTest {
     }
 
     @Test
+    public void liveAlertsRequireExpiryAndDoNotUseTheCallTimeout() {
+        assertEquals(80_000, PushPayload.parse(data("live_started", "80100"), 100).remainingMs);
+        assertNull(PushPayload.parse(data("live_started", "100"), 100));
+        assertNull(PushPayload.parse(data("live_started", null), 100));
+    }
+
+    @Test
     public void rejectsUnknownKindsAndMalformedIds() {
         assertNull(PushPayload.parse(data("other", null), 100));
         Map<String, String> invalid = data("message", null);

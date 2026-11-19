@@ -16,7 +16,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@capacitor/ios": "^8.6.0",
+    "@capacitor/ios": "^4.8.2",
     "@vladmandic/human": "3.3.6",
     "mediabunny": "1.65.2"
   },

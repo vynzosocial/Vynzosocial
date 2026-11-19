@@ -29,6 +29,7 @@ public class VynzoMessagingService extends FirebaseMessagingService {
     static final String EXTRA_ID = "push_id";
     private static final String MESSAGE_CHANNEL = "vynzo_messages";
     private static final String CALL_CHANNEL = "vynzo_calls";
+    private static final String LIVE_CHANNEL = "vynzo_live";
 
     @Override
     public void onRegistered(@NonNull String installationId) {
@@ -48,12 +49,13 @@ public class VynzoMessagingService extends FirebaseMessagingService {
             cancelCall(this, payload.id);
             return;
         }
-        if (!"message".equals(payload.kind) && callHasEnded(payload.id)) return;
+        boolean live = "live_started".equals(payload.kind);
+        boolean call = "voice_call".equals(payload.kind) || "video_call".equals(payload.kind);
+        if (call && callHasEnded(payload.id)) return;
         if (VynzoPushPlugin.isForeground()) return;
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return;
 
-        boolean call = !"message".equals(payload.kind);
         createChannels();
         Intent intent = new Intent(this, MainActivity.class).setAction(ACTION_OPEN)
             .setData(Uri.parse("vynzo://push/" + payload.kind + "/" + payload.id))
@@ -61,23 +63,24 @@ public class VynzoMessagingService extends FirebaseMessagingService {
             .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent open = PendingIntent.getActivity(this, 0, intent,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, call ? CALL_CHANNEL : MESSAGE_CHANNEL)
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, call ? CALL_CHANNEL : live ? LIVE_CHANNEL : MESSAGE_CHANNEL)
             .setSmallIcon(android.R.drawable.stat_notify_chat)
             .setContentTitle(getString(call
                 ? ("video_call".equals(payload.kind) ? R.string.push_video_call : R.string.push_voice_call)
-                : R.string.push_message_title))
-            .setContentText(getString(call ? R.string.push_call_body : R.string.push_message_body))
+                : live ? R.string.push_live_title : R.string.push_message_title))
+            .setContentText(getString(call ? R.string.push_call_body : live ? R.string.push_live_body : R.string.push_message_body))
             .setContentIntent(open)
             .setAutoCancel(true)
             .setPriority(call ? NotificationCompat.PRIORITY_MAX : NotificationCompat.PRIORITY_HIGH)
-            .setCategory(call ? NotificationCompat.CATEGORY_CALL : NotificationCompat.CATEGORY_MESSAGE)
+            .setCategory(call ? NotificationCompat.CATEGORY_CALL : live ? NotificationCompat.CATEGORY_SOCIAL : NotificationCompat.CATEGORY_MESSAGE)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE);
+        if (live) builder.setTimeoutAfter(payload.remainingMs);
         if (call) builder.setTimeoutAfter(payload.remainingMs)
             .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))
             .setVibrate(new long[] { 0, 800, 600, 800 });
         Notification notification = builder.build();
         if (call && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) notification.flags |= Notification.FLAG_INSISTENT;
-        NotificationManagerCompat.from(this).notify((call ? "call:" : "message:") + payload.id, 0, notification);
+        NotificationManagerCompat.from(this).notify((call ? "call:" : live ? "live:" : "message:") + payload.id, 0, notification);
         if (call && Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             AlarmManager alarm = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
             alarm.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP,
@@ -124,11 +127,14 @@ public class VynzoMessagingService extends FirebaseMessagingService {
             getString(R.string.push_messages_channel), NotificationManager.IMPORTANCE_HIGH);
         NotificationChannel calls = new NotificationChannel(CALL_CHANNEL,
             getString(R.string.push_calls_channel), NotificationManager.IMPORTANCE_HIGH);
+        NotificationChannel live = new NotificationChannel(LIVE_CHANNEL,
+            getString(R.string.push_live_channel), NotificationManager.IMPORTANCE_HIGH);
         calls.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE),
             new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE).build());
         calls.enableVibration(true);
         calls.setVibrationPattern(new long[] { 0, 800, 600, 800 });
         manager.createNotificationChannel(messages);
         manager.createNotificationChannel(calls);
+        manager.createNotificationChannel(live);
     }
 }

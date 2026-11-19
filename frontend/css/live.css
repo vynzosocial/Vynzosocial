@@ -405,6 +405,22 @@
   display: none;
 }
 
+.live-notify-friends {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.live-notify-friends input {
+  flex: none;
+  margin: 0;
+  inline-size: 18px;
+  block-size: 18px;
+}
+
 .live-audience-heading {
   margin: 12px 0 7px;
   color: var(--text-muted);

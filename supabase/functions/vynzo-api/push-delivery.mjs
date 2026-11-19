@@ -12,6 +12,13 @@ export function messagePush(conversationId) {
   return { data: { type: 'message', id: conversationId }, ttlSeconds: 86400 };
 }
 
+export function livePush(sessionId, now = Date.now()) {
+  if (typeof sessionId !== 'string' || !UUID.test(sessionId)) {
+    throw new Error('Invalid notification livestream.');
+  }
+  return { data: { type: 'live_started', id: sessionId, expires_at: String(now + 90000) }, ttlSeconds: 90 };
+}
+
 export function callPush(callId, video, expiresAt, now = Date.now()) {
   if (typeof callId !== 'string' || !UUID.test(callId) || typeof video !== 'boolean' ||
       !Number.isSafeInteger(expiresAt) || !Number.isSafeInteger(now) || expiresAt <= now ||

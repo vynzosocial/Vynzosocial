@@ -21,6 +21,27 @@ test('call payloads expire within the invitation window', async () => {
   assert.throws(() => callPush(ID, 'false', 102_000, 101_000), /Invalid notification/);
 });
 
+test('live push targets only eligible devices and carries no broadcast details', async () => {
+  const { livePush } = await import('../supabase/functions/vynzo-api/push-delivery.mjs');
+  const { sendRecipientPush } = await import('../supabase/functions/vynzo-api/message-push.mjs');
+  const message = livePush(ID, 1000);
+  const sent = [];
+  const deliver = userId => sendRecipientPush({
+    recipientIds: ['friend'], message,
+    async getInstallations() { return [{ installationId: 'installation-1', userId }]; },
+    async send(push) { sent.push(push); },
+    async removeUnregistered() { assert.fail('Unexpected cleanup'); }
+  });
+  await assert.rejects(deliver('uninvited'), /not a recipient/);
+  assert.deepEqual(sent, []);
+  await deliver('friend');
+  assert.deepEqual(sent, [{
+    installationId: 'installation-1',
+    data: { type: 'live_started', id: ID, expires_at: '91000', user_id: 'friend' },
+    ttlSeconds: 90
+  }]);
+});
+
 test('delivery deduplicates installations and reports failures and stale registrations', async () => {
   const { deliverPush, messagePush } = await import('../supabase/functions/vynzo-api/push-delivery.mjs');
   const { FcmError } = await import('../supabase/functions/vynzo-api/fcm-sender.mjs');

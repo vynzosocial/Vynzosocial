@@ -2621,21 +2621,25 @@ function closeAllPeerConnections() {
   remoteImagePeers.clear();
 }
 
-export async function startBroadcasting(title, category, visibility = 'public', audienceIds = []) {
-  if (activeBroadcastSessionId) return;
+let broadcastStartPending = false;
+export async function startBroadcasting(title, category, visibility = 'public', audienceIds = [], notifyFriends = false) {
+  if (activeBroadcastSessionId || broadcastStartPending) return;
   if (!localStorage.getItem('vynzo_token')) {
     alert('Please log in to your Vynzo account before starting a livestream.');
     return;
   }
 
+  broadcastStartPending = true;
   try {
     const res = await apiRequest('/live/start', {
       method: 'POST',
-      body: JSON.stringify({ title, category, visibility, audience_ids: audienceIds })
+      body: JSON.stringify({ title, category, visibility, audience_ids: audienceIds, notify_friends: notifyFriends === true })
     });
 
     const sessionId = res.session.id;
     activeBroadcastSessionId = sessionId;
+    const notifyFriendsInput = document.getElementById('live-notify-friends');
+    if (notifyFriendsInput) notifyFriendsInput.checked = false;
     broadcastStartedAt = Date.now();
     const mainView = document.getElementById('live-main-view');
     const currentUser = JSON.parse(localStorage.getItem('vynzo_user') || '{}');
@@ -2674,6 +2678,8 @@ export async function startBroadcasting(title, category, visibility = 'public', 
     broadcastButton.setAttribute('aria-label', 'Exit live and return home');
   } catch (err) {
     alert('Failed to start broadcast: ' + err.message);
+  } finally {
+    broadcastStartPending = false;
   }
 }
 

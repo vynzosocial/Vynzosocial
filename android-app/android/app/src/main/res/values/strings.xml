@@ -7,6 +7,9 @@
     <string name="push_messages_channel">Messages</string>
     <string name="push_calls_channel">Incoming calls</string>
     <string name="push_message_title">Vynzo</string>
+    <string name="push_live_channel">Friends going live</string>
+    <string name="push_live_title">A friend is live</string>
+    <string name="push_live_body">Tap to watch on Vynzo.</string>
     <string name="push_message_body">New message</string>
     <string name="push_voice_call">Incoming voice call</string>
     <string name="push_video_call">Incoming video call</string>

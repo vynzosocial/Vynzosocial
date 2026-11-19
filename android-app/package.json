@@ -2,24 +2,26 @@
   "name": "vynzosocial-android",
   "version": "1.0.0",
   "private": true,
-  "description": "VynzoSocial Android app (Capacitor 8)",
+  "description": "VynzoSocial mobile app (Capacitor 4 legacy)",
   "scripts": {
     "web": "node scripts/prepare-web.js",
     "sync": "node scripts/prepare-web.js && cap sync android",
+    "sync:ios": "node scripts/prepare-web.js && cap sync ios",
     "ota:setup": "node scripts/ota-setup.js",
     "ota:publish": "node scripts/ota-publish.js",
     "open": "cap open android",
+    "open:ios": "cap open ios",
     "apk:debug": "npm run sync && cd android && gradlew.bat assembleDebug",
     "apk:release": "npm run sync && cd android && gradlew.bat assembleRelease",
     "aab:release": "npm run sync && cd android && gradlew.bat bundleRelease"
   },
   "dependencies": {
-    "@capacitor/android": "~8.6.0",
-    "@capacitor/core": "~8.6.0",
-    "@capacitor/ios": "~8.6.0"
+    "@capacitor/android": "4.7.1",
+    "@capacitor/core": "4.7.1",
+    "@capacitor/ios": "4.7.1"
   },
   "devDependencies": {
-    "@capacitor/cli": "~8.6.0",
+    "@capacitor/cli": "4.7.1",
     "adm-zip": "^0.6.1"
   }
 }

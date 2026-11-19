@@ -3,6 +3,7 @@ import { createRealtimeSocket } from './realtime.js?v=sb15';
 import { initCalls } from './calls.js?v=audio3';
 import { enableNativePush, hasNativePush } from './native-push.mjs';
 import { initInboxCount } from './inbox-count.js';
+import { supabase } from './supabase-client.js';
 
 const ASKED_KEY = 'vynzo_notify_prompt_dismissed';
 const ANDROID_ASKED_KEY = 'vynzo_android_notify_prompt_dismissed';
@@ -82,6 +83,35 @@ function notify({ title, body, tag, url, requireInteraction = false }) {
   showToast(title, body, () => { if (url) window.location.href = url; });
 }
 
+async function listenForLiveFriendAlerts(userId) {
+  if (!supabase) return;
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  if (data.session?.user.id !== userId) return;
+  await supabase.realtime.setAuth(data.session.access_token);
+  const channel = supabase.channel(`live-alert:${userId}`, { config: { private: true } });
+  const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+    if (session?.user.id === userId) return;
+    authListener.subscription.unsubscribe();
+    window.setTimeout(() => {
+      supabase.removeChannel(channel).catch(error => console.error('Could not close live friend alerts:', error));
+    }, 0);
+  });
+  channel.on('broadcast', { event: 'live_started' }, ({ payload }) => {
+    if (!/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(payload?.sessionId || '')) return;
+    notify({
+      title: 'A friend is live',
+      body: typeof payload.hostName === 'string' && payload.hostName ? `${payload.hostName} is live now.` : 'Tap to watch.',
+      tag: `live-${payload.sessionId}`,
+      url: `${pagesBase()}live.html?sessionId=${encodeURIComponent(payload.sessionId)}`
+    });
+  }).subscribe((status, error) => {
+    if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+      console.warn('Live friend alert subscription is unavailable:', status, error);
+    }
+  });
+}
+
 async function loadConversations() {
   const data = await apiRequest('/messages');
   return data.conversations || [];
@@ -112,7 +142,7 @@ function offerPermission() {
   const bar = document.createElement('div');
   bar.style.cssText = 'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:10001;display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:999px;background:rgba(20,20,28,.96);color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.4);font-size:14px;max-width:calc(100vw - 24px)';
   const label = document.createElement('span');
-  label.textContent = '🔔 Get notified about new messages and calls?';
+  label.textContent = '🔔 Get notified about messages, calls, and friends going live?';
   const enable = document.createElement('button');
   enable.type = 'button';
   enable.textContent = 'Enable';
@@ -156,6 +186,7 @@ export async function initNotifications() {
   });
   offerPermission();
   initCalls();
+  listenForLiveFriendAlerts(me.id).catch(error => console.error('Could not initialize live friend alerts:', error));
 
   // Baseline so messages that already exist never trigger a notification.
   try {

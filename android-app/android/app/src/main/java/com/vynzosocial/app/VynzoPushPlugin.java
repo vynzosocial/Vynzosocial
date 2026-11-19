@@ -62,8 +62,9 @@ public class VynzoPushPlugin extends Plugin {
         String id = intent.getStringExtra(VynzoMessagingService.EXTRA_ID);
         intent.setAction(Intent.ACTION_MAIN);
         if (!PushPayload.validId(id) ||
-            !("message".equals(kind) || "voice_call".equals(kind) || "video_call".equals(kind))) return;
+            !("message".equals(kind) || "live_started".equals(kind) || "voice_call".equals(kind) || "video_call".equals(kind))) return;
         if ("message".equals(kind)) NotificationManagerCompat.from(getContext()).cancel("message:" + id, 0);
+        else if ("live_started".equals(kind)) NotificationManagerCompat.from(getContext()).cancel("live:" + id, 0);
         else VynzoMessagingService.cancelCall(getContext(), id);
         JSObject payload = new JSObject();
         payload.put("type", kind);

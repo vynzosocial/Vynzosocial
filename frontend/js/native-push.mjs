@@ -38,6 +38,8 @@ if (plugin) {
       const pages = window.location.pathname.includes('/pages/') ? '' : 'pages/';
       if (event.type === 'message') {
         window.location.href = `${pages}messages.html?conversationId=${encodeURIComponent(event.id)}`;
+      } else if (event.type === 'live_started') {
+        window.location.href = `${pages}live.html?sessionId=${encodeURIComponent(event.id)}`;
       } else if (event.type === 'voice_call' || event.type === 'video_call') {
         try {
           const { openCallNotification } = await import('./calls.js?v=audio1');
