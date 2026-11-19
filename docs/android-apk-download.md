@@ -70,3 +70,8 @@ on every signed-in page, including Messages, and background chats remain unread.
 Users of previous website APKs can install version 1.8 over them
 without uninstalling because it uses the same signing key. The published
 download is `vynzo-android-1.8.apk`; previous downloads remain available.
+
+Version 1.9 (version code 10) adds Android background notifications when an
+eligible friend chooses to announce a live session. It uses the same signing
+key, so users can install it over the previous direct-download release.
+The current download is `vynzo-android-1.9.apk`.

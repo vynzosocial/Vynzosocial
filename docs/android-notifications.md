@@ -52,7 +52,8 @@ Tapping an alert opens the livestream, where normal viewing permissions apply.
 
 Open web, desktop, iOS, and Android clients receive alerts through Supabase
 Realtime. Android background alerts require a native build that supports the
-live notification channel; an OTA alone cannot add this support. The push
+live notification channel, starting with Android 1.9 (version code 10); an OTA
+alone cannot add this support. The push
 expires after 90 seconds and does not include the host name or stream title.
 Closed browsers, Windows and iOS apps do not receive live alerts.
 Deploy the live-friend-alerts database migration before the Edge Function and

@@ -24,6 +24,15 @@ allprojects {
     }
 }
 
+// Capacitor 4 regenerates this plugin without the namespace required by modern AGP.
+project(':capacitor-cordova-android-plugins') {
+    plugins.withId('com.android.library') {
+        android {
+            if (!namespace) namespace 'capacitor.android.plugins'
+        }
+    }
+}
+
 task clean(type: Delete) {
     delete rootProject.buildDir
 }
