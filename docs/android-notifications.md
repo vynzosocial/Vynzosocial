@@ -49,8 +49,9 @@ friend's profile. The setting is off by default and applies only to that friend.
 Starting a live alerts only subscribed mutual friends who can watch, excluding
 blocked and inactive accounts. With **Selected friends**, only subscribed
 friends who were chosen can receive an alert. Subscriptions are removed when
-either person unfollows the other. Each host can send alerts at most once every
-five minutes. Tapping an alert opens the livestream, where normal viewing
+either person unfollows the other. Friends who opt in are alerted once per new
+livestream, even if the host ends one and starts another right away. Tapping an
+alert opens the livestream, where normal viewing
 permissions apply.
 
 Open web, desktop, iOS, and Android clients receive alerts through Supabase

@@ -33,6 +33,7 @@ GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA realtime TO service_role;
 
 \ir '..\\supabase\\migrations\\20261119212052_live_friend_alerts.sql'
 \ir '..\\supabase\\migrations\\20261120111722_live_alert_subscriptions.sql'
+\ir '..\\supabase\\migrations\\20261120114947_live_alerts_once_per_session.sql'
 
 INSERT INTO public.users (id, username) VALUES
   ('11111111-1111-4111-8111-111111111111', 'host'),
@@ -45,7 +46,7 @@ FROM public.users WHERE username <> 'host'
 UNION ALL
 SELECT id, '11111111-1111-4111-8111-111111111111', 'accepted'
 FROM public.users WHERE username <> 'host';
-INSERT INTO public.live_sessions VALUES (
+INSERT INTO public.live_sessions (id, host_id, is_active, last_heartbeat, visibility) VALUES (
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111', true, now(), 'public'
 );
 
@@ -81,33 +82,55 @@ BEGIN
   END IF;
   IF (SELECT count(*) FROM realtime.sent) <> 1 THEN RAISE EXCEPTION 'wrong broadcast count'; END IF;
   recipients := public.send_live_friend_alerts('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111');
-  IF cardinality(recipients) <> 0 THEN RAISE EXCEPTION 'cooldown failed'; END IF;
+  IF cardinality(recipients) <> 0 OR (SELECT count(*) FROM realtime.sent) <> 1 THEN
+    RAISE EXCEPTION 'same session sent duplicate alerts';
+  END IF;
 END $$;
 RESET ROLE;
 
-DELETE FROM private.live_friend_alert_cooldowns;
-DELETE FROM public.blocks;
-UPDATE public.live_sessions SET visibility = 'selected';
-INSERT INTO public.live_session_invites VALUES
-  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '33333333-3333-4333-8333-333333333333'),
-  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '44444444-4444-4444-8444-444444444444');
+DELETE FROM public.live_sessions;
+INSERT INTO public.live_sessions (id, host_id, is_active, last_heartbeat, visibility)
+VALUES ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '11111111-1111-4111-8111-111111111111', true, now(), 'public');
 SET ROLE service_role;
 DO $$
 DECLARE recipients uuid[];
 BEGIN
-  recipients := public.send_live_friend_alerts('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111');
+  recipients := public.send_live_friend_alerts('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '11111111-1111-4111-8111-111111111111');
+  IF recipients <> ARRAY['22222222-2222-4222-8222-222222222222'::uuid]
+    OR (SELECT count(*) FROM realtime.sent WHERE payload->>'sessionId' = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb') <> 1 THEN
+    RAISE EXCEPTION 'immediate restart did not alert the already subscribed friend: %', recipients;
+  END IF;
+END $$;
+RESET ROLE;
+
+DELETE FROM public.live_sessions;
+INSERT INTO public.live_sessions (id, host_id, is_active, last_heartbeat, visibility)
+VALUES ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', '11111111-1111-4111-8111-111111111111', true, now(), 'selected');
+DELETE FROM public.blocks;
+INSERT INTO public.live_session_invites VALUES
+  ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', '33333333-3333-4333-8333-333333333333'),
+  ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', '44444444-4444-4444-8444-444444444444');
+SET ROLE service_role;
+DO $$
+DECLARE recipients uuid[];
+BEGIN
+  recipients := public.send_live_friend_alerts('cccccccc-cccc-4ccc-8ccc-cccccccccccc', '11111111-1111-4111-8111-111111111111');
   IF recipients <> ARRAY['33333333-3333-4333-8333-333333333333'::uuid] THEN
     RAISE EXCEPTION 'selected audience or opt-in filter failed: %', recipients;
   END IF;
 END $$;
 RESET ROLE;
 
-DELETE FROM private.live_friend_alert_cooldowns;
+DELETE FROM public.live_sessions;
+INSERT INTO public.live_sessions (id, host_id, is_active, last_heartbeat, visibility)
+VALUES ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', '11111111-1111-4111-8111-111111111111', true, now(), 'selected');
+INSERT INTO public.live_session_invites VALUES
+  ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', '33333333-3333-4333-8333-333333333333');
 INSERT INTO public.account_lifecycle VALUES ('33333333-3333-4333-8333-333333333333');
 SET ROLE service_role;
 DO $$
 BEGIN
-  IF cardinality(public.send_live_friend_alerts('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111')) <> 0 THEN
+  IF cardinality(public.send_live_friend_alerts('dddddddd-dddd-4ddd-8ddd-dddddddddddd', '11111111-1111-4111-8111-111111111111')) <> 0 THEN
     RAISE EXCEPTION 'inactive account received an alert';
   END IF;
 END $$;
@@ -119,7 +142,7 @@ WHERE follower_id = '33333333-3333-4333-8333-333333333333'
 SET ROLE service_role;
 DO $$
 BEGIN
-  IF cardinality(public.send_live_friend_alerts('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111')) <> 0 THEN
+  IF cardinality(public.send_live_friend_alerts('dddddddd-dddd-4ddd-8ddd-dddddddddddd', '11111111-1111-4111-8111-111111111111')) <> 0 THEN
     RAISE EXCEPTION 'non-mutual friend received an alert';
   END IF;
 END $$;
@@ -133,7 +156,7 @@ WHERE subscriber_id = '33333333-3333-4333-8333-333333333333'
 SET ROLE service_role;
 DO $$
 BEGIN
-  IF cardinality(public.send_live_friend_alerts('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111')) <> 0 THEN
+  IF cardinality(public.send_live_friend_alerts('dddddddd-dddd-4ddd-8ddd-dddddddddddd', '11111111-1111-4111-8111-111111111111')) <> 0 THEN
     RAISE EXCEPTION 'unsubscribed friend received an alert';
   END IF;
 END $$;
@@ -144,7 +167,7 @@ UPDATE public.live_sessions SET last_heartbeat = now() - interval '91 seconds';
 SET ROLE service_role;
 DO $$
 BEGIN
-  IF cardinality(public.send_live_friend_alerts('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111')) <> 0 THEN
+  IF cardinality(public.send_live_friend_alerts('dddddddd-dddd-4ddd-8ddd-dddddddddddd', '11111111-1111-4111-8111-111111111111')) <> 0 THEN
     RAISE EXCEPTION 'stale livestream sent alerts';
   END IF;
 END $$;
