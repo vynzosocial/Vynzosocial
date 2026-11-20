@@ -1,3 +1,45 @@
+.welcome-nav .welcome-login-glow {
+  position: relative;
+  color: #ffe4a0;
+  font-weight: 750;
+  text-shadow: 0 0 6px rgb(255 199 84 / .5);
+}
+
+.welcome-login-glow::before {
+  position: absolute;
+  inset: -5px -9px;
+  border: 1px solid #deb452;
+  border-radius: 8px;
+  box-shadow: inset 0 0 6px rgb(255 199 84 / .28), 0 0 5px rgb(255 199 84 / .42);
+  animation: welcome-login-shimmer 2.8s ease-in-out infinite alternate;
+  pointer-events: none;
+  content: "";
+}
+
+.welcome-login-glow:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+}
+
+html[data-theme="daylight"] .welcome-nav a.welcome-login-glow {
+  color: #704300;
+}
+
+@keyframes welcome-login-shimmer {
+  to {
+    border-color: #ffe4a0;
+    box-shadow: inset 0 0 9px rgb(255 213 121 / .42), 0 0 12px rgb(255 199 84 / .67);
+  }
+}
+
+@media (max-width: 760px) {
+  .welcome-login-glow::before { inset: 3px -3px; }
+}
+
+@media (prefers-reduced-motion: reduce), (forced-colors: active) {
+  .welcome-login-glow::before { animation: none; }
+}
+
 .welcome-stars {
   position: absolute;
   z-index: 0;
