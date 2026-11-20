@@ -1,8 +1,8 @@
 ﻿import { restoreSupabaseSession } from './supabase-client.js';
 try { screen.orientation?.lock?.('portrait').catch(() => {}); } catch { /* unsupported */ }
-import { initFeed } from './feed.js?v=repost1';
+import { initFeed } from './feed.js?v=home-preview1';
 import { initStoriesCarousel } from './stories.js?v=share5';
-import { initHomeFriends } from './home-friends.js?v=share2';
+import { initHomeFriends } from './home-friends.js?v=home-preview1';
 import { apiRequest } from './api.js?v=sb6';
 import { API_ORIGIN } from './config.js?v=sb4';
 
@@ -72,11 +72,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // Initialize Feed and Stories Carousel
-  window.vynzoFeedScope = 'me';
-  body.dataset.feedScope = 'me';
+  window.vynzoFeedScope = 'following';
+  body.dataset.feedScope = 'following';
   const scopeTabs = document.querySelectorAll('.home-topbar .tab-btn, .tab-btn');
   scopeTabs.forEach(tab => tab.addEventListener('click', () => {
-    scopeTabs.forEach(t => t.classList.toggle('active', t === tab));
+    scopeTabs.forEach(t => {
+      t.classList.toggle('active', t === tab);
+      t.setAttribute('aria-pressed', String(t === tab));
+    });
     window.vynzoFeedScope = tab.dataset.scope || 'following';
     body.dataset.feedScope = window.vynzoFeedScope;
     document.dispatchEvent(new CustomEvent('vynzo:scope'));

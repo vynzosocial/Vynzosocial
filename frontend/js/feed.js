@@ -77,19 +77,31 @@ async function loadLiveStrip() {
 }
 
 const FEED_PAGE = 20;
+let feedRequest = 0;
 
 async function loadFeed(container, offset = 0) {
+  const request = ++feedRequest;
+  const scope = window.vynzoFeedScope;
   try {
     const params = new URLSearchParams({ limit: String(FEED_PAGE), offset: String(offset) });
-    if (['all', 'me'].includes(window.vynzoFeedScope)) params.set('scope', window.vynzoFeedScope);
+    if (['all', 'me'].includes(scope)) params.set('scope', scope);
     const data = await apiRequest(`/posts/feed?${params}`);
+    if (request !== feedRequest) return;
     container.querySelector('.feed-more')?.remove();
     if (!data.posts || data.posts.length === 0) {
-      if (offset === 0) container.innerHTML = '<div class="post-placeholder"><p>No posts yet. Add a photo or video to start the home feed.</p></div>';
+      if (offset === 0) {
+        reelObserver?.disconnect();
+        container.classList.remove('reel-feed');
+        container.innerHTML = scope === 'following'
+          ? '<div class="post-placeholder"><p>Posts from people you follow will appear here.</p><a href="./pages/users.html">Find people</a></div>'
+          : scope === 'me'
+            ? '<div class="post-placeholder"><p>No posts yet. Add a photo or video to start the home feed.</p></div>'
+            : '<div class="post-placeholder"><p>No posts to show yet.</p><a href="./pages/users.html">Find people</a></div>';
+      }
       return;
     }
 
-    const reel = window.vynzoFeedScope !== 'me';
+    const reel = scope !== 'me';
     if (offset === 0) {
       reelObserver?.disconnect();
       container.classList.toggle('reel-feed', reel);
@@ -113,6 +125,9 @@ async function loadFeed(container, offset = 0) {
 
   } catch (err) {
     console.error('Failed to load feed:', err);
+    if (request !== feedRequest) return;
+    reelObserver?.disconnect();
+    container.classList.remove('reel-feed');
     container.innerHTML = '<div class="post-placeholder"><p>Error loading feed. Please try again.</p></div>';
   }
 }

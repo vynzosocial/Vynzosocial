@@ -22,12 +22,22 @@ async function loadFriends(container) {
   try {
     const data = await apiRequest('/users/friends');
     renderFriends(container, data.friends);
+    renderLiveFriends(data.friends);
   } catch (err) {
     console.error('Failed to load friends:', err);
     renderMessage(container, err.message || 'Could not load friends. Please try again.');
   } finally {
     loading = false;
   }
+}
+
+function renderLiveFriends(friends) {
+  const section = document.getElementById('home-live-friends');
+  const list = document.getElementById('home-live-friends-list');
+  if (!section || !list) return;
+  const liveFriends = friends.filter(friend => friend.is_live && friend.live_session_id);
+  list.replaceChildren(...liveFriends.map(createFriendCard));
+  section.hidden = liveFriends.length === 0;
 }
 
 async function loadRequests() {

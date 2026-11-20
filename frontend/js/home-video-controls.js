@@ -1,109 +1,45 @@
-const featuredVideo = document.getElementById('welcome-featured-video');
-const audioToggle = document.getElementById('welcome-video-audio-toggle');
+const video = document.getElementById('welcome-featured-video');
+const welcome = document.getElementById('welcome-page');
 
-if (featuredVideo instanceof HTMLVideoElement && audioToggle instanceof HTMLButtonElement) {
-  let audiblePlaythroughs = 0;
-  let userInteracted = false;
+if (video && welcome) {
   let pageActive = true;
-  const welcomePage = document.getElementById('welcome-page');
-  const canPlay = () => Boolean(welcomePage)
-    && pageActive
-    && !welcomePage.hidden
-    && !document.hidden
+  const canPlay = () => pageActive && !welcome.hidden && !document.hidden
     && !localStorage.getItem('vynzo_token');
-  const canAutoplay = () => !/\bElectron\//.test(navigator.userAgent)
-    && canPlay();
-  const pauseOutsideWelcome = () => {
-    if (!canPlay()) featuredVideo.pause();
-  };
-  const playFeaturedVideo = () => {
-    if (!canPlay()) {
-      featuredVideo.pause();
-      return Promise.resolve();
-    }
-    return featuredVideo.play().then(pauseOutsideWelcome);
-  };
+  const pauseWhenHidden = () => { if (!canPlay()) video.pause(); };
+  const canAutoplay = () => canPlay() && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  const updateAudioLabel = () => {
-    const soundEnabled = !featuredVideo.muted;
-    audioToggle.classList.toggle('is-muted', !soundEnabled);
-    const label = featuredVideo.paused
-      ? soundEnabled ? 'Play featured video with sound' : 'Play featured video'
-      : soundEnabled ? 'Mute featured video sound' : 'Turn featured video sound on';
-    audioToggle.setAttribute('aria-label', label);
-  };
-
-  audioToggle.addEventListener('click', () => {
-    if (!canPlay()) {
-      featuredVideo.pause();
-      return;
+  async function playIntro(allowMutedFallback = false) {
+    try {
+      await video.play();
+      pauseWhenHidden();
+    } catch (error) {
+      if (error.name === 'NotAllowedError' && allowMutedFallback && video.paused && canAutoplay()) {
+        video.muted = true;
+        await playIntro();
+      } else if (error.name !== 'NotAllowedError' && error.name !== 'AbortError') {
+        console.error('Unable to play the Vynzo intro:', error);
+      }
     }
-    userInteracted = true;
-    if (featuredVideo.paused) {
-      featuredVideo.muted = false;
-      playFeaturedVideo().catch((error) => {
-        console.error('Unable to play the featured video.', error);
-      });
-    } else {
-      featuredVideo.muted = !featuredVideo.muted;
-    }
-    updateAudioLabel();
-  });
-
-  featuredVideo.addEventListener('volumechange', updateAudioLabel);
-  featuredVideo.addEventListener('play', () => {
-    pauseOutsideWelcome();
-    updateAudioLabel();
-  });
-  featuredVideo.addEventListener('pause', updateAudioLabel);
-  featuredVideo.addEventListener('ended', () => {
-    if (!canPlay()) {
-      featuredVideo.pause();
-      return;
-    }
-    if (!featuredVideo.muted) audiblePlaythroughs += 1;
-    if (audiblePlaythroughs >= 2) {
-      featuredVideo.muted = true;
-      featuredVideo.loop = true;
-    }
-
-    featuredVideo.currentTime = 0;
-    playFeaturedVideo().catch((error) => {
-      console.error('Unable to replay the featured video.', error);
-    });
-    updateAudioLabel();
-  });
-  if (welcomePage) {
-    new MutationObserver(pauseOutsideWelcome).observe(welcomePage, {
-      attributes: true,
-      attributeFilter: ['hidden']
-    });
   }
-  document.addEventListener('visibilitychange', pauseOutsideWelcome);
+
+  video.addEventListener('play', pauseWhenHidden);
+  video.addEventListener('ended', () => {
+    video.muted = true;
+    if (!canAutoplay()) return;
+    video.loop = true;
+    void playIntro();
+  });
+  document.addEventListener('visibilitychange', pauseWhenHidden);
+  window.addEventListener('storage', pauseWhenHidden);
   window.addEventListener('pagehide', () => {
     pageActive = false;
-    featuredVideo.pause();
+    video.pause();
   });
-  window.addEventListener('pageshow', () => {
-    pageActive = true;
-    pauseOutsideWelcome();
+  window.addEventListener('pageshow', () => { pageActive = true; });
+  new MutationObserver(pauseWhenHidden).observe(welcome, {
+    attributes: true,
+    attributeFilter: ['hidden']
   });
-  window.addEventListener('storage', pauseOutsideWelcome);
-  pauseOutsideWelcome();
-  updateAudioLabel();
 
-  if (canAutoplay()) {
-    playFeaturedVideo().catch((error) => {
-      if (error.name === 'NotAllowedError' && !userInteracted && featuredVideo.paused && canAutoplay()) {
-        featuredVideo.muted = true;
-        playFeaturedVideo().catch((mutedError) => {
-          console.error('Unable to autoplay the muted featured video.', mutedError);
-          updateAudioLabel();
-        });
-      } else if (error.name !== 'NotAllowedError') {
-        console.error('Unable to autoplay the featured video with sound.', error);
-      }
-      updateAudioLabel();
-    });
-  }
+  if (canAutoplay()) void playIntro(true);
 }
