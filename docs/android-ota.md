@@ -67,6 +67,9 @@ the home page's **Update available** button for those bundles. This is an in-app
 button on Home, not an Android system push notification.
 
 Pages do not wait for notification-device registration before showing content.
+Profile settings use **Add links** to open a separate social-links page. Users
+can save Instagram, Facebook and Snapchat profile URLs or usernames there, or
+clear a field to remove its profile button.
 Content reads retry brief connection or gateway failures once; the feed, stories
 and profile also offer a manual retry. Off-screen story video previews load as
 they approach the visible carousel.
