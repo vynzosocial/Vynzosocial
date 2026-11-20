@@ -64,7 +64,9 @@ export async function restoreSupabaseSession() {
   const { data, error } = await supabase.auth.getSession();
   if (error) throw error;
   if (data.session) syncLegacySession(data.session);
-  await syncPushSession(data.session);
+  void syncPushSession(data.session).catch(error => {
+    console.error('Could not synchronize notification device:', error);
+  });
 }
 
 if (supabase) {

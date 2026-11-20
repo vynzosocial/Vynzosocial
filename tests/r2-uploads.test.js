@@ -86,6 +86,7 @@ test('refreshes expired playback permits through the authenticated API', async (
   const payload = Buffer.from(JSON.stringify({ expires: Math.floor(Date.now() / 1000) - 1 })).toString('base64url');
   const listeners = {};
   const element = {
+    isConnected: true,
     src: `https://media.example/media?permit=${payload}.signature`,
     currentTime: 0,
     addEventListener(name, callback) { listeners[name] = callback; }
@@ -107,6 +108,7 @@ test('refreshes legacy gateway permits without enabling original download', asyn
   const payload = Buffer.from(JSON.stringify({ expires: Math.floor(Date.now() / 1000) - 1 })).toString('base64url');
   const listeners = {};
   const element = {
+    isConnected: true,
     src: `https://media.example/media?permit=${payload}.signature`,
     currentTime: 0,
     addEventListener(name, callback) { listeners[name] = callback; }
@@ -117,6 +119,24 @@ test('refreshes legacy gateway permits without enabling original download', asyn
   assert.equal(endpoint, '/media/playback?kind=story&id=legacy-id');
   assert.equal(item.has_original, false);
   assert.equal(item.media_url, 'https://media.example/media?permit=new-token');
+});
+
+test('retries a transient media load failure once without changing the URL', async () => {
+  const { context } = setup();
+  context.setTimeout = callback => callback();
+  const url = 'https://media.example/photo.jpg';
+  let writes = 0;
+  let onError;
+  const element = {
+    isConnected: true,
+    get src() { return url; },
+    set src(value) { assert.equal(value, url); writes++; },
+    addEventListener(name, callback) { if (name === 'error') onError = callback; }
+  };
+  context.refreshExpiredMedia(element, {}, 'post');
+  await onError();
+  await onError();
+  assert.equal(writes, 1);
 });
 
 test('encodes on device and uploads both the original and playback copy', async () => {

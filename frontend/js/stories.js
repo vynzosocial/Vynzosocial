@@ -14,6 +14,8 @@ let currentStoryIndex = 0;
 let currentStoryUsername = 'user';
 let viewerIsAdmin = false;
 let storyProtectionEnabled = false;
+let storyPreviewObserver;
+let storyRequest = 0;
 
 const mediaUrl = url => /^https?:/i.test(url) ? url : `${MEDIA_BASE_URL}${url}`;
 
@@ -46,23 +48,42 @@ export async function initStoriesCarousel() {
 async function refreshStoriesCarousel() {
   const container = document.getElementById('stories-container');
   if (!container) return [];
+  const request = ++storyRequest;
 
   try {
     const scope = ['all', 'me'].includes(window.vynzoFeedScope) ? `?scope=${window.vynzoFeedScope}` : '';
     const data = await apiRequest(`/stories${scope}`);
+    if (request !== storyRequest) return [];
     viewerIsAdmin = Boolean(data.viewer_is_admin);
     const groups = data.usersWithStories || [];
     renderStories(container, groups);
     return groups;
   } catch (err) {
     console.error('Failed to load stories:', err);
-    container.innerHTML = '<p class="story-load-error">Could not load stories. Please refresh to try again.</p>';
+    if (request === storyRequest) {
+      container.innerHTML = '<p class="story-load-error">Could not load stories. <button type="button">Try again</button></p>';
+      const retry = container.querySelector('button');
+      retry.addEventListener('click', () => {
+        retry.disabled = true;
+        refreshStoriesCarousel();
+      });
+    }
     return [];
   }
 }
 
 function renderStories(container, usersWithStories) {
   const currentUser = getCurrentUser();
+  storyPreviewObserver?.disconnect();
+  storyPreviewObserver = typeof IntersectionObserver === 'function'
+    ? new IntersectionObserver((entries, observer) => {
+      for (const { target, isIntersecting } of entries) {
+        if (!isIntersecting || !target.isConnected) continue;
+        target.src = target.dataset.previewSrc;
+        observer.unobserve(target);
+      }
+    }, { root: container, rootMargin: '0px 80px' })
+    : null;
   container.replaceChildren();
 
   if (!usersWithStories.length) {
@@ -94,7 +115,12 @@ function renderStories(container, usersWithStories) {
       video.addEventListener('loadedmetadata', () => {
         if (Number.isFinite(video.duration) && video.duration > 0) video.currentTime = Math.min(0.1, video.duration / 2);
       }, { once: true });
-      video.src = mediaUrl(latestStory.media_url);
+      if (storyPreviewObserver) {
+        video.dataset.previewSrc = mediaUrl(latestStory.media_url);
+        storyPreviewObserver.observe(video);
+      } else {
+        video.src = mediaUrl(latestStory.media_url);
+      }
       ring.appendChild(video);
       const playIcon = document.createElement('span');
       playIcon.className = 'story-preview-play';
@@ -115,8 +141,13 @@ function renderStories(container, usersWithStories) {
     avatar.className = 'story-preview-avatar';
     if (userGroup.avatar_url) {
       const avatarImage = document.createElement('img');
-      avatarImage.src = mediaUrl(userGroup.avatar_url);
       avatarImage.alt = '';
+      avatarImage.loading = 'lazy';
+      avatarImage.decoding = 'async';
+      avatarImage.addEventListener('error', () => {
+        avatar.textContent = (userGroup.username || 'u')[0].toUpperCase();
+      }, { once: true });
+      avatarImage.src = mediaUrl(userGroup.avatar_url);
       avatar.appendChild(avatarImage);
     } else {
       avatar.textContent = (userGroup.username || 'u')[0].toUpperCase();

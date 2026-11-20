@@ -145,8 +145,13 @@ function createAccountResult(user, isConnection = false, onFollowChanged) {
   avatar.className = `account-search-avatar${user.is_live ? ' is-live' : ''}`;
   if (user.avatar_url) {
     const image = document.createElement('img');
-    image.src = /^https?:/i.test(user.avatar_url) ? user.avatar_url : `${MEDIA_BASE_URL}${user.avatar_url}`;
     image.alt = '';
+    image.loading = 'lazy';
+    image.decoding = 'async';
+    image.addEventListener('error', () => {
+      avatar.textContent = (user.username || 'u')[0].toUpperCase();
+    }, { once: true });
+    image.src = /^https?:/i.test(user.avatar_url) ? user.avatar_url : `${MEDIA_BASE_URL}${user.avatar_url}`;
     avatar.appendChild(image);
   } else {
     avatar.textContent = (user.username || 'u')[0].toUpperCase();
@@ -229,7 +234,10 @@ function createAccountResult(user, isConnection = false, onFollowChanged) {
   return row;
 }
 
+let profileRequest = 0;
+
 export async function openUserProfile(userId) {
+  const request = ++profileRequest;
   const modal = ensureProfileModal();
   modal.classList.add('active');
   const content = modal.querySelector('.account-profile-content');
@@ -237,14 +245,19 @@ export async function openUserProfile(userId) {
 
   try {
     const data = await apiRequest(`/users/${userId}/profile`);
-    renderUserProfile(content, data.profile, data.posts);
+    if (request === profileRequest) renderUserProfile(content, data.profile, data.posts);
   } catch (err) {
     console.error('Could not load user profile:', err);
+    if (request !== profileRequest) return;
     content.innerHTML = '';
     const message = document.createElement('p');
     message.className = 'account-profile-status';
     message.textContent = err.message || 'Could not load this profile.';
-    content.appendChild(message);
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.textContent = 'Try again';
+    retry.addEventListener('click', () => openUserProfile(userId));
+    content.append(message, retry);
   }
 }
 
@@ -427,8 +440,12 @@ function renderUserProfile(container, profile, posts) {
   avatar.className = 'account-profile-avatar';
   if (profile.avatar_url) {
     const image = document.createElement('img');
-    image.src = /^https?:/i.test(profile.avatar_url) ? profile.avatar_url : `${MEDIA_BASE_URL}${profile.avatar_url}`;
     image.alt = '';
+    image.decoding = 'async';
+    image.addEventListener('error', () => {
+      avatar.textContent = (profile.username || 'u')[0].toUpperCase();
+    }, { once: true });
+    image.src = /^https?:/i.test(profile.avatar_url) ? profile.avatar_url : `${MEDIA_BASE_URL}${profile.avatar_url}`;
     avatar.appendChild(image);
   } else {
     avatar.textContent = (profile.username || 'u')[0].toUpperCase();

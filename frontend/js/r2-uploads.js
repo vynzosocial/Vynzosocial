@@ -132,34 +132,48 @@ export async function downloadOriginal(kind, id) {
 }
 
 export function refreshExpiredMedia(element, item, kind) {
-  if (!item.has_original && !item.has_expiring_media_url) return;
   let refreshing = false;
+  let retriedSource = '';
   element.addEventListener('error', async () => {
     if (refreshing) return;
+    const source = element.currentSrc || element.src;
     let expires;
     try {
-      const permit = new URL(element.currentSrc || element.src).searchParams.get('permit');
+      const permit = new URL(source).searchParams.get('permit');
       const payload = permit?.split('.')[0].replace(/-/g, '+').replace(/_/g, '/');
-      expires = JSON.parse(atob(payload)).expires;
+      if (payload) expires = JSON.parse(atob(payload)).expires;
     } catch {
-      return;
+      // Not a signed playback URL.
     }
-    if (!Number.isSafeInteger(expires) || expires * 1000 > Date.now() + 5000) return;
+    const expired = (item.has_original || item.has_expiring_media_url)
+      && Number.isSafeInteger(expires) && expires * 1000 <= Date.now() + 5000;
+    if (!expired && (!/^https?:/i.test(source) || source === retriedSource
+      || (element.error && element.error.code !== 2 && element.error.code !== 4))) return;
+    retriedSource = source;
     refreshing = true;
     const position = element.currentTime;
     const resume = typeof element.play === 'function' && !element.paused;
     try {
-      const result = await apiRequest(`/media/playback?kind=${encodeURIComponent(kind)}&id=${encodeURIComponent(item.id)}`);
-      const url = new URL(result.url);
-      if (url.protocol !== 'https:') throw new Error('The playback URL is invalid.');
-      item.media_url = url.toString();
+      let next = source;
+      if (expired) {
+        const result = await apiRequest(`/media/playback?kind=${encodeURIComponent(kind)}&id=${encodeURIComponent(item.id)}`);
+        const url = new URL(result.url);
+        if (url.protocol !== 'https:' || url.href === source) throw new Error('The renewed playback URL is invalid.');
+        next = url.href;
+      } else {
+        await new Promise(resolve => setTimeout(resolve, 400));
+      }
+      if (!element.isConnected || (element.currentSrc || element.src) !== source) return;
       if (Number.isFinite(position) && position > 0) {
         element.addEventListener('loadedmetadata', () => { element.currentTime = position; }, { once: true });
       }
-      element.src = item.media_url;
-      if (resume) await element.play();
+      if (expired) item.media_url = next;
+      element.src = next;
+      if (resume) void element.play().catch(error => {
+        if (error.name !== 'AbortError') console.warn('Could not resume playback:', error);
+      });
     } catch (error) {
-      console.error('Could not refresh expired media:', error);
+      console.error('Could not reload media:', error);
     } finally {
       refreshing = false;
     }

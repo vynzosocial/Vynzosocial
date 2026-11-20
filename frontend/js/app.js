@@ -17,6 +17,10 @@ function renderHomeUser() {
   if (user.avatar_url) {
     const img = document.createElement('img');
     img.alt = '';
+    img.decoding = 'async';
+    img.addEventListener('error', () => {
+      if (img.parentNode === avatarEl) avatarEl.textContent = (name || '?').charAt(0).toUpperCase();
+    }, { once: true });
     img.src = /^https?:/i.test(user.avatar_url) ? user.avatar_url : `${API_ORIGIN}${user.avatar_url}`;
     avatarEl.appendChild(img);
   } else {
@@ -29,12 +33,14 @@ async function refreshHomeUser() {
     const user = JSON.parse(localStorage.getItem('vynzo_user') || '{}');
     if (!user.id) return;
     const profile = await apiRequest(`/users/${encodeURIComponent(user.id)}/profile`);
+    const current = JSON.parse(localStorage.getItem('vynzo_user') || '{}');
+    if (current.id !== user.id) return;
     const fresh = profile.profile || profile.user || profile;
     localStorage.setItem('vynzo_user', JSON.stringify({
-      ...user,
+      ...current,
       username: fresh.username || user.username,
       display_name: fresh.display_name || user.display_name,
-      avatar_url: fresh.avatar_url || user.avatar_url || null
+      avatar_url: fresh.avatar_url ?? null
     }));
     renderHomeUser();
   } catch (err) {

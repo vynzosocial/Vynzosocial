@@ -65,3 +65,8 @@ publisher rejects a missing, invalid, or newer-than-current compatibility floor.
 Older binaries reject incompatible bundles before staging, so they cannot show
 the home page's **Update available** button for those bundles. This is an in-app
 button on Home, not an Android system push notification.
+
+Pages do not wait for notification-device registration before showing content.
+Content reads retry brief connection or gateway failures once; the feed, stories
+and profile also offer a manual retry. Off-screen story video previews load as
+they approach the visible carousel.

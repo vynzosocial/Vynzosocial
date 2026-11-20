@@ -80,12 +80,21 @@ export async function apiRequest(endpoint, options = {}) {
     const requestUrl = useSupabaseApi
       ? `${SUPABASE_URL}/functions/v1/vynzo-api/api${endpoint}`
       : `${API_BASE_URL}${endpoint}`;
-    response = await fetch(requestUrl, {
-      cache: 'no-store',
-      ...fetchOptions,
-      signal: requestController.signal,
-      headers
+    const retryable = (options.method || 'GET').toUpperCase() === 'GET';
+    const send = () => fetch(requestUrl, {
+      cache: 'no-store', ...fetchOptions, signal: requestController.signal, headers
     });
+    const canRetry = () => retryable && !requestController.signal.aborted && Date.now() + 1000 < requestDeadline;
+    try {
+      response = await send();
+    } catch (error) {
+      if (!(error instanceof TypeError) || !canRetry()) throw error;
+    }
+    if (!response || ([502, 503, 504].includes(response.status) && canRetry())) {
+      if (response?.body) void response.body.cancel().catch(() => {});
+      await new Promise(resolve => window.setTimeout(resolve, 300));
+      response = await send();
+    }
   } catch (err) {
     if (requestController.signal.aborted && !callerSignal?.aborted) {
       throw new Error('The request took too long. Check your connection and try again.');

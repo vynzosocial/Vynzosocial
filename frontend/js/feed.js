@@ -126,9 +126,22 @@ async function loadFeed(container, offset = 0) {
   } catch (err) {
     console.error('Failed to load feed:', err);
     if (request !== feedRequest) return;
+    if (offset > 0) {
+      const more = container.querySelector('.feed-more');
+      if (more) {
+        more.disabled = false;
+        more.textContent = 'Could not load more. Try again';
+        return;
+      }
+    }
     reelObserver?.disconnect();
     container.classList.remove('reel-feed');
-    container.innerHTML = '<div class="post-placeholder"><p>Error loading feed. Please try again.</p></div>';
+    container.innerHTML = '<div class="post-placeholder"><p>Error loading feed.</p><button type="button" class="feed-more">Try again</button></div>';
+    const retry = container.querySelector('.feed-more');
+    retry.addEventListener('click', () => {
+      retry.disabled = true;
+      loadFeed(container);
+    });
   }
 }
 
