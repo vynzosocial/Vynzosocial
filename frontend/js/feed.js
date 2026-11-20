@@ -8,6 +8,7 @@ import { attachEmojiPicker } from './emoji-picker.js';
 import { protectMedia } from './media-protect.js';
 import { openShareDialog, absoluteMediaUrl } from './share.js?v=5';
 import { uploadSelectedFile } from './selected-file.js';
+import { pageMemoryAccount, readPageMemory, writePageMemory } from './page-memory.js';
 
 export async function initFeed() {
   const container = document.getElementById('feed-container');
@@ -18,6 +19,12 @@ export async function initFeed() {
     container.dataset.scopeBound = 'true';
     document.addEventListener('vynzo:scope', () => { loadFeed(container); loadLiveStrip(); });
     setInterval(() => { if (document.visibilityState === 'visible') loadLiveStrip(); }, 30000);
+    const remember = () => {
+      const position = captureFeedPosition(container, window.vynzoFeedScope);
+      if (position) writePageMemory('feed-position', position);
+    };
+    window.addEventListener('pagehide', remember);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) remember(); });
   }
   loadLiveStrip();
   await loadFeed(container);
@@ -78,51 +85,23 @@ async function loadLiveStrip() {
 
 const FEED_PAGE = 20;
 let feedRequest = 0;
+let renderedFeed = { scope: null, posts: [] };
 
 async function loadFeed(container, offset = 0) {
   const request = ++feedRequest;
   const scope = window.vynzoFeedScope;
+  const account = pageMemoryAccount();
+  const cached = offset === 0 ? readPageMemory(`feed:${scope}`) : null;
+  const limit = Math.max(FEED_PAGE, cached?.posts?.length || 0);
+  if (cached) renderFeed(container, cached, scope);
   try {
-    const params = new URLSearchParams({ limit: String(FEED_PAGE), offset: String(offset) });
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     if (['all', 'me'].includes(scope)) params.set('scope', scope);
     const data = await apiRequest(`/posts/feed?${params}`);
     if (request !== feedRequest) return;
-    container.querySelector('.feed-more')?.remove();
-    if (!data.posts || data.posts.length === 0) {
-      if (offset === 0) {
-        reelObserver?.disconnect();
-        container.classList.remove('reel-feed');
-        container.innerHTML = scope === 'following'
-          ? '<div class="post-placeholder"><p>Posts from people you follow will appear here.</p><a href="./pages/users.html">Find people</a></div>'
-          : scope === 'me'
-            ? '<div class="post-placeholder"><p>No posts yet. Add a photo or video to start the home feed.</p></div>'
-            : '<div class="post-placeholder"><p>No posts to show yet.</p><a href="./pages/users.html">Find people</a></div>';
-      }
-      return;
-    }
-
-    const reel = scope !== 'me';
-    if (offset === 0) {
-      reelObserver?.disconnect();
-      container.classList.toggle('reel-feed', reel);
-      container.innerHTML = '';
-      container.scrollTop = 0;
-    }
-    const cards = data.posts.map(post => createPostCard(post, reel));
-    cards.forEach(card => container.appendChild(card));
-    if (reel) {
-      if (offset === 0) observeReels(container);
-      else cards.forEach(card => reelObserver?.observe(card));
-    }
-    if (data.posts.length >= FEED_PAGE) {
-      const more = document.createElement('button');
-      more.type = 'button';
-      more.className = 'feed-more';
-      more.textContent = 'Load more';
-      more.addEventListener('click', () => { more.disabled = true; loadFeed(container, offset + FEED_PAGE); });
-      container.appendChild(more);
-    }
-
+    if (account && pageMemoryAccount() !== account) return;
+    renderFeed(container, data, scope, offset, limit);
+    writePageMemory(`feed:${scope}`, { posts: renderedFeed.posts.slice(0, 40) }, account);
   } catch (err) {
     console.error('Failed to load feed:', err);
     if (request !== feedRequest) return;
@@ -134,14 +113,140 @@ async function loadFeed(container, offset = 0) {
         return;
       }
     }
-    reelObserver?.disconnect();
-    container.classList.remove('reel-feed');
-    container.innerHTML = '<div class="post-placeholder"><p>Error loading feed.</p><button type="button" class="feed-more">Try again</button></div>';
-    const retry = container.querySelector('.feed-more');
+    // Keep an already restored page on connection failures, not on revoked access.
+    const keepSaved = cached && readPageMemory(`feed:${scope}`);
+    if (!keepSaved) {
+      reelObserver?.disconnect();
+      container.classList.remove('reel-feed');
+      container.innerHTML = '';
+      renderedFeed = { scope: null, posts: [] };
+    }
+    const error = document.createElement('div');
+    error.className = 'post-placeholder feed-load-error';
+    error.innerHTML = '<p>Could not refresh the feed.</p><button type="button" class="feed-more">Try again</button>';
+    container.appendChild(error);
+    const retry = error.querySelector('button');
     retry.addEventListener('click', () => {
       retry.disabled = true;
       loadFeed(container);
     });
+  }
+}
+
+function captureFeedPosition(container, scope) {
+  if (!pageMemoryAccount()) return null;
+  const bounds = container.getBoundingClientRect();
+  const top = Math.max(0, bounds.top);
+  const bottom = Math.min(window.innerHeight, bounds.bottom);
+  let visible;
+  let largest = 0;
+  for (const card of container.querySelectorAll('.post-card')) {
+    const rect = card.getBoundingClientRect();
+    const overlap = Math.min(bottom, rect.bottom) - Math.max(top, rect.top);
+    if (overlap > largest) { visible = card; largest = overlap; }
+  }
+  if (!visible) return null;
+  const video = visible.querySelector('video');
+  return { scope, postId: visible.dataset.postId, time: video?.currentTime || 0 };
+}
+
+function restoreFeedPosition(container, position) {
+  if (!position || position.scope !== window.vynzoFeedScope) return;
+  const card = Array.from(container.querySelectorAll('.post-card')).find(node => node.dataset.postId === position.postId);
+  if (!card) return;
+  card.scrollIntoView({ block: 'nearest' });
+  const video = card.querySelector('video');
+  if (!video || !Number.isFinite(position.time) || position.time <= 0) return;
+  const seek = () => {
+    if (Number.isFinite(video.duration)) video.currentTime = Math.min(position.time, Math.max(0, video.duration - 0.1));
+  };
+  if (video.readyState) seek();
+  else video.addEventListener('loadedmetadata', seek, { once: true });
+}
+
+function feedPostVersion(post) {
+  return JSON.stringify(post, (key, value) => {
+    if (['likes_count', 'comments_count', 'views_count', 'is_liked'].includes(key)) return undefined;
+    if (key.endsWith('_url') && typeof value === 'string') {
+      const url = new URL(value, window.location.href);
+      url.searchParams.delete('permit');
+      return url.href;
+    }
+    return value;
+  });
+}
+
+function renderFeed(container, data, scope, offset = 0, limit = FEED_PAGE) {
+  const position = renderedFeed.scope === scope
+    ? captureFeedPosition(container, scope)
+    : readPageMemory('feed-position');
+  container.querySelector('.feed-load-error')?.remove();
+  container.querySelector('.feed-more')?.remove();
+  if (!data.posts || data.posts.length === 0) {
+    if (offset === 0) {
+      renderedFeed = { scope, posts: [] };
+      reelObserver?.disconnect();
+      container.classList.remove('reel-feed');
+      container.innerHTML = scope === 'following'
+        ? '<div class="post-placeholder"><p>Posts from people you follow will appear here.</p><a href="./pages/users.html">Find people</a></div>'
+        : scope === 'me'
+          ? '<div class="post-placeholder"><p>No posts yet. Add a photo or video to start the home feed.</p></div>'
+          : '<div class="post-placeholder"><p>No posts to show yet.</p><a href="./pages/users.html">Find people</a></div>';
+    }
+    return;
+  }
+
+  const reel = scope !== 'me';
+  const previous = new Map();
+  if (offset === 0) {
+    if (pageMemoryAccount() && renderedFeed.scope === scope) {
+      container.querySelectorAll('.post-card').forEach((card, index) => {
+        const post = renderedFeed.posts[index];
+        if (post) previous.set(post.id, { card, post });
+      });
+    }
+    reelObserver?.disconnect();
+    container.classList.toggle('reel-feed', reel);
+    if (!previous.size) {
+      container.innerHTML = '';
+      container.scrollTop = 0;
+    }
+  }
+  const posts = [];
+  const cards = data.posts.map(post => {
+    const existing = previous.get(post.id);
+    if (existing && feedPostVersion(existing.post) === feedPostVersion(post)) {
+      Object.assign(existing.post, post);
+      syncFeedCard(existing.post);
+      posts.push(existing.post);
+      return existing.card;
+    }
+    posts.push(post);
+    return createPostCard(post, reel);
+  });
+  if (offset === 0) {
+    const keep = new Set(cards);
+    container.querySelectorAll('.post-card').forEach(card => { if (!keep.has(card)) card.remove(); });
+    cards.forEach((card, index) => {
+      if (container.children[index] !== card) container.insertBefore(card, container.children[index] || null);
+    });
+    renderedFeed = { scope, posts };
+  } else {
+    cards.forEach(card => container.appendChild(card));
+    renderedFeed = { scope, posts: [...renderedFeed.posts, ...posts] };
+  }
+  if (reel) {
+    if (offset === 0) observeReels(container);
+    else cards.forEach(card => reelObserver?.observe(card));
+  }
+  restoreFeedPosition(container, position);
+  if (data.posts.length >= limit) {
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'feed-more';
+    more.textContent = 'Load more';
+    more.addEventListener('click', () => { more.disabled = true; loadFeed(container, offset + data.posts.length); });
+    container.appendChild(more);
   }
 }
 

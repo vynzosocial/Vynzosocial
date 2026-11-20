@@ -17,6 +17,9 @@ test('empty Following feed links to Find People and ignores a late For You respo
   };
   const context = {
     window, URLSearchParams, console, container,
+    pageMemoryAccount: () => null,
+    readPageMemory: () => null,
+    writePageMemory() {},
     reelObserver: { disconnect() {} },
     apiRequest: url => url.includes('scope=all')
       ? new Promise(resolve => { resolveForYou = resolve; })

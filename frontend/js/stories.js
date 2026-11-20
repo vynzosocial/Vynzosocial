@@ -7,6 +7,7 @@ import { openStoryOptions } from './video-create.js?v=repost1';
 import { attachEmojiPicker } from './emoji-picker.js';
 import { openShareDialog, absoluteMediaUrl } from './share.js?v=5';
 import { uploadSelectedFile } from './selected-file.js';
+import { pageMemoryAccount, readPageMemory, writePageMemory } from './page-memory.js';
 
 let viewerTimer = null;
 let currentStoryGroup = [];
@@ -49,18 +50,24 @@ async function refreshStoriesCarousel() {
   const container = document.getElementById('stories-container');
   if (!container) return [];
   const request = ++storyRequest;
+  const account = pageMemoryAccount();
+  const scope = ['all', 'me'].includes(window.vynzoFeedScope) ? `?scope=${window.vynzoFeedScope}` : '';
+  const key = `stories:${scope}`;
+  const cached = readPageMemory(key);
+  if (cached) renderStories(container, cached.usersWithStories || []);
 
   try {
-    const scope = ['all', 'me'].includes(window.vynzoFeedScope) ? `?scope=${window.vynzoFeedScope}` : '';
     const data = await apiRequest(`/stories${scope}`);
     if (request !== storyRequest) return [];
+    if (account && pageMemoryAccount() !== account) return [];
+    writePageMemory(key, data, account);
     viewerIsAdmin = Boolean(data.viewer_is_admin);
     const groups = data.usersWithStories || [];
     renderStories(container, groups);
     return groups;
   } catch (err) {
     console.error('Failed to load stories:', err);
-    if (request === storyRequest) {
+    if (request === storyRequest && !(cached && readPageMemory(key))) {
       container.innerHTML = '<p class="story-load-error">Could not load stories. <button type="button">Try again</button></p>';
       const retry = container.querySelector('button');
       retry.addEventListener('click', () => {
@@ -98,6 +105,8 @@ function renderStories(container, usersWithStories) {
     Number(right.user_id === currentUser.id) - Number(left.user_id === currentUser.id)
   );
   orderedUsers.forEach(userGroup => {
+    userGroup = { ...userGroup, stories: userGroup.stories.filter(story => !story.expires_at || Date.parse(story.expires_at) > Date.now()) };
+    if (!userGroup.stories.length) return;
     const item = document.createElement('button');
     item.type = 'button';
     item.className = 'story-avatar-item story-avatar-button';

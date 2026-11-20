@@ -1,6 +1,7 @@
 import { createClient } from './vendor/supabase-js-2.91.0.js';
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabase-config.js';
 import { syncPushSession, unregisterPush } from './native-push.mjs';
+import { clearPageMemory } from './page-memory.js';
 
 const isConfigured = SUPABASE_PUBLISHABLE_KEY !== '__VYNZO_SUPABASE_PUBLISHABLE_KEY__';
 
@@ -28,6 +29,7 @@ export function requireSupabase() {
 
 export function syncLegacySession(session) {
   if (!session) {
+    clearPageMemory();
     localStorage.removeItem('vynzo_token');
     localStorage.removeItem('vynzo_user');
     return;
@@ -37,7 +39,10 @@ export function syncLegacySession(session) {
   localStorage.setItem('vynzo_token', session.access_token);
   let stored = {};
   try { stored = JSON.parse(localStorage.getItem('vynzo_user') || '{}'); } catch { stored = {}; }
-  if (stored.id !== session.user.id) stored = {};
+  if (stored.id !== session.user.id) {
+    clearPageMemory();
+    stored = {};
+  }
   localStorage.setItem('vynzo_user', JSON.stringify({
     ...stored,
     id: session.user.id,

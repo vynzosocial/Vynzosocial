@@ -2,6 +2,7 @@ import { apiRequest } from './api.js?v=sb6';
 import { openUserProfile } from './users.js?v=live-alerts2';
 
 import { API_ORIGIN as MEDIA_BASE_URL } from './config.js?v=sb4';
+import { pageMemoryAccount, readPageMemory, writePageMemory } from './page-memory.js';
 let refreshInterval = null;
 let loading = false;
 let requestsLoading = false;
@@ -10,6 +11,8 @@ export async function initHomeFriends() {
   const container = document.getElementById('home-friends-list');
   if (!container) return;
 
+  const cached = readPageMemory('friends');
+  if (cached) renderFriends(container, cached);
   await loadFriends(container);
   clearInterval(refreshInterval);
   refreshInterval = setInterval(() => loadFriends(container), 30000);
@@ -18,14 +21,17 @@ export async function initHomeFriends() {
 async function loadFriends(container) {
   if (loading) return;
   loading = true;
+  const account = pageMemoryAccount();
   loadRequests();
   try {
     const data = await apiRequest('/users/friends');
+    if (account && pageMemoryAccount() !== account) return;
+    writePageMemory('friends', data.friends.map(friend => ({ ...friend, is_live: false })), account);
     renderFriends(container, data.friends);
     renderLiveFriends(data.friends);
   } catch (err) {
     console.error('Failed to load friends:', err);
-    renderMessage(container, err.message || 'Could not load friends. Please try again.');
+    if (!readPageMemory('friends')) renderMessage(container, err.message || 'Could not load friends. Please try again.');
   } finally {
     loading = false;
   }

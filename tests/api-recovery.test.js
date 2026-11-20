@@ -9,12 +9,14 @@ const source = fs.readFileSync(path.join(__dirname, '../frontend/js/api.js'), 'u
 
 function setup(responses) {
   let calls = 0;
+  let invalidations = 0;
   const context = {
     AbortController, FormData, TypeError,
     API_ORIGIN: 'https://api.example', API_BASE_URL: 'https://api.example',
     window: { setTimeout, clearTimeout },
     localStorage: { getItem: () => null },
     supabase: null,
+    clearPageMemory() { invalidations++; },
     async fetch() {
       const result = responses[calls++];
       if (result instanceof Error) throw result;
@@ -22,7 +24,7 @@ function setup(responses) {
     }
   };
   vm.runInNewContext(source, context);
-  return { request: context.apiRequest, calls: () => calls };
+  return { request: context.apiRequest, calls: () => calls, invalidations: () => invalidations };
 }
 
 test('recovers content reads after a brief disconnect or gateway error', async () => {
@@ -30,6 +32,20 @@ test('recovers content reads after a brief disconnect or gateway error', async (
     const { request, calls } = setup([failure, Response.json({ posts: [] })]);
     assert.deepEqual(await request('/posts/feed'), { posts: [] });
     assert.equal(calls(), 2);
+  }
+});
+
+test('invalidates native snapshots for profile/content changes and denied reads, not unrelated message activity', async () => {
+  for (const [endpoint, options, response, expected] of [
+    ['/posts/one/like', { method: 'POST' }, Response.json({ liked: true }), 1],
+    ['/users/me/privacy', { method: 'PATCH' }, Response.json({ is_private: true }), 1],
+    ['/messages/one/read', { method: 'POST' }, Response.json({ read: true }), 0],
+    ['/posts/feed', {}, Response.json({ error: 'Forbidden' }, { status: 403 }), 1]
+  ]) {
+    const api = setup([response]);
+    if (response.ok) await api.request(endpoint, options);
+    else await assert.rejects(api.request(endpoint, options), /Forbidden/);
+    assert.equal(api.invalidations(), expected);
   }
 });
 

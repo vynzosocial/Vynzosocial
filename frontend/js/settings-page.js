@@ -3,6 +3,7 @@ import { requireSupabase, signOutSupabase } from './supabase-client.js';
 
 import { API_ORIGIN as MEDIA_BASE_URL } from './config.js?v=sb4';
 import { isValidUsername, USERNAME_MESSAGE } from './username-rules.js';
+import { pageMemoryAccount, readPageMemory, writePageMemory } from './page-memory.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   const userInfoEl = document.getElementById('user-info-display');
@@ -20,6 +21,30 @@ document.addEventListener('DOMContentLoaded', () => {
   const status = document.getElementById('profile-status');
   const logoutBtn = document.getElementById('logout-btn');
   const user = readStoredUser();
+  const edited = new Set();
+  document.querySelectorAll('.settings-page input, .settings-page textarea, .settings-page select').forEach(control => {
+    control.addEventListener('input', () => edited.add(control.id));
+    control.addEventListener('change', () => edited.add(control.id));
+  });
+  const retryProfile = document.getElementById('profile-reload');
+  let loadingProfile = false;
+  const refreshProfile = async () => {
+    if (loadingProfile) return;
+    loadingProfile = true;
+    retryProfile.hidden = true;
+    try {
+      await loadProfile(user, edited);
+      setStatus(status, '', '');
+    } catch (err) {
+      console.error('Could not load profile settings:', err);
+      setStatus(status, err.message || 'Could not refresh profile settings.', 'error');
+      showSettingsUnavailable('Could not refresh settings. Tap Try again.');
+      retryProfile.hidden = false;
+    } finally {
+      loadingProfile = false;
+    }
+  };
+  retryProfile.addEventListener('click', refreshProfile);
   let previewUrl = null;
   setupChangePassword(user);
   setupAccountDeactivation(user);
@@ -39,11 +64,11 @@ document.addEventListener('DOMContentLoaded', () => {
     usernameInput.value = user.username || '';
     bioInput.value = user.bio || '';
     bioCount.textContent = String(bioInput.value.length);
-    loadProfile(user).catch(err => {
-      console.error('Could not load profile settings:', err);
-      setStatus(status, err.message || 'Could not load profile settings.', 'error');
-      showSettingsUnavailable('Could not load settings. Check your connection and refresh.');
-    });
+    const cached = readPageMemory('settings-profile');
+    if (cached?.id === user.id) renderSettingsProfile(cached, edited);
+    else if (pageMemoryAccount() === user.id && user.vynzo_id && typeof user.is_private === 'boolean') renderSettingsProfile(user, edited);
+    else renderPhoto(photoPreview, photoFallback, user.avatar_url);
+    void refreshProfile();
   }
 
   bioInput.addEventListener('input', () => {
@@ -237,9 +262,18 @@ function showSettingsUnavailable(message) {
   }
 }
 
-async function loadProfile(user) {
+async function loadProfile(user, edited = new Set()) {
   const data = await apiRequest(`/users/${encodeURIComponent(user.id)}/profile`);
+  if (readStoredUser().id !== user.id) return;
   const profile = data.profile;
+  writePageMemory('settings-profile', profile, user.id);
+  renderSettingsProfile(profile, edited);
+  const updatedUser = { ...readStoredUser(), ...profile };
+  localStorage.setItem('vynzo_user', JSON.stringify(updatedUser));
+  Object.assign(user, updatedUser);
+}
+
+function renderSettingsProfile(profile, edited = new Set()) {
   document.getElementById('profile-vynzo-id').value = profile.vynzo_id || 'Unavailable';
   document.getElementById('profile-settings-heading').textContent = `@${profile.username}`;
   const likes = profile.like_stats || {};
@@ -252,23 +286,20 @@ async function loadProfile(user) {
   Object.entries(stats).forEach(([id, value]) => {
     document.getElementById(id).textContent = formatStat(value);
   });
-  document.getElementById('profile-username').value = profile.username || '';
-  document.getElementById('profile-bio').value = profile.bio || '';
-  document.getElementById('bio-character-count').textContent = String((profile.bio || '').length);
-  renderPhoto(
+  if (!edited.has('profile-username')) document.getElementById('profile-username').value = profile.username || '';
+  if (!edited.has('profile-bio')) document.getElementById('profile-bio').value = profile.bio || '';
+  document.getElementById('bio-character-count').textContent = String(document.getElementById('profile-bio').value.length);
+  if (!edited.has('profile-photo-input')) renderPhoto(
     document.getElementById('profile-photo-preview'),
     document.getElementById('profile-photo-fallback'),
     profile.avatar_url
   );
-  const updatedUser = { ...user, ...profile };
-  localStorage.setItem('vynzo_user', JSON.stringify(updatedUser));
-  Object.assign(user, updatedUser);
-  setupPrivacyToggle(Boolean(profile.is_private));
-  setupMessagePrivacy(profile.message_privacy || 'everyone');
-  setupPostsPrivacy(profile.posts_privacy || 'everyone');
-  setupFollowingPrivacy(profile.following_privacy || 'everyone');
-  setupReadReceipts(profile.read_receipts !== false);
-  setupCallSetting(profile.allow_calls !== false);
+  if (!edited.has('private-profile-toggle')) setupPrivacyToggle(Boolean(profile.is_private));
+  if (!edited.has('message-privacy-select')) setupMessagePrivacy(profile.message_privacy || 'everyone');
+  if (!edited.has('posts-privacy-select')) setupPostsPrivacy(profile.posts_privacy || 'everyone');
+  if (!edited.has('following-privacy-select')) setupFollowingPrivacy(profile.following_privacy || 'everyone');
+  if (!edited.has('read-receipts-select')) setupReadReceipts(profile.read_receipts !== false);
+  if (!edited.has('allow-calls-select')) setupCallSetting(profile.allow_calls !== false);
 }
 
 const CALL_HINTS = {
