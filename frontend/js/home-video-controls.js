@@ -8,15 +8,14 @@ if (video && welcome) {
   const pauseWhenHidden = () => { if (!canPlay()) video.pause(); };
   const canAutoplay = () => canPlay() && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  async function playIntro(allowMutedFallback = false) {
+  async function playIntro() {
     try {
       await video.play();
       pauseWhenHidden();
     } catch (error) {
-      if (error.name === 'NotAllowedError' && allowMutedFallback && video.paused && canAutoplay()) {
-        video.muted = true;
-        await playIntro();
-      } else if (error.name !== 'NotAllowedError' && error.name !== 'AbortError') {
+      if (error.name === 'NotAllowedError') {
+        console.info('Vynzo intro autoplay blocked. Use Play to start the video.');
+      } else if (error.name !== 'AbortError') {
         console.error('Unable to play the Vynzo intro:', error);
       }
     }
@@ -41,5 +40,5 @@ if (video && welcome) {
     attributeFilter: ['hidden']
   });
 
-  if (canAutoplay()) void playIntro(true);
+  if (canAutoplay()) void playIntro();
 }

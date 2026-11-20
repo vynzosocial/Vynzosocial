@@ -110,12 +110,12 @@ The interface does not claim that a download or installation has completed.
   fixed navigation actions; arbitrary URLs and commands are not accepted.
 - The welcome video is restricted to the visible, signed-out front page and
   pauses when that page is hidden or backgrounded. The welcome page tries to
-  autoplay with sound, falls back to muted
-  playback if blocked, and loops muted after the first play. Reduced-motion
-  settings disable autoplay and automatic replay. This behavior is delivered by
-  the live website without another desktop installer. Android receives it
-  through the signed web update and must reopen
-  after that update has downloaded to activate it.
+  autoplay with sound. If the browser blocks it, the video stays paused and
+  unmuted until the visitor presses Play. It loops muted after the first play.
+  Reduced-motion settings disable autoplay and automatic replay. This behavior
+  is delivered by the live website without another desktop installer. Android
+  receives it through the signed web update and must reopen after that update
+  has downloaded to activate it.
 - Camera, microphone, and notification requests require explicit permission
   from the main Vynzo website. Native permission approval lasts for the current
   app session. Windows privacy settings also apply.

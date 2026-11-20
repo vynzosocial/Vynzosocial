@@ -10,13 +10,14 @@ const script = fs.readFileSync(path.join(root, 'js', 'home-video-controls.js'), 
 function setup({ blockSound = false, reducedMotion = false, signedIn = false } = {}) {
   const events = target => ({ ...target, addEventListener(name, callback) { this[name] = callback; } });
   const attempts = [];
+  let userActivated = false;
   const video = {
     addEventListener(name, callback) { this.listeners[name] = callback; },
     listeners: {},
     muted: false, loop: false, paused: true,
     async play() {
       attempts.push(this.muted);
-      if (blockSound && !this.muted) throw Object.assign(new Error('Autoplay blocked'), { name: 'NotAllowedError' });
+      if (blockSound && !userActivated && !this.muted) throw Object.assign(new Error('Autoplay blocked'), { name: 'NotAllowedError' });
       this.paused = false;
     },
     pause() { this.paused = true; }
@@ -29,13 +30,14 @@ function setup({ blockSound = false, reducedMotion = false, signedIn = false } =
   let onWelcomeChange;
   vm.runInNewContext(script, {
     document, window, localStorage: { getItem: () => token },
-    console,
+    console: { ...console, info() {} },
     MutationObserver: class {
       constructor(callback) { onWelcomeChange = callback; }
       observe() {}
     }
   });
   return { video, document, window, attempts,
+    playManually() { userActivated = true; return video.play(); },
     signIn() { token = 'signed-in'; window.storage(); },
     hideWelcome() { welcome.hidden = true; onWelcomeChange(); }
   };
@@ -62,11 +64,18 @@ test('intro starts with sound when allowed and loops muted after the first play'
   assert.equal(video.loop, true);
 });
 
-test('blocked audible autoplay retries muted', async () => {
-  const { video, attempts } = setup({ blockSound: true });
+test('blocked autoplay preserves the first play with sound for a manual start', async () => {
+  const { video, attempts, playManually } = setup({ blockSound: true });
   await new Promise(resolve => setImmediate(resolve));
-  assert.deepEqual(attempts, [false, true]);
+  assert.deepEqual(attempts, [false]);
+  assert.equal(video.paused, true);
+  assert.equal(video.muted, false);
+  await playManually();
   assert.equal(video.paused, false);
+  assert.equal(video.muted, false);
+  video.listeners.ended();
+  assert.deepEqual(attempts, [false, false, true]);
+  assert.equal(video.loop, true);
 });
 
 test('reduced motion and signed-in visits do not autoplay', () => {
