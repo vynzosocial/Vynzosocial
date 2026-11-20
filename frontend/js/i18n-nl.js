@@ -1,6 +1,9 @@
 (function () { 'use strict';
   // English -> Dutch
   var D = {
+    'Notify me when this friend goes live': 'Meld het mij wanneer deze vriend live gaat',
+    'Live notifications are temporarily unavailable': 'Livemeldingen zijn tijdelijk niet beschikbaar',
+    'Could not update live notifications. Please try again': 'Livemeldingen konden niet worden bijgewerkt. Probeer het opnieuw',
     'Host with side guests': 'Host met gasten aan de zijkanten', 'Invite': 'Uitnodigen', 'No viewers available to invite': 'Geen kijkers beschikbaar om uit te nodigen',
     'Grid': 'Raster', 'Focus': 'Focus', 'Focus this participant': 'Deze deelnemer uitlichten',
     'Host only': 'Alleen host', 'Two people': 'Twee personen', 'Host and guests': 'Host en gasten', 'Two above guests': 'Twee boven gasten',

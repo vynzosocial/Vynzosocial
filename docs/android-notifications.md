@@ -44,11 +44,14 @@ pending invitation. The app checks with the coordinator first and reports an
 expired invitation instead of joining it. Microphone and, for video calls,
 camera permission must be granted.
 
-On the Live page, **Notify friends who can watch** is off by default and applies
-only to the next broadcast. It alerts mutual friends who can watch, excluding
-blocked and inactive accounts. With **Selected friends**, only the chosen
-friends are eligible. Each host can send alerts at most once every five minutes.
-Tapping an alert opens the livestream, where normal viewing permissions apply.
+Each person can turn on **Notify me when this friend goes live** on a mutual
+friend's profile. The setting is off by default and applies only to that friend.
+Starting a live alerts only subscribed mutual friends who can watch, excluding
+blocked and inactive accounts. With **Selected friends**, only subscribed
+friends who were chosen can receive an alert. Subscriptions are removed when
+either person unfollows the other. Each host can send alerts at most once every
+five minutes. Tapping an alert opens the livestream, where normal viewing
+permissions apply.
 
 Open web, desktop, iOS, and Android clients receive alerts through Supabase
 Realtime. Android background alerts require a native build that supports the

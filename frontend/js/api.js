@@ -20,7 +20,8 @@ export async function apiRequest(endpoint, options = {}) {
     || apiPath.startsWith('/users/connections')
     || apiPath.startsWith('/users/search')
     || /^\/users\/[^/]+\/profile$/.test(apiPath)
-    || /^\/users\/[^/]+\/follow$/.test(apiPath);
+    || /^\/users\/[^/]+\/follow$/.test(apiPath)
+    || /^\/users\/[^/]+\/live-notifications$/.test(apiPath);
   const useSupabaseAccountApi = apiPath === '/auth/deactivate'
     || apiPath === '/auth/delete-account/request-code'
     || apiPath === '/auth/delete-account/confirm'

@@ -1,6 +1,9 @@
 (function () { 'use strict';
   // English -> Spanish (Latin America)
   var D = {
+    'Notify me when this friend goes live': 'Avisarme cuando este amigo haga una transmisión en directo',
+    'Live notifications are temporarily unavailable': 'Las notificaciones de transmisiones no están disponibles temporalmente',
+    'Could not update live notifications. Please try again': 'No se pudieron actualizar las notificaciones de transmisiones. Inténtalo de nuevo',
     'Host with side guests': 'Anfitrión con invitados a los lados', 'Invite': 'Invitar', 'No viewers available to invite': 'No hay espectadores disponibles para invitar',
     'Grid': 'Cuadrícula', 'Focus': 'Enfocar', 'Focus this participant': 'Enfocar a este participante',
     'Host only': 'Solo anfitrión', 'Two people': 'Dos personas', 'Host and guests': 'Anfitrión e invitados', 'Two above guests': 'Dos sobre los invitados',

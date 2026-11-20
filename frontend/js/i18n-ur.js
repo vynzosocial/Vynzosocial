@@ -2,6 +2,9 @@
   'use strict';
   // English (key, without leading/trailing punctuation or emoji) -> Urdu
   var D = {
+    'Notify me when this friend goes live': 'جب یہ دوست لائیو ہو تو مجھے اطلاع دیں',
+    'Live notifications are temporarily unavailable': 'لائیو اطلاعات عارضی طور پر دستیاب نہیں ہیں',
+    'Could not update live notifications. Please try again': 'لائیو اطلاعات اپ ڈیٹ نہیں ہو سکیں۔ براہ کرم دوبارہ کوشش کریں',
     'Host with side guests': 'میزبان اور دونوں طرف مہمان', 'Invite': 'دعوت دیں', 'No viewers available to invite': 'دعوت دینے کے لیے کوئی ناظرین دستیاب نہیں',
     'Grid': 'گرڈ', 'Focus': 'فوکس', 'Focus this participant': 'اس شریک پر فوکس کریں',
     'Host only': 'صرف میزبان', 'Two people': 'دو افراد', 'Host and guests': 'میزبان اور مہمان', 'Two above guests': 'مہمانوں کے اوپر دو افراد',

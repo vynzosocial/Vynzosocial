@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="../css/reset.css">
     <link rel="stylesheet" href="../css/layout.css?v=repost1">
     <link rel="stylesheet" href="../css/components.css">
-    <link rel="stylesheet" href="../css/live.css?v=friend-alerts1">
+    <link rel="stylesheet" href="../css/live.css?v=friend-alerts2">
     <link rel="stylesheet" href="../css/live-layout.css?v=stage-layout20">
   <link rel="stylesheet" href="../css/share.css?v=4">
     <link rel="stylesheet" href="../css/responsive.css">
@@ -75,10 +75,6 @@
                         </select>
                     </div>
                     <a id="live-audience-link" class="live-audience-link" href="live-audience.html" hidden>Choose friends</a>
-                    <label class="live-notify-friends">
-                        <input id="live-notify-friends" type="checkbox" autocomplete="off">
-                        <span>Notify friends who can watch</span>
-                    </label>
                 </div>
                 <div id="live-streams-list" style="flex: 1; overflow-y: auto;">
                     <p style="padding: 16px; color: var(--text-muted);">Loading livestreams...</p>
@@ -115,7 +111,7 @@
     </div>
 
     <script type="module">
-        import { initLiveStudio, startBroadcasting, exitBroadcasting, createTitleEditor, getSavedLiveTitle, getSelectedLiveAudience } from '../js/live.js?v=friend-alerts1';
+        import { initLiveStudio, startBroadcasting, exitBroadcasting, createTitleEditor, getSavedLiveTitle, getSelectedLiveAudience } from '../js/live.js?v=friend-alerts2';
         document.addEventListener('DOMContentLoaded', () => {
             initLiveStudio();
 
@@ -213,7 +209,7 @@
                     window.location.href = 'live-audience.html';
                     return;
                 }
-                startBroadcasting(title, 'General', visibility, selectedIds, document.getElementById('live-notify-friends').checked);
+                startBroadcasting(title, 'General', visibility, selectedIds);
             });
         });
     </script>

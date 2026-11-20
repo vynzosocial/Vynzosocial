@@ -2,6 +2,9 @@
   'use strict';
   // English (key, without leading/trailing punctuation or emoji) -> Arabic
   var D = {
+    'Notify me when this friend goes live': 'أبلغني عندما يبدأ هذا الصديق بثاً مباشراً',
+    'Live notifications are temporarily unavailable': 'إشعارات البث المباشر غير متاحة مؤقتاً',
+    'Could not update live notifications. Please try again': 'تعذر تحديث إشعارات البث المباشر. يرجى المحاولة مرة أخرى',
     'Host with side guests': 'المضيف مع ضيوف على الجانبين', 'Invite': 'دعوة', 'No viewers available to invite': 'لا يوجد مشاهدون متاحون للدعوة',
     'Grid': 'شبكة', 'Focus': 'تركيز', 'Focus this participant': 'التركيز على هذا المشارك',
     'Host only': 'المضيف فقط', 'Two people': 'شخصان', 'Host and guests': 'المضيف والضيوف', 'Two above guests': 'شخصان فوق الضيوف',

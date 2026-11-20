@@ -1,5 +1,5 @@
 import { apiRequest } from './api.js?v=sb6';
-import { openUserProfile } from './users.js?v=repost1';
+import { openUserProfile } from './users.js?v=live-alerts2';
 
 import { API_ORIGIN as MEDIA_BASE_URL } from './config.js?v=sb4';
 let refreshInterval = null;

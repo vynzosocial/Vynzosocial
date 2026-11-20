@@ -87,7 +87,7 @@ function render() {
       row.addEventListener('click', async event => {
         event.stopPropagation();
         try {
-          const { openUserProfile } = await import('./users.js?v=repost1');
+          const { openUserProfile } = await import('./users.js?v=live-alerts2');
           setOpen(false);
           openUserProfile(item.actor_id);
         } catch (err) {

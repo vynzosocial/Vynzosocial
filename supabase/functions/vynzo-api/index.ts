@@ -1128,6 +1128,37 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
     return jsonResponse(200, { is_following: false, follow_requested: false, is_friend: false }, headers)
   }
 
+  const liveNotificationMatch = route.match(/^\/users\/([^/]+)\/live-notifications$/)
+  if (liveNotificationMatch && (method === 'POST' || method === 'DELETE')) {
+    const [, targetId] = liveNotificationMatch
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId) || targetId === viewerId) {
+      return jsonResponse(400, { error: 'Choose another valid account.' }, headers)
+    }
+    if (method === 'DELETE') {
+      const { error } = await admin.from('live_alert_subscriptions').delete()
+        .eq('subscriber_id', viewerId).eq('host_id', targetId)
+      throwOnError(error)
+      return jsonResponse(200, { live_notifications_enabled: false }, headers)
+    }
+    const [friends, block, inactive] = await Promise.all([
+      getLiveMutualFriendIds(viewerId, [targetId]),
+      getBlockRelation(viewerId, targetId),
+      restrictedAccountIds([targetId])
+    ])
+    if (inactive.has(targetId) || block.blockedMe || block.blockedByMe || !friends.has(targetId)) {
+      return jsonResponse(403, { error: 'Live notifications are available only for current friends.' }, headers)
+    }
+    const { error } = await admin.from('live_alert_subscriptions').upsert(
+      { subscriber_id: viewerId, host_id: targetId },
+      { onConflict: 'subscriber_id,host_id', ignoreDuplicates: true }
+    )
+    if (error?.code === '23503') {
+      return jsonResponse(409, { error: 'This account is no longer your friend.' }, headers)
+    }
+    throwOnError(error)
+    return jsonResponse(200, { live_notifications_enabled: true }, headers)
+  }
+
   const profileMatch = route.match(/^\/users\/([^/]+)\/profile$/)
   if (profileMatch && method === 'GET') {
     const [, targetId] = profileMatch
@@ -1186,6 +1217,13 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
     throwOnError(postsResult.error)
     const follow = relation.get(targetId)!
     const isFriend = follow.following && follow.followsMe
+    let liveNotificationsEnabled = false
+    if (!isOwner && isFriend) {
+      const { data: subscription, error: subscriptionError } = await admin.from('live_alert_subscriptions')
+        .select('subscriber_id').eq('subscriber_id', viewerId).eq('host_id', targetId).maybeSingle()
+      throwOnError(subscriptionError)
+      liveNotificationsEnabled = Boolean(subscription)
+    }
     const postsPrivacy = user.posts_privacy || 'everyone'
     const canViewPosts = isOwner || (postsPrivacy === 'friends' && isFriend)
       || (postsPrivacy === 'everyone' && (!user.is_private || isFriend))
@@ -1348,6 +1386,7 @@ async function handleUsers(request: Request, viewerId: string, headers: Record<s
         follows_me: follow.followsMe,
         follow_requested: false,
         is_friend: isFriend,
+        live_notifications_enabled: liveNotificationsEnabled,
         can_view_content: canViewPosts,
         posts_count: canViewPosts ? (postsResult.count || 0) : null,
         followers_count: followers.count || 0,
@@ -3002,13 +3041,11 @@ async function handleLive(request: Request, viewerId: string | undefined, header
       if (cleanupError) console.error('Failed to clean up incomplete livestream start:', cleanupError)
       throwOnError(endPreviousError)
     }
-    if (body?.notify_friends === true) {
-      try {
-        EdgeRuntime.waitUntil(notifyLiveFriends(session.id, viewerId)
-          .catch(error => console.error('Live friend alert task failed:', getErrorMetadata(error), error)))
-      } catch (error) {
-        console.error('Could not schedule live friend alerts:', getErrorMetadata(error), error)
-      }
+    try {
+      EdgeRuntime.waitUntil(notifyLiveFriends(session.id, viewerId)
+        .catch(error => console.error('Live friend alert task failed:', getErrorMetadata(error), error)))
+    } catch (error) {
+      console.error('Could not schedule live friend alerts:', getErrorMetadata(error), error)
     }
     return jsonResponse(201, { message: 'Livestream started successfully', session }, headers)
   }

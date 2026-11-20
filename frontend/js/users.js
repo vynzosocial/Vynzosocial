@@ -377,6 +377,47 @@ function createProfileReportForm(profileId, reportButton) {
   return form;
 }
 
+function createLiveNotificationControl(profile) {
+  const label = document.createElement('label');
+  label.className = 'account-live-notification';
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  const text = document.createElement('span');
+  text.textContent = 'Notify me when this friend goes live';
+  const status = document.createElement('span');
+  status.className = 'account-live-notification-status';
+  status.setAttribute('role', 'status');
+  if (typeof profile.live_notifications_enabled !== 'boolean') {
+    input.disabled = true;
+    status.textContent = 'Live notifications are temporarily unavailable.';
+  } else {
+    input.checked = profile.live_notifications_enabled;
+  }
+  input.addEventListener('change', async () => {
+    const previous = profile.live_notifications_enabled;
+    const requested = input.checked;
+    input.disabled = true;
+    status.textContent = '';
+    try {
+      const result = await apiRequest(`/users/${profile.id}/live-notifications`, {
+        method: requested ? 'POST' : 'DELETE'
+      });
+      if (result.live_notifications_enabled !== requested) {
+        throw new Error('Unexpected live notification setting.');
+      }
+      profile.live_notifications_enabled = requested;
+    } catch (error) {
+      console.error('Could not update live notifications:', error);
+      input.checked = previous;
+      status.textContent = 'Could not update live notifications. Please try again.';
+    } finally {
+      input.disabled = false;
+    }
+  });
+  label.append(input, text, status);
+  return label;
+}
+
 function renderUserProfile(container, profile, posts) {
   container.replaceChildren();
 
@@ -503,6 +544,9 @@ function renderUserProfile(container, profile, posts) {
   }
   header.append(avatar, identity, messageButton, followButton, reportButton, blockButton);
   container.appendChild(header);
+  if (!profile.is_owner && !profile.is_blocked && profile.is_friend) {
+    container.appendChild(createLiveNotificationControl(profile));
+  }
   if (!profile.is_owner) container.appendChild(reportForm);
 
   const storyButton = document.createElement('button');

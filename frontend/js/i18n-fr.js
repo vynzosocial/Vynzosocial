@@ -1,6 +1,9 @@
 (function () { 'use strict';
   // English -> French
   var D = {
+    'Notify me when this friend goes live': 'Me prévenir lorsque cet ami lance un direct',
+    'Live notifications are temporarily unavailable': 'Les notifications de direct sont temporairement indisponibles',
+    'Could not update live notifications. Please try again': 'Impossible de modifier les notifications de direct. Veuillez réessayer',
     'Host with side guests': 'Hôte avec invités sur les côtés', 'Invite': 'Inviter', 'No viewers available to invite': 'Aucun spectateur disponible à inviter',
     'Grid': 'Grille', 'Focus': 'Focus', 'Focus this participant': 'Mettre ce participant en avant',
     'Host only': 'Hôte uniquement', 'Two people': 'Deux personnes', 'Host and guests': 'Hôte et invités', 'Two above guests': 'Deux au-dessus des invités',

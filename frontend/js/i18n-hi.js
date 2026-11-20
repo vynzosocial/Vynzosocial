@@ -1,6 +1,9 @@
 (function () {
   'use strict';
   var D = {
+    'Notify me when this friend goes live': 'जब यह दोस्त लाइव हो तो मुझे सूचित करें',
+    'Live notifications are temporarily unavailable': 'लाइव सूचनाएँ अस्थायी रूप से उपलब्ध नहीं हैं',
+    'Could not update live notifications. Please try again': 'लाइव सूचनाएँ अपडेट नहीं हो सकीं। कृपया फिर से प्रयास करें',
     'Host with side guests': 'होस्ट और दोनों ओर मेहमान', 'Invite': 'आमंत्रित करें', 'No viewers available to invite': 'आमंत्रित करने के लिए कोई दर्शक उपलब्ध नहीं है',
     'Grid': 'ग्रिड', 'Focus': 'फोकस', 'Focus this participant': 'इस प्रतिभागी पर फोकस करें',
     'Host only': 'केवल होस्ट', 'Two people': 'दो लोग', 'Host and guests': 'होस्ट और मेहमान', 'Two above guests': 'मेहमानों के ऊपर दो लोग',

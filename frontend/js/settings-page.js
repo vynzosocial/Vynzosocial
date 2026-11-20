@@ -191,7 +191,7 @@ function setupConnectionDropdowns(user) {
           entry.addEventListener('click', async () => {
             entry.disabled = true;
             try {
-              const { openUserProfile } = await import('./users.js?v=connection-groups2');
+              const { openUserProfile } = await import('./users.js?v=live-alerts2');
               await openUserProfile(account.id);
             } catch (err) {
               console.error('Could not open connection profile:', err);

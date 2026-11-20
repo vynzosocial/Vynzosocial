@@ -2,6 +2,9 @@
   'use strict';
   // English (key, without leading/trailing punctuation or emoji) -> Russian
   var D = {
+    'Notify me when this friend goes live': 'Сообщать мне, когда этот друг начинает эфир',
+    'Live notifications are temporarily unavailable': 'Уведомления об эфирах временно недоступны',
+    'Could not update live notifications. Please try again': 'Не удалось изменить уведомления об эфирах. Попробуйте ещё раз',
     'Host with side guests': 'Ведущий с гостями по бокам', 'Invite': 'Пригласить', 'No viewers available to invite': 'Нет зрителей, которых можно пригласить',
     'Grid': 'Сетка', 'Focus': 'Фокус', 'Focus this participant': 'Выделить этого участника',
     'Host only': 'Только ведущий', 'Two people': 'Два человека', 'Host and guests': 'Ведущий и гости', 'Two above guests': 'Двое над гостями',
