@@ -202,5 +202,5 @@ test('solo chat overlays the stage and guest videos remain uncropped', () => {
   assert.match(css, /\.live-stage\.live-solo \.live-chat-panel\s*\{[^}]*position:\s*absolute/s);
   assert.match(css, /\.live-video-frame\[data-stage-guest="1"\] \.live-video-player\s*\{[^}]*object-fit:\s*cover/);
   assert.match(css, /\.live-video-frame\[data-stage-guest="1"\] \.live-video-label\s*\{[^}]*position:\s*absolute/);
-  assert.match(css, /\.live-stage \.live-chat-message\s*\{[^}]*font-size:\s*calc\(var\(--live-chat-font-size, 13px\) \* \.5\)/);
+  assert.match(css, /\.live-stage \.live-chat-message\s*\{[^}]*font-size:\s*calc\(var\(--live-chat-font-size, 13px\) \* var\(--live-chat-text-scale, \.5\)\)/);
 });

@@ -160,6 +160,9 @@ The interface does not claim that a download or installation has completed.
   so reconnecting before presence synchronizes does not lose a rejoin request.
   Host approval is still required. Shared images fit fully inside their tiles;
   cameras retain their crop-to-fill display.
+- On phone-sized Live layouts, the Manage guests and viewer invite lists open
+  inside the screen and scroll when needed. Chat messages and typed text are
+  20% larger than before.
 - Guests on stage can choose **Settings > Leave stage** to stop sharing camera,
   microphone, or an image without leaving the live session. They keep watching
   and chatting, and can request to join the stage again.
