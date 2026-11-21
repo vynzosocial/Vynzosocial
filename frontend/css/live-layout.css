@@ -678,14 +678,14 @@ html[dir="rtl"] .live-video-grid > * {
   .live-container .live-stage .live-chat-message {
     align-items: center;
     gap: 5px;
-    padding: 1px 8px;
+    padding: 0 8px;
     line-height: 1.1;
     border-radius: 10px;
   }
   .live-container .live-stage .live-chat-avatar {
-    width: 20px;
-    height: 20px;
-    font-size: 10px;
+    width: 14px;
+    height: 14px;
+    font-size: 8px;
   }
   .live-container .live-stage .live-chat-user { margin-right: 4px; }
   .live-container .live-stage .live-controls-bar { flex: 0 0 auto; padding: 4px 0 0; }
@@ -737,7 +737,8 @@ html[dir="rtl"] .live-video-grid > * {
   }
 }
 
-.live-chat-invite { border: 0; padding: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; pointer-events: auto; }
+.live-chat-invite { min-height: 0; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; line-height: inherit; text-decoration: underline; cursor: pointer; pointer-events: auto; }
+.live-container .live-stage .live-chat-message { font-weight: 600; }
 .live-chat-invite:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 .live-container .live-stage .live-chat-system { color: #ffd700; font-weight: 600; }
 .live-web-badge { color: #ff3b4e; }
