@@ -2,6 +2,7 @@ const STORAGE_KEY = 'vynzo_page_memory_v2';
 const OLD_STORAGE_KEY = 'vynzo_page_memory_v1';
 const MAX_BYTES = 750000;
 const MAX_AGE = 15 * 60 * 1000;
+const LIST_MAX_AGE = 24 * 60 * 60 * 1000;
 
 export function pageMemoryAccount() {
   if (!globalThis.Capacitor?.isNativePlatform?.()) return null;
@@ -33,7 +34,8 @@ function readStore(account) {
   const now = Date.now();
   let expired = false;
   for (const [key, entry] of Object.entries(store.entries)) {
-    if (!entry || entry.savedAt > now || now - entry.savedAt >= MAX_AGE) {
+    const maxAge = key === 'conversations' || key.startsWith('find:') ? LIST_MAX_AGE : MAX_AGE;
+    if (!entry || entry.savedAt > now || now - entry.savedAt >= maxAge) {
       delete store.entries[key];
       expired = true;
     }
@@ -54,17 +56,39 @@ export function readPageMemory(key) {
   }
 }
 
+export function removePageMemory(prefix) {
+  const account = pageMemoryAccount();
+  if (!account) return;
+  try {
+    const store = readStore(account);
+    for (const key of Object.keys(store.entries)) {
+      if (key.startsWith(prefix)) delete store.entries[key];
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+  } catch (error) {
+    console.warn('Could not remove saved page information:', error);
+    clearPageMemory();
+  }
+}
+
 export function writePageMemory(key, value, account = pageMemoryAccount()) {
   if (!account || account !== pageMemoryAccount()) return;
   try {
     const store = readStore(account);
     delete store.entries[key];
     store.entries[key] = { savedAt: Date.now(), value };
+    if (JSON.stringify({ account, entries: { [key]: store.entries[key] } }).length * 2 > MAX_BYTES) {
+      console.warn('Page information is too large to save on this device:', key);
+      return;
+    }
     let serialized = JSON.stringify(store);
     while (serialized.length * 2 > MAX_BYTES && Object.keys(store.entries).length) {
-      delete store.entries[Object.keys(store.entries)[0]];
+      const keys = Object.keys(store.entries);
+      const oldest = keys.find(entry => entry !== 'conversations' && !entry.startsWith('find:')) || keys[0];
+      delete store.entries[oldest];
       serialized = JSON.stringify(store);
     }
+    if (!store.entries[key]) console.warn('Page information could not fit in device memory:', key);
     localStorage.setItem(STORAGE_KEY, serialized);
   } catch (error) {
     console.warn('Could not save page information on this device:', error);

@@ -1,6 +1,9 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
+const { spawnSync } = require('node:child_process');
+const { pathToFileURL } = require('node:url');
 const vm = require('node:vm');
 const test = require('node:test');
 
@@ -117,6 +120,9 @@ test('two connection groups combine outgoing follows and exclude mutual friends 
   const sandbox = {
     document: { hidden: false, getElementById: () => list, querySelectorAll: () => tabs },
     window: { setInterval() {} },
+    pageMemoryAccount: () => null,
+    readPageMemory: () => null,
+    writePageMemory() {},
     apiRequest: async url => {
       requests.push(url);
       return { users: url.endsWith('type=following') ? data.filter(user => user.is_following) : data.filter(user => user.id !== 'following') };
@@ -161,6 +167,9 @@ test('connection refresh moves live users and restores their original positions'
       querySelectorAll: () => [tab]
     },
     window: { setInterval(callback) { timers.push(callback); } },
+    pageMemoryAccount: () => null,
+    readPageMemory: () => null,
+    writePageMemory() {},
     apiRequest: async () => ({ users: values.map(user => ({ ...user })) }),
     createAccountResult: user => user,
     renderSearchMessage() {},
@@ -178,4 +187,116 @@ test('connection refresh moves live users and restores their original positions'
   timers[0]();
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(rows.map(user => user.id).join(''), 'ab');
+});
+
+test('Find restores the selected connection list before refreshing and rejects a late account response', async () => {
+  const rows = [];
+  let resolveRequest;
+  let account = 'one';
+  const saved = new Map([
+    ['find:tab', 'followers'],
+    ['find:connections:followers', [{ id: 'saved', is_following: false }]]
+  ]);
+  const tabs = ['following', 'followers'].map(type => ({
+    dataset: { type }, classList: { toggle() {} }, setAttribute() {}, addEventListener() {}
+  }));
+  const list = { replaceChildren() { rows.length = 0; }, appendChild(row) { rows.push(row); }, contains() { return false; } };
+  const sandbox = {
+    document: { hidden: false, getElementById: () => list, querySelectorAll: () => tabs },
+    window: { setInterval() {} },
+    pageMemoryAccount: () => account,
+    readPageMemory: key => saved.get(key) || null,
+    writePageMemory: (key, value) => saved.set(key, value),
+    apiRequest: () => new Promise(resolve => { resolveRequest = resolve; }),
+    createAccountResult: user => user,
+    renderSearchMessage() {},
+    console
+  };
+  const code = users.slice(users.indexOf('function liveFirst('), users.indexOf('\nasync function searchAccounts('));
+  vm.runInNewContext(`${code}\ninitConnections();`, sandbox);
+  assert.equal(rows[0].id, 'saved');
+  account = 'two';
+  resolveRequest({ users: [{ id: 'wrong-account', is_following: false }] });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(rows[0].id, 'saved');
+  assert.equal(saved.get('find:connections:followers')[0].id, 'saved');
+});
+
+test('Find restores the previous search immediately and refreshes it', () => {
+  const controls = {
+    'account-search-form': { addEventListener() {} },
+    'account-search-input': { addEventListener() {} },
+    'account-search-results': {}
+  };
+  const saved = { query: 'friend', users: [{ id: 'one' }] };
+  let rendered;
+  let refreshed;
+  const sandbox = {
+    document: { getElementById: id => controls[id], addEventListener() {} },
+    window: { setInterval() {} },
+    readPageMemory: () => saved,
+    renderAccounts: (_container, users) => { rendered = users; },
+    searchAccounts: async (query, _container, _current, refresh) => { refreshed = { query, refresh }; },
+    initConnections() {}
+  };
+  const code = users.slice(users.indexOf('export function initAccountSearch()'), users.indexOf('\nfunction liveFirst('))
+    .replace('export function', 'function');
+  vm.runInNewContext(`${code}\ninitAccountSearch();`, sandbox);
+  assert.equal(controls['account-search-input'].value, 'friend');
+  assert.equal(rendered, saved.users);
+  assert.equal(refreshed.query, 'friend');
+  assert.equal(refreshed.refresh, true);
+});
+
+test('Find paints saved lists and search results while network requests are pending', {
+  skip: !['C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'].some(fs.existsSync)
+}, () => {
+  const chrome = ['C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'].find(fs.existsSync);
+  const memory = fs.readFileSync(path.join(root, 'js', 'page-memory.js'), 'utf8').replaceAll('export function ', 'function ');
+  const code = users.slice(users.indexOf('export function initAccountSearch()'), users.indexOf('\nlet profileRequest'))
+    .replace('export function', 'function');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vynzo-find-cache-'));
+  try {
+    const fixture = path.join(directory, 'fixture.html');
+    fs.writeFileSync(fixture, `<!doctype html><body>
+      <form id="account-search-form"><input id="account-search-input"></form>
+      <button class="people-tab" data-type="following"></button>
+      <button class="people-tab" data-type="followers"></button>
+      <section id="connections-list"></section><section id="account-search-results"></section>
+      <script>
+        window.Capacitor = {isNativePlatform: () => true};
+        const MEDIA_BASE_URL = '';
+        const apiRequest = () => new Promise(() => {});
+        const openUserProfile = () => {};
+        const updateFollowButton = () => {};
+        const renderSearchMessage = (element, text) => { element.textContent = text; };
+        ${memory}
+        ${code}
+        localStorage.setItem('vynzo_token','token');
+        localStorage.setItem('vynzo_user',JSON.stringify({id:'one'}));
+        writePageMemory('find:tab','followers');
+        writePageMemory('find:connections:followers',[{id:'one',username:'savedfriend'}]);
+        writePageMemory('find:search',{query:'saved',users:[{id:'two',username:'savedresult'}]});
+        initAccountSearch();
+        const list = document.getElementById('connections-list').textContent;
+        const results = document.getElementById('account-search-results').textContent;
+        document.body.dataset.result = JSON.stringify({
+          friend: list.includes('@savedfriend'), result: results.includes('@savedresult'),
+          query: document.getElementById('account-search-input').value,
+          selected: document.querySelector('[data-type=followers]').getAttribute('aria-selected')
+        });
+      </script></body>`);
+    const result = spawnSync(chrome, ['--headless', '--disable-gpu', '--no-first-run',
+      `--user-data-dir=${directory}`, '--dump-dom', pathToFileURL(fixture).href],
+    { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024 });
+    assert.equal(result.status, 0, result.stderr);
+    const match = result.stdout.match(/data-result="([^"]+)"/);
+    assert.ok(match, 'Browser did not finish Find cache checks.');
+    assert.deepEqual(JSON.parse(match[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&')),
+      { friend: true, result: true, query: 'saved', selected: 'true' });
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });

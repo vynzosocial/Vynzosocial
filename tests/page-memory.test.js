@@ -123,12 +123,31 @@ test('page memory is native-only, account-scoped, cleared on logout and rejects 
 
 test('device snapshots stay bounded and oversize responses do not prevent smaller saves', () => {
   const { context, local } = setup();
+  context.writePageMemory('conversations', [{ id: 'chat' }]);
   for (let i = 0; i < 10; i++) context.writePageMemory(`feed:${i}`, { caption: 'x'.repeat(50000) });
   assert.ok(local.get('vynzo_page_memory_v2').length * 2 <= 750000);
+  assert.equal(context.readPageMemory('conversations')[0].id, 'chat');
   context.writePageMemory('huge', 'x'.repeat(750000));
   assert.equal(context.readPageMemory('huge'), null);
+  assert.equal(context.readPageMemory('conversations')[0].id, 'chat');
   context.writePageMemory('small', { value: 1 });
   assert.equal(context.readPageMemory('small').value, 1);
+});
+
+test('Find and inbox snapshots survive ordinary returns and expire after a day', () => {
+  const { context, advance } = setup();
+  context.writePageMemory('conversations', [{ id: 'chat' }]);
+  context.writePageMemory('find:connections:following', [{ id: 'friend' }]);
+  context.writePageMemory('feed:all', { posts: [] });
+  advance(15 * 60 * 1000);
+  assert.equal(context.readPageMemory('feed:all'), null);
+  assert.equal(context.readPageMemory('conversations')[0].id, 'chat');
+  assert.equal(context.readPageMemory('find:connections:following')[0].id, 'friend');
+  context.removePageMemory('feed:');
+  assert.equal(context.readPageMemory('conversations')[0].id, 'chat');
+  advance(24 * 60 * 60 * 1000 - 15 * 60 * 1000);
+  assert.equal(context.readPageMemory('conversations'), null);
+  assert.equal(context.readPageMemory('find:connections:following'), null);
 });
 
 test('feed restores the visible post and video time and ignores refreshed permits and counters when retaining videos', () => {

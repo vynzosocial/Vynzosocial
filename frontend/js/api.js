@@ -4,7 +4,7 @@ import { supabase } from './supabase-client.js';
 import { unregisterPush } from './native-push.mjs';
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabase-config.js';
 import { shareLoginUrl } from './share-login.js?v=1';
-import { clearPageMemory } from './page-memory.js';
+import { clearPageMemory, removePageMemory } from './page-memory.js';
 
 const API_TIMEOUT_MESSAGE = 'The request took too long. Check your connection and try again.';
 
@@ -144,8 +144,11 @@ export async function apiRequest(endpoint, options = {}) {
     }
     throw new Error(data.error || 'Something went wrong');
   }
-  if (!['GET', 'HEAD'].includes((options.method || 'GET').toUpperCase())
-    && /^\/(users|posts|stories|moderation|auth)(\/|$)/.test(apiPath)) clearPageMemory();
+  if (!['GET', 'HEAD'].includes((options.method || 'GET').toUpperCase())) {
+    if (/^\/posts(\/|$)/.test(apiPath)) removePageMemory('feed:');
+    else if (/^\/stories(\/|$)/.test(apiPath)) removePageMemory('stories:');
+    else if (/^\/(users|moderation|auth)(\/|$)/.test(apiPath)) clearPageMemory();
+  }
   return data;
 }
 

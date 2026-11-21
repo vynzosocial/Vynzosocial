@@ -5,6 +5,7 @@ import { openUserStories } from './stories.js?v=share5';
 import { refreshExpiredMedia } from './r2-uploads.js';
 
 import { API_ORIGIN as MEDIA_BASE_URL } from './config.js?v=sb4';
+import { pageMemoryAccount, readPageMemory, writePageMemory, removePageMemory } from './page-memory.js';
 
 export function initAccountSearch() {
   const form = document.getElementById('account-search-form');
@@ -27,6 +28,7 @@ export function initAccountSearch() {
   input.addEventListener('input', () => {
     activeQuery = '';
     searchGeneration++;
+    removePageMemory('find:search');
     if (!input.value.trim()) {
       results.hidden = true;
       results.replaceChildren();
@@ -34,6 +36,13 @@ export function initAccountSearch() {
   });
 
   initConnections();
+  const savedSearch = readPageMemory('find:search');
+  if (savedSearch?.query?.length >= 2 && Array.isArray(savedSearch.users)) {
+    input.value = savedSearch.query;
+    activeQuery = savedSearch.query;
+    renderAccounts(results, savedSearch.users);
+    search(activeQuery, true);
+  }
   window.setInterval(() => {
     if (!document.hidden && activeQuery && !results.contains(document.activeElement)) {
       search(activeQuery, true);
@@ -50,39 +59,53 @@ function initConnections() {
   const tabs = document.querySelectorAll('.people-tab');
   if (!list || !tabs.length) return;
 
-  let activeType = 'following';
+  const savedType = readPageMemory('find:tab');
+  let activeType = ['following', 'followers'].includes(savedType) ? savedType : 'following';
   let generation = 0;
   const load = async (type, refresh = false) => {
     activeType = type;
     const request = ++generation;
+    const cached = readPageMemory(`find:connections:${type}`);
     if (!refresh) {
+      writePageMemory('find:tab', type);
       tabs.forEach(tab => {
         const active = tab.dataset.type === type;
         tab.classList.toggle('active', active);
         tab.setAttribute('aria-selected', String(active));
       });
-      renderSearchMessage(list, 'Loading...');
+      if (Array.isArray(cached)) renderConnections(cached, type);
+      else renderSearchMessage(list, 'Loading...');
     }
+    const account = pageMemoryAccount();
     try {
       const data = await apiRequest(`/users/connections?type=${type}`);
-      if (request !== generation) return;
+      if (request !== generation || (account && pageMemoryAccount() !== account)) return;
       const users = type === 'followers' ? data.users.filter(user => !user.is_following) : data.users;
-      list.replaceChildren();
-      if (!users.length) {
-        renderSearchMessage(list, type === 'following'
-          ? 'You are not following anyone yet. Friends and people you follow will appear here.'
-          : 'No followers waiting for a follow back.');
-        return;
-      }
-      liveFirst(users).forEach(user => list.appendChild(createAccountResult(user, true, () => load(activeType, true))));
+      writePageMemory(`find:connections:${type}`, users.slice(0, 100).map(user => ({ ...user, is_live: false })), account);
+      renderConnections(users, type);
     } catch (err) {
       console.error('Could not load connections:', err);
-      if (request === generation && !refresh) renderSearchMessage(list, err.message || 'Log in to see your friends, following, and followers.');
+      if (request === generation && (!refresh || (cached && !readPageMemory(`find:connections:${type}`)))) {
+        const message = err.message || 'Log in to see your friends, following, and followers.';
+        if (readPageMemory(`find:connections:${type}`)) appendSearchError(list, message);
+        else renderSearchMessage(list, message);
+      }
     }
   };
 
+  function renderConnections(users, type) {
+    list.replaceChildren();
+    if (!users.length) {
+      renderSearchMessage(list, type === 'following'
+        ? 'You are not following anyone yet. Friends and people you follow will appear here.'
+        : 'No followers waiting for a follow back.');
+      return;
+    }
+    liveFirst(users).forEach(user => list.appendChild(createAccountResult(user, true, () => load(activeType, true))));
+  }
+
   tabs.forEach(tab => tab.addEventListener('click', () => load(tab.dataset.type)));
-  load('following');
+  load(activeType);
   window.setInterval(() => {
     if (!document.hidden && !list.contains(document.activeElement)) load(activeType, true);
   }, 30000);
@@ -95,21 +118,45 @@ async function searchAccounts(query, container, isCurrent, refresh = false) {
   }
 
   container.hidden = false;
-  if (!refresh) renderSearchMessage(container, 'Searching accounts...');
+  if (!refresh) {
+    const saved = readPageMemory('find:search');
+    if (saved?.query === query && Array.isArray(saved.users)) renderAccounts(container, saved.users);
+    else renderSearchMessage(container, 'Searching accounts...');
+  }
+  const account = pageMemoryAccount();
   try {
     const data = await apiRequest(`/users/search?q=${encodeURIComponent(query)}`);
-    if (!isCurrent()) return;
-    container.replaceChildren();
-    if (!data.users.length) {
-      renderSearchMessage(container, 'No accounts found.');
-      return;
-    }
-
-    liveFirst(data.users).forEach(user => container.appendChild(createAccountResult(user)));
+    if (!isCurrent() || (account && pageMemoryAccount() !== account)) return;
+    writePageMemory('find:search', {
+      query, users: data.users.slice(0, 100).map(user => ({ ...user, is_live: false }))
+    }, account);
+    renderAccounts(container, data.users);
   } catch (err) {
     console.error('Account search failed:', err);
-    if (isCurrent() && !refresh) renderSearchMessage(container, err.message || 'Could not search accounts. Please try again.');
+    if (isCurrent()) {
+      const saved = readPageMemory('find:search');
+      if (saved?.query === query) appendSearchError(container, err.message || 'Could not refresh accounts.');
+      else renderSearchMessage(container, err.message || 'Could not search accounts. Please try again.');
+    }
   }
+}
+
+function renderAccounts(container, users) {
+  container.hidden = false;
+  container.replaceChildren();
+  if (!users.length) {
+    renderSearchMessage(container, 'No accounts found.');
+    return;
+  }
+  liveFirst(users).forEach(user => container.appendChild(createAccountResult(user)));
+}
+
+function appendSearchError(container, message) {
+  container.querySelector('.account-search-refresh-error')?.remove();
+  const status = document.createElement('p');
+  status.className = 'account-search-message account-search-refresh-error';
+  status.textContent = message;
+  container.appendChild(status);
 }
 
 function createLiveIndicator(user) {
