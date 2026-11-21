@@ -362,9 +362,9 @@ html[dir="rtl"] .live-video-grid > * {
   max-width: 100%;
   padding: 5px 10px;
   border-radius: 14px;
-  background: rgba(0, 0, 0, 0.45);
+  background: transparent;
   color: #fff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85), 0 0 4px rgba(0, 0, 0, 0.6);
 }
 
 .live-container .live-stage .live-controls-bar,
@@ -539,7 +539,7 @@ html[dir="rtl"] .live-video-grid > * {
   backdrop-filter:none; font-size:clamp(10px, 2.6vw, 13px);
   justify-content:center; text-align:center; min-width:0; text-shadow:0 1px 2px rgba(0,0,0,.7);
 }
-.live-container .live-stage .live-chat-message { font-size:calc(var(--live-chat-font-size, 13px) * var(--live-chat-text-scale, .5)); gap:3px; }
+.live-container .live-stage .live-chat-message { font-size:calc(var(--live-chat-font-size, 13px) * var(--live-chat-text-scale, .5)); gap:3px; line-height:1.1; }
 .live-container .live-stage .live-chat-avatar,
 .live-container .live-stage .live-chat-message .live-chat-avatar { width:12px; height:12px; font-size:6px; }
 .live-container .live-stage .live-chat-user { margin-right:3px; }
@@ -578,7 +578,7 @@ html[dir="rtl"] .live-video-grid > * {
 
 @media (min-width: 769px) and (min-height: 501px) and (hover: hover) and (pointer: fine) {
   .live-container .live-stage .live-chat-box {
-    gap: 2px;
+    gap: 0;
     padding: 2px 4px;
     -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 8%);
     mask-image: linear-gradient(to bottom, transparent 0, #000 8%);
@@ -590,8 +590,8 @@ html[dir="rtl"] .live-video-grid > * {
   .live-container .live-stage .live-chat-message {
     align-items: center;
     gap: 5px;
-    padding: 2px 8px;
-    line-height: 1.25;
+    padding: 1px 8px;
+    line-height: 1.1;
   }
   .live-container .live-stage .live-chat-avatar {
     width: 20px;
@@ -671,15 +671,15 @@ html[dir="rtl"] .live-video-grid > * {
     min-height: 0;
     overflow-y: auto;
     padding: 2px 0;
-    gap: 2px;
+    gap: 0;
     -webkit-mask-image: none;
     mask-image: none;
   }
   .live-container .live-stage .live-chat-message {
     align-items: center;
     gap: 5px;
-    padding: 2px 8px;
-    line-height: 1.25;
+    padding: 1px 8px;
+    line-height: 1.1;
     border-radius: 10px;
   }
   .live-container .live-stage .live-chat-avatar {
