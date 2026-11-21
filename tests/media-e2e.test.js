@@ -273,6 +273,23 @@ test('stages, publishes, serves, revokes and deletes a post through the API and 
     assert.equal((await api(`/stories/${videoUpload.uploadId}`, 'DELETE', userId)).status, 200);
     assert.equal(media.size, 0);
 
+    const videoPostId = '971c48cc-4358-4ed1-bafe-27571bedb81a';
+    rows.posts.push({ id: videoPostId, user_id: userId, media_type: 'video',
+      media_url: `r2://post/${userId}/${videoPostId}`, privacy: 'everyone' });
+    media.set(`media/post/${userId}/${videoPostId}/cover`, {
+      bytes: new TextEncoder().encode('cover'), httpMetadata: { contentType: 'image/webp' }
+    });
+    const videoFeed = await (await api('/posts/feed?scope=all', 'GET', viewerId)).json();
+    const coverUrl = videoFeed.posts[0].cover_url;
+    const authorizedCover = await global.fetch(coverUrl);
+    assert.equal(authorizedCover.status, 200);
+    assert.equal(await authorizedCover.text(), 'cover');
+    assert.equal(authorizedCover.headers.get('cache-control'), 'private, no-store');
+    rows.posts[0].privacy = 'only_me';
+    assert.equal((await global.fetch(coverUrl)).status, 403);
+    rows.posts.length = 0;
+    media.clear();
+
     const legacyPostId = '971c48cc-4358-4ed1-bafe-27571bedb81a';
     const legacyStoryId = 'dc646b7f-69a7-4879-aebb-55191fce642b';
     const legacyUrl = 'https://storage.example/public/legacy.jpg';

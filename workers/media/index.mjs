@@ -67,7 +67,7 @@ async function verifyDelivery(token, secret, now) {
       claims.scope === 'message' && (claims.path.startsWith(`${claims.userId}/messages/`) ||
         !claims.path.includes('/')));
     const r2 = (claims.storage === undefined || claims.storage === '') &&
-      ['post', 'story'].includes(claims.kind) && ['original', 'playback'].includes(claims.variant);
+      ['post', 'story'].includes(claims.kind) && ['original', 'playback', 'cover'].includes(claims.variant);
     if (!validIds || !(legacyPost || legacyFile || r2) ||
         !Number.isSafeInteger(claims.expires) || claims.expires <= now ||
         claims.expires > now + (legacyFile ? 5 * 60 : 60 * 60)) return null;
@@ -107,7 +107,8 @@ async function deliver(request, env, headers) {
   }
   if (!auth.ok) return reply(503, 'Media authorization is temporarily unavailable.', headers);
   const authorization = await auth.json();
-  if (authorization.allowed !== true || !['original', 'playback'].includes(authorization.objectVariant)) {
+  if (authorization.allowed !== true || !['original', 'playback', 'cover'].includes(authorization.objectVariant) ||
+      (claims.variant === 'cover' && authorization.objectVariant !== 'cover')) {
     return reply(403, 'Media is unavailable or private.', headers);
   }
   const path = objectPath('media', claims, authorization.objectVariant);

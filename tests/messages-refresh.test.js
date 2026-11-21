@@ -30,6 +30,9 @@ test('message refresh preserves existing content, playback, drafts and contact i
           preview: {type:'blog',id:'article'},text:'Shared article',url:'https://example.test/article'
         } : null;
         const setScreenGuard = () => {};
+        const pageMemoryAccount = () => null;
+        const readPageMemory = () => null;
+        const writePageMemory = () => {};
         let messages, conversations, delayed, sendDeferred, postCalls = 0, previewLoads = 0, uploadUrlCalls = 0, directUploads = 0;
         const uploadedFiles = [], encodings = [];
         const supabase = {storage:{from:()=>({uploadToSignedUrl:async(path,token,file)=>{directUploads++;uploadedFiles.push(file);return{error:null};}})}};

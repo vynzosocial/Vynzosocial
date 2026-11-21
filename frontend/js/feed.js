@@ -217,6 +217,8 @@ function renderFeed(container, data, scope, offset = 0, limit = FEED_PAGE) {
     const existing = previous.get(post.id);
     if (existing && feedPostVersion(existing.post) === feedPostVersion(post)) {
       Object.assign(existing.post, post);
+      const video = existing.card.querySelector('video');
+      if (video && post.cover_url && video.poster !== post.cover_url) video.poster = post.cover_url;
       syncFeedCard(existing.post);
       posts.push(existing.post);
       return existing.card;
@@ -414,7 +416,8 @@ function createPostCard(post, reel = false) {
   refreshExpiredMedia(media, post, 'post');
   media.className = 'post-media';
   if (isVideo) {
-    media.preload = reel ? 'none' : 'metadata';
+    media.preload = 'metadata';
+    if (post.cover_url) media.poster = post.cover_url;
   } else {
     media.loading = 'lazy';
     media.decoding = 'async';

@@ -26,6 +26,15 @@ test('rejects original download for other viewers and references that do not mat
   assert.deepEqual(await authorizeMediaClaims({ ...claims, uploadId: '../other' }, check, () => {}), { valid: false, allowed: false });
 });
 
+test('video covers require the same current visibility as playback', async () => {
+  const cover = { ...claims, variant: 'cover' };
+  assert.deepEqual(await authorizeMediaClaims(cover, async () => ({ post: item }), () => {}), {
+    valid: true, allowed: true, objectVariant: 'cover'
+  });
+  assert.equal((await authorizeMediaClaims(cover, async () => null, () => {})).allowed, false);
+  assert.equal((await authorizeMediaClaims(cover, async () => ({ post: { ...item, media_type: 'image' } }), () => {})).allowed, false);
+});
+
 test('uses story privacy and maps image playback to the original object', async () => {
   const story = { ...item, media_type: 'image', media_url: `r2://story/${userId}/${uploadId}` };
   const storyClaims = { ...claims, kind: 'story' };

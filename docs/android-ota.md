@@ -67,14 +67,17 @@ the home page's **Update available** button for those bundles. This is an in-app
 button on Home, not an Android system push notification.
 
 Pages do not wait for notification-device registration before showing content.
-On native mobile, Settings, feed, stories and friend-list data are kept in
-account-scoped device session memory for up to two minutes (750 KB total).
+On native mobile, Settings, feed, stories, friend-list and conversation-list
+details are kept in account-scoped device storage for up to 15 minutes
+(750 KB total). Conversation snapshots exclude message bodies and previews.
 Returning pages show that snapshot while refreshing from the server. Feed scope,
 the visible post and its video position are restored; unchanged video elements
 are retained during refresh. Settings refreshes do not overwrite fields being
 edited. Snapshots are cleared on logout, account changes, profile/content changes
-and authorization failures. Private messages, view-once files and video binaries
-are not cached; playback still requires an authorized media connection.
+and authorization failures. Message bodies, view-once files and video binaries
+are not cached; playback still requires an authorized media connection. Video
+posts use their authorized uploaded cover while playback loads; older videos
+without covers preload video metadata so the browser can display a frame.
 Profile settings use **Add links** to open a separate social-links page. Users
 can save Instagram, Facebook and Snapchat profile URLs or usernames there, or
 clear a field to remove its profile button.

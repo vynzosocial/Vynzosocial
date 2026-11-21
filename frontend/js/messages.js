@@ -11,6 +11,7 @@ import { createImageCover } from './image-cover.js';
 import { encodePlaybackVideo } from './video-encoder.js';
 import { chooseMessageCamera, recordMessageVideo, MAX_CAMERA_VIDEO_SECONDS } from './message-camera.js';
 import { createCameraSwitcher } from './camera-devices.js';
+import { pageMemoryAccount, readPageMemory, writePageMemory } from './page-memory.js';
 
 let socket = null;
 let currentConversationMeta = null;
@@ -44,6 +45,8 @@ export async function initMessaging() {
     return;
   }
 
+  const cached = readPageMemory('conversations');
+  if (cached) renderConversations(cached, currentUser);
   const token = localStorage.getItem('vynzo_token');
   initCalls();
   socket = createRealtimeSocket({
@@ -74,7 +77,7 @@ export async function initMessaging() {
       showChatError('Select a conversation to start chatting.');
     } catch (err) {
       console.error('Could not retry loading conversations:', err);
-      showConversationError(err.message || 'Could not load your conversations.', retryConversationLoad);
+      showConversationError(err.message || 'Could not load your conversations.', retryConversationLoad, Boolean(readPageMemory('conversations')));
     }
   }
 
@@ -92,7 +95,7 @@ export async function initMessaging() {
   } catch (err) {
     console.error('Failed to load conversations:', err);
     showChatError(err.message || 'Could not load your conversations. Please try again.');
-    showConversationError(err.message || 'Could not load your conversations.', retryConversationLoad);
+    showConversationError(err.message || 'Could not load your conversations.', retryConversationLoad, Boolean(readPageMemory('conversations')));
   }
 
   if (!conversationRefreshInterval) {
@@ -282,9 +285,17 @@ async function prepareMessageBody(conversationId, { content = '', file = null, r
 
 async function refreshConversations() {
   const request = ++conversationRefreshRequest;
+  const account = pageMemoryAccount();
+  const userId = JSON.parse(localStorage.getItem('vynzo_user') || '{}').id;
   const data = await apiRequest('/messages');
-  if (request !== conversationRefreshRequest) return data.conversations;
+  if (request !== conversationRefreshRequest || JSON.parse(localStorage.getItem('vynzo_user') || '{}').id !== userId) return [];
   const currentUser = JSON.parse(localStorage.getItem('vynzo_user') || '{}');
+  writePageMemory('conversations', data.conversations.slice(0, 100).map(conv => ({
+    id: conv.id, is_group: conv.is_group, group_name: conv.group_name, other_user_id: conv.other_user_id,
+    other_username: conv.other_username, other_display_name: conv.other_display_name,
+    other_avatar_url: conv.other_avatar_url, unread_count: conv.unread_count,
+    created_at: conv.last_message?.created_at || conv.created_at, cached_preview: true
+  })), account);
   renderConversations(data.conversations, currentUser);
   return data.conversations;
 }
@@ -327,7 +338,7 @@ function renderConversations(conversations, currentUser) {
       ${avatarMarkup(conv.other_avatar_url, conversationName, 'author-avatar')}
       <div>
         <div style="font-weight:${unread ? 800 : 600};">${escapeHtml(conversationName)}</div>
-        <div style="font-size:12px; color:var(--text-muted);">${escapeHtml(conv.last_message ? messagePreview(conv.last_message) : 'No messages')}</div>
+        <div style="font-size:12px; color:var(--text-muted);">${escapeHtml(conv.cached_preview ? 'Open conversation' : conv.last_message ? messagePreview(conv.last_message) : 'No messages')}</div>
       </div>
       ${unread ? `<span class="unread-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
     `;
@@ -352,7 +363,7 @@ function renderConversations(conversations, currentUser) {
       const details = item.children[1];
       if (details.children[0].textContent !== conversationName) details.children[0].textContent = conversationName;
       details.children[0].style.fontWeight = unread ? '800' : '600';
-      const preview = conv.last_message ? messagePreview(conv.last_message) : 'No messages';
+      const preview = conv.cached_preview ? 'Open conversation' : conv.last_message ? messagePreview(conv.last_message) : 'No messages';
       if (details.children[1].textContent !== preview) details.children[1].textContent = preview;
       let badge = item.querySelector('.unread-badge');
       if (!unread) badge?.remove();
@@ -2354,7 +2365,7 @@ function showChatError(message) {
   chatArea.replaceChildren(status);
 }
 
-function showConversationError(message, onRetry) {
+function showConversationError(message, onRetry, keepSaved = false) {
   const container = document.getElementById('conversations-list');
   if (!container) return;
 
@@ -2369,7 +2380,10 @@ function showConversationError(message, onRetry) {
     retry.textContent = 'Retrying...';
     await onRetry();
   });
-  container.replaceChildren(status, retry);
+  container.querySelectorAll('.conversations-error, .conversations-retry').forEach(node => node.remove());
+  retry.className = 'conversations-retry';
+  if (keepSaved) container.append(status, retry);
+  else container.replaceChildren(status, retry);
 }
 
 function escapeHtml(str) {

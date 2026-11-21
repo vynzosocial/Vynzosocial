@@ -42,7 +42,8 @@ export async function createUploadPermits({ userId, kind, original, playback, co
 
 export async function createDeliveryPermit({ viewerId, itemId, userId, uploadId, kind, variant, secret, storage = '', now = Math.floor(Date.now() / 1000) }) {
   if (![viewerId, itemId, userId, uploadId].every(value => UUID.test(value)) ||
-      !['post', 'story'].includes(kind) || !['original', 'playback'].includes(variant) ||
+      !['post', 'story'].includes(kind) || !['original', 'playback', 'cover'].includes(variant) ||
+      (storage === 'legacy' && variant === 'cover') ||
       (storage !== '' && storage !== 'legacy')) {
     throw new UploadValidationError('Invalid media reference.');
   }

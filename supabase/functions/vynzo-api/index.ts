@@ -615,7 +615,7 @@ function parseR2MediaUrl(mediaUrl: string): R2MediaReference | null {
   return { kind: match[1].toLowerCase() as 'post' | 'story', userId: match[2], uploadId: match[3] }
 }
 
-async function mediaPlaybackUrl(mediaUrl: string, itemId: string, viewerId: string, variant: 'playback' | 'original' = 'playback', legacy?: { kind: 'post' | 'story'; userId: string }): Promise<string> {
+async function mediaPlaybackUrl(mediaUrl: string, itemId: string, viewerId: string, variant: 'playback' | 'original' | 'cover' = 'playback', legacy?: { kind: 'post' | 'story'; userId: string }): Promise<string> {
   const ref = parseR2MediaUrl(mediaUrl)
   const useLegacyGateway = !ref && legacy && legacyMediaGatewayEnabled(mediaUrl)
   if (!ref && !useLegacyGateway) return mediaUrl
@@ -1943,6 +1943,8 @@ async function handlePosts(request: Request, viewerId: string, headers: Record<s
         return {
           ...post,
           media_url: await mediaPlaybackUrl(post.media_url, post.id, viewerId, 'playback', { kind: 'post', userId: post.user_id }),
+          cover_url: post.media_type === 'video' && parseR2MediaUrl(post.media_url)
+            ? await mediaPlaybackUrl(post.media_url, post.id, viewerId, 'cover') : null,
           has_original: Boolean(parseR2MediaUrl(post.media_url)),
           has_expiring_media_url: legacyMediaGatewayEnabled(post.media_url),
           is_owner: post.user_id === viewerId,
