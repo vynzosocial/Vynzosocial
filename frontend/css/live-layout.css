@@ -933,7 +933,7 @@ html[dir="rtl"] .live-video-grid > * {
 }
 
 @media (max-width: 768px), (max-width: 1000px) and (max-height: 500px) and (orientation: landscape) {
-  .live-container .live-stage { --live-chat-text-scale: .6; }
+  .live-container .live-stage { --live-chat-text-scale: .72; }
 
   .live-container .live-stage .live-video-area:has(.live-host-panel[open]) {
     overflow: visible;
@@ -951,7 +951,8 @@ html[dir="rtl"] .live-video-grid > * {
     inset-inline: auto 8px;
     width: min(240px, calc(100% - 16px));
   }
-  .live-container .live-stage .live-chat-input-row .chat-input { font-size: 16.8px; }
+  .live-container .live-stage .live-chat-input-row .chat-input { font-size: 14px; }
+  .live-container .live-stage .live-chat-input-row .chat-input::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   .live-container .live-stage .live-video-area,
   .live-container .live-stage.live-multi .live-video-area {
