@@ -443,6 +443,18 @@ function createPostCard(post, reel = false) {
   }
   mediaButton.appendChild(media);
 
+  if (reel) {
+    // Size the frame to the media so wide or square posts have no empty bands above and below.
+    const fitFrame = () => {
+      const width = isVideo ? media.videoWidth : media.naturalWidth;
+      const height = isVideo ? media.videoHeight : media.naturalHeight;
+      if (!width || !height) return;
+      mediaButton.style.setProperty('--post-media-ratio', String(Math.min(1.91, Math.max(0.8, width / height))));
+      mediaButton.classList.add('has-media-ratio');
+    };
+    media.addEventListener(isVideo ? 'loadedmetadata' : 'load', fitFrame, { once: true });
+  }
+
   if (isVideo && reel) {
     const sound = document.createElement('span');
     sound.className = 'reel-sound';

@@ -1,6 +1,6 @@
-﻿import { restoreSupabaseSession } from './supabase-client.js';
+import { restoreSupabaseSession } from './supabase-client.js';
 try { screen.orientation?.lock?.('portrait').catch(() => {}); } catch { /* unsupported */ }
-import { initFeed } from './feed.js?v=home-preview1';
+import { initFeed } from './feed.js?v=media-fit1';
 import { initStoriesCarousel } from './stories.js?v=share5';
 import { initHomeFriends } from './home-friends.js?v=home-preview1';
 import { apiRequest } from './api.js?v=sb6';

@@ -51,10 +51,14 @@
   position: relative;
   inset: auto;
   width: 100%;
-  aspect-ratio: 4 / 5;
+  aspect-ratio: var(--post-media-ratio, 4 / 5);
   max-height: 72vh;
   background: #000;
   cursor: pointer;
+}
+
+.home-page .feed-container.reel-feed .insta-card .post-thumbnail-button.has-media-ratio .post-media {
+  object-fit: cover;
 }
 
 .home-page .feed-container.reel-feed .insta-card .post-media,
