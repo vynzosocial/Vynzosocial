@@ -95,6 +95,19 @@
   color: #ff3b6b;
 }
 
+.home-page .reel-feed .insta-card .post-action.share-btn {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: #ffe9fb;
+  text-shadow: 0 0 4px #ff5fd2, 0 0 10px rgba(255, 95, 210, 0.75), 0 0 18px rgba(165, 75, 255, 0.6);
+}
+
+html[data-theme="daylight"] .home-page .reel-feed .insta-card .post-action.share-btn {
+  color: #9b1f84;
+  text-shadow: 0 0 6px rgba(255, 95, 210, 0.55), 0 0 12px rgba(165, 75, 255, 0.35);
+}
+
 .home-page .reel-feed .insta-card .post-action .action-count {
   font-size: 14px;
   font-weight: 600;
