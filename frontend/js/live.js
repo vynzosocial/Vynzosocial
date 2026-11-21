@@ -694,7 +694,7 @@ function createLiveStage(placeholder, isHost, hostUsername = '', title = '', hos
                   <button type="button" class="live-media-button live-media-off-button" id="live-turn-media-off-btn" hidden>${isHost ? 'Turn media off' : 'Leave stage'}</button>
                   ${isHost ? '<button type="button" class="live-media-button" id="live-stop-microphone-btn" hidden>Stop microphone</button>' : ''}
                   <button type="button" class="live-media-button live-media-image-button" id="live-select-image-btn">${isHost ? 'Choose image' : 'Use image'}</button>
-                  <input id="live-image-file" type="file" accept="image/*" hidden>
+                  <input id="live-image-file" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
                   <button type="button" class="live-media-button live-media-off-button" id="live-remove-image-btn" hidden>Remove image</button>
                   <button type="button" class="live-media-button" id="live-switch-camera-btn" aria-label="Switch camera" hidden>Switch camera</button>
                   <button type="button" class="live-media-button" id="live-mirror-camera-btn" aria-pressed="false" title="Mirror your preview; viewers see the normal camera view" hidden>Mirror camera</button>
@@ -1125,8 +1125,12 @@ async function enableLocalCamera(acceptInvite = false) {
 async function useLocalImage(file) {
   if (!(await requestGuestSlot())) return;
   const stageGeneration = guestStageGeneration;
-  if (file.type && !file.type.startsWith('image/')) {
-    showLiveError('Choose a valid image file.');
+  if (/\.(heic|heif)$/i.test(file.name || '') || /hei[cf]/i.test(file.type || '')) {
+    showLiveError('HEIC photos cannot be shown live. Choose a JPEG, PNG, WebP or GIF image.');
+    return;
+  }
+  if (file.type && !LIVE_IMAGE_TYPES.includes(file.type)) {
+    showLiveError('Choose a JPEG, PNG, WebP or GIF image.');
     return;
   }
   if (file.size > 10 * 1024 * 1024) {
@@ -1144,6 +1148,11 @@ async function useLocalImage(file) {
     });
   } catch (err) {
     URL.revokeObjectURL(objectUrl);
+    showLiveError('This image could not be opened. Choose a JPEG, PNG, WebP or GIF image.');
+    return;
+  }
+  if (!image.naturalWidth || !image.naturalHeight) {
+    URL.revokeObjectURL(objectUrl);
     showLiveError('This image could not be opened. Choose a different image.');
     return;
   }
@@ -1152,22 +1161,29 @@ async function useLocalImage(file) {
     return;
   }
 
-  const scale = Math.min(1, 1280 / image.naturalWidth, 1280 / image.naturalHeight);
+  const box = document.querySelector?.('.live-video-frame[data-peer-id="self"]') || document.querySelector?.('.live-video-grid');
+  const size = liveImageCanvasSize(box?.getBoundingClientRect?.(), image.naturalWidth, image.naturalHeight);
+  const composed = document.createElement('canvas');
+  composed.width = size.width;
+  composed.height = size.height;
+  const composedContext = composed.getContext('2d');
   const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  canvas.width = size.width;
+  canvas.height = size.height;
   const context = canvas.getContext('2d');
-  if (!context) {
+  if (!context || !composedContext) {
     URL.revokeObjectURL(objectUrl);
     showLiveError('Unable to prepare this image for livestreaming.');
     return;
   }
+  drawImageToFitBox(composedContext, image, size.width, size.height);
 
+  // The capture canvas must keep changing for captureStream to keep emitting frames.
   const drawImageFrame = () => {
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    context.drawImage(composed, 0, 0);
     imageAnimationFrame = requestAnimationFrame(drawImageFrame);
   };
-  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  context.drawImage(composed, 0, 0);
   let nextImageStream;
   try {
     nextImageStream = canvas.captureStream(10);
@@ -1201,6 +1217,42 @@ async function useLocalImage(file) {
     console.error('Unable to share the selected image:', err);
     showLiveError('Unable to share this image. Please try again.');
   }
+}
+
+const LIVE_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+// Matches the camera box shape so a shared image fills the tile like camera video does.
+function liveImageCanvasSize(box, imageWidth, imageHeight) {
+  const ratio = box?.width > 0 && box?.height > 0 ? box.width / box.height : imageWidth / imageHeight;
+  const shape = Math.min(16 / 9, Math.max(9 / 16, ratio || 1));
+  return shape >= 1
+    ? { width: 1280, height: Math.round(1280 / shape) }
+    : { width: Math.round(1280 * shape), height: 1280 };
+}
+
+function drawImageToFitBox(context, image, width, height) {
+  const imageWidth = image.naturalWidth;
+  const imageHeight = image.naturalHeight;
+  const cover = Math.max(width / imageWidth, height / imageHeight);
+  const contain = Math.min(width / imageWidth, height / imageHeight);
+  const drawScaled = scale => {
+    const drawWidth = imageWidth * scale;
+    const drawHeight = imageHeight * scale;
+    context.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+  };
+  // Close shapes fill the box; very different shapes stay whole over a blurred fill instead of being cut off.
+  if (cover / contain <= 1.15) {
+    drawScaled(cover);
+    return;
+  }
+  context.fillStyle = '#0b0716';
+  context.fillRect(0, 0, width, height);
+  if ('filter' in context) {
+    context.filter = 'blur(32px) brightness(0.6)';
+    drawScaled(cover * 1.1);
+    context.filter = 'none';
+  }
+  drawScaled(contain);
 }
 
 async function publishLocalMedia() {

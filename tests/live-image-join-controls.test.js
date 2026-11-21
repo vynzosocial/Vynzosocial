@@ -9,6 +9,7 @@ const stage = source.slice(source.indexOf('function createLiveStage('), source.i
 const controls = source.slice(source.indexOf('function updateLocalMediaControls('), source.indexOf('\nfunction applyCameraMirror('));
 const cameraOff = source.slice(source.indexOf('async function turnCameraOff()'), source.indexOf('\nasync function enableLocalCamera('));
 const useImage = source.slice(source.indexOf('async function useLocalImage('), source.indexOf('\nasync function publishLocalMedia('));
+const fit = source.slice(source.indexOf('const LIVE_IMAGE_TYPES'), source.indexOf('\nasync function publishLocalMedia('));
 const request = source.slice(source.indexOf('function requestGuestSlot('), source.indexOf('\nasync function stopLocalMedia('));
 
 test('host and guest have visible image controls and guests have a direct request button', () => {
@@ -149,3 +150,37 @@ for (const guest of [false, true]) {
     assert.equal(published[1], null);
   });
 }
+
+test('shared images take the camera box shape and stay whole when shapes differ', () => {
+  const context = {};
+  vm.runInNewContext(fit, context);
+  assert.deepEqual({ ...context.liveImageCanvasSize({ width: 360, height: 640 }, 4000, 3000) }, { width: 720, height: 1280 });
+  assert.deepEqual({ ...context.liveImageCanvasSize({ width: 1600, height: 900 }, 3000, 4000) }, { width: 1280, height: 720 });
+  assert.deepEqual({ ...context.liveImageCanvasSize(undefined, 3000, 4000) }, { width: 960, height: 1280 });
+
+  const calls = [];
+  const canvas = { filter: 'none', fillRect: (...args) => calls.push(['fill', ...args]), drawImage: (_image, ...args) => calls.push(['draw', canvas.filter, ...args.map(Math.round)]) };
+  context.drawImageToFitBox(canvas, { naturalWidth: 1600, naturalHeight: 900 }, 720, 1280);
+  assert.deepEqual(calls[0], ['fill', 0, 0, 720, 1280]);
+  assert.match(calls[1][1], /blur/);
+  assert.deepEqual(calls[2], ['draw', 'none', 0, 438, 720, 405]);
+
+  calls.length = 0;
+  context.drawImageToFitBox(canvas, { naturalWidth: 1000, naturalHeight: 1800 }, 720, 1280);
+  assert.deepEqual(calls, [['draw', 'none', 0, -8, 720, 1296]]);
+});
+
+test('HEIC and unsupported photos are rejected with a clear message before decoding', async () => {
+  const errors = [];
+  const context = {
+    requestGuestSlot: async () => true, guestStageGeneration: 0, showLiveError: error => errors.push(error),
+    URL: { createObjectURL() { throw new Error('Must not decode'); } }
+  };
+  vm.runInNewContext(useImage, context);
+  await context.useLocalImage({ type: '', size: 10, name: 'IMG_0001.HEIC' });
+  await context.useLocalImage({ type: 'image/heif', size: 10, name: 'photo' });
+  await context.useLocalImage({ type: 'image/tiff', size: 10, name: 'scan.tif' });
+  assert.match(errors[0], /HEIC/);
+  assert.match(errors[1], /HEIC/);
+  assert.match(errors[2], /JPEG, PNG, WebP or GIF/);
+});

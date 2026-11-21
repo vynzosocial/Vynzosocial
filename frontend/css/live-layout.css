@@ -531,7 +531,7 @@ html[dir="rtl"] .live-video-grid > * {
 /* Camera fills the whole tile (outer edges trimmed); the name overlays the bottom edge */
 .live-video-frame[data-stage-guest="1"] { display:block; }
 .live-video-frame[data-stage-guest="1"] .live-video-player { position:absolute; inset:0; width:100%; height:100%; min-height:0; object-fit:cover; object-position:center; }
-.live-video-frame[data-media-source="image"] .live-video-player { object-fit:contain; background:#0b0716; }
+.live-video-frame[data-media-source="image"] .live-video-player { object-fit:cover; object-position:center; background:#0b0716; }
 .live-video-frame .live-video-label,
 .live-video-frame[data-stage-guest="1"] .live-video-label {
   position:absolute; top:auto; left:4px; right:4px; bottom:4px; z-index:3; width:auto; max-width:calc(100% - 8px); box-sizing:border-box;
